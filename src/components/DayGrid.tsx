@@ -74,10 +74,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       {orderedPeople.map((person)=> (
         <div key={person} className="grid" style={{gridTemplateColumns:`150px 1fr`}}>
           <div className={["py-1.5 pr-2 text-[13px] font-medium sticky left-0 z-10", dark?"bg-neutral-900":"bg-white"].join(' ')}>{person}</div>
-          <div className="relative h-7" style={{
-            backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
-            backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
-          }}>
+          <div className="relative h-7">
             {/** PTO: no row overlay; chips will be grayed out instead */}
             
 
