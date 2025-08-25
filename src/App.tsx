@@ -80,7 +80,7 @@ export default function App(){
         ) : view==='manage' ? (
           <ManagePage dark={dark} weekStart={weekStart} shifts={shifts} setShifts={setShifts} pto={pto} setPto={setPto} tz={tz} />
         ) : (
-          <DraftToolPage />
+          <DraftToolPage dark={dark} />
         )}
       </div>
     </div>
