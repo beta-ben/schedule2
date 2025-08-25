@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+.hour-label{ font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.no-select{ -webkit-user-select:none; -moz-user-select:none; user-select:none; }

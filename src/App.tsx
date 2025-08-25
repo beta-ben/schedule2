@@ -1,0 +1,68 @@
+import React, { useEffect, useState } from 'react'
+import { fmtYMD } from './lib/utils'
+import { cloudGet, cloudPost } from './lib/api'
+import type { PTO, Shift } from './types'
+import TopBar from './components/TopBar'
+import SchedulePage from './pages/SchedulePage'
+import ManagePage from './pages/ManagePage'
+import { generateSample } from './sample'
+import { sha256Hex } from './lib/utils'
+import { TZ_OPTS } from './constants'
+
+const SAMPLE = generateSample()
+
+export default function App(){
+  const [view,setView] = useState<'schedule'|'manage'>('schedule')
+  const [weekStart,setWeekStart] = useState(()=>fmtYMD(new Date()))
+  const [dayIndex,setDayIndex] = useState(()=> new Date().getDay()===0?6:new Date().getDay()-1)
+  const [dark,setDark] = useState(true)
+  const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
+  const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
+  const [tz, setTz] = useState(TZ_OPTS[0])
+  const [loadedFromCloud,setLoadedFromCloud]=useState(false)
+
+  const [canEdit, setCanEdit] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+
+  useEffect(()=>{ (async()=>{
+    const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
+    const saved = localStorage.getItem('schedule_pw_hash')
+    setCanEdit(saved === expected)
+  })() }, [view])
+
+  useEffect(()=>{ (async()=>{ const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto) } setLoadedFromCloud(true) })() },[])
+  useEffect(()=>{ if(!loadedFromCloud) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,loadedFromCloud])
+
+  return (
+    <div className={dark?"min-h-screen w-full bg-neutral-950 text-neutral-100":"min-h-screen w-full bg-neutral-100 text-neutral-900"}>
+      <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
+        <TopBar
+          dark={dark} setDark={setDark}
+          view={view} setView={setView}
+          weekStart={weekStart} setWeekStart={setWeekStart}
+          tz={tz} setTz={setTz}
+          canEdit={canEdit}
+          editMode={editMode}
+          setEditMode={setEditMode}
+        />
+
+        {view==='schedule' ? (
+          <SchedulePage
+            dark={dark}
+            weekStart={weekStart}
+            dayIndex={dayIndex}
+            setDayIndex={setDayIndex}
+            shifts={shifts}
+            pto={pto}
+            tz={tz}
+            canEdit={canEdit}
+            editMode={editMode}
+            onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
+          />
+        ) : (
+          <ManagePage dark={dark} weekStart={weekStart} shifts={shifts} setShifts={setShifts} pto={pto} setPto={setPto} tz={tz} />
+        )}
+      </div>
+    </div>
+  )
+}
