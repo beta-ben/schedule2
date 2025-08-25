@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { fmtYMD } from './lib/utils'
+import { fmtYMD, startOfWeek } from './lib/utils'
 import { cloudGet, cloudPost } from './lib/api'
 import type { PTO, Shift } from './types'
 import TopBar from './components/TopBar'
@@ -13,8 +13,8 @@ const SAMPLE = generateSample()
 
 export default function App(){
   const [view,setView] = useState<'schedule'|'manage'>('schedule')
-  const [weekStart,setWeekStart] = useState(()=>fmtYMD(new Date()))
-  const [dayIndex,setDayIndex] = useState(()=> new Date().getDay()===0?6:new Date().getDay()-1)
+  const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
+  const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
   const [dark,setDark] = useState(true)
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)

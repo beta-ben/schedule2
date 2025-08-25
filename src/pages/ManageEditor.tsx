@@ -1,9 +1,8 @@
 import React from 'react'
 import { DAYS } from '../constants'
-import DayPills from '../components/DayPills'
 import DayGrid from '../components/DayGrid'
-import RemoveShiftsPanel from '../components/RemoveShiftsPanel'
-import { addDays, fmtNice, fmtYMD, isValidHHMM, parseYMD, shiftKey, shiftKeyOf, toMin, uid } from '../lib/utils'
+import ShiftManagerPanel from '../components/ShiftManagerPanel'
+import { addDays, fmtNice, fmtYMD, parseYMD, toMin, uid, shiftsForDayInTZ } from '../lib/utils'
 import type { PTO, Shift } from '../types'
 import { cloudGet, cloudPost } from '../lib/api'
 
@@ -16,43 +15,31 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
   setPto: (f:(prev:PTO[])=>PTO[])=>void
   tz: { id:string; label:string; offset:number }
 }){
-  const [tab, setTab] = React.useState<'shifts'|'pto'|'remove'>('remove')
-
-  const [person, setPerson] = React.useState('')
-  const [daysSel, setDaysSel] = React.useState(()=> new Set<string>([DAYS[0]]))
-  const [start, setStart] = React.useState('09:00')
-  const [end, setEnd]   = React.useState('17:30')
+  const [tab, setTab] = React.useState<'shifts'|'pto'>('shifts')
 
   const [ptoPerson, setPtoPerson] = React.useState('')
   const [ptoStart, setPtoStart]   = React.useState(fmtYMD(weekStartDate))
   const [ptoEnd, setPtoEnd]       = React.useState(fmtYMD(addDays(weekStartDate, 1)))
   const [ptoNotes, setPtoNotes]   = React.useState('')
+  const [ptoFilter, setPtoFilter] = React.useState('')
+  const [ptoSelected, setPtoSelected] = React.useState(()=> new Set<string>())
 
-  const [notice,setNotice]=React.useState<string|null>(null)
+  const ptoRows = React.useMemo(()=>{
+    const lc = (ptoFilter||'').toLowerCase()
+    return pto
+      .filter(r => !lc || r.person.toLowerCase().includes(lc))
+      .slice()
+      .sort((a,b)=> a.startDate.localeCompare(b.startDate) || a.person.localeCompare(b.person))
+  },[pto, ptoFilter])
+
+  function togglePto(id:string){ const n=new Set(ptoSelected); if(n.has(id)) n.delete(id); else n.add(id); setPtoSelected(n) }
+  function selectAllPtoFiltered(){ setPtoSelected(new Set(ptoRows.map(r=>r.id))) }
+  function clearPtoSelection(){ setPtoSelected(new Set()) }
+  function deleteSelectedPto(){ if(ptoSelected.size===0) return alert('Select at least one PTO row.'); if(!confirm(`Delete ${ptoSelected.size} PTO entr${ptoSelected.size===1?'y':'ies'}?`)) return; const rm=new Set(ptoSelected); setPto(prev=> prev.filter(r=> !rm.has(r.id))); setPtoSelected(new Set()) }
+  function deleteAllFilteredPto(){ if(ptoRows.length===0) return alert('No PTO rows match the current filter.'); if(!confirm(`Delete ALL ${ptoRows.length} filtered PTO entr${ptoRows.length===1?'y':'ies'}? This cannot be undone.`)) return; const rm=new Set(ptoRows.map(r=>r.id)); setPto(prev=> prev.filter(r=> !rm.has(r.id))); setPtoSelected(new Set()) }
+
   const allPeople = React.useMemo(()=>Array.from(new Set(shifts.map(s=>s.person))).sort(),[shifts])
-
-  function selectWeekdays(){ setDaysSel(new Set(DAYS.slice(0,5))) }
-  function selectAll(){ setDaysSel(new Set(DAYS)) }
-  function selectNone(){ setDaysSel(new Set()) }
-
-  function addShift(){
-    setNotice(null)
-    if(!person.trim()) return alert('Enter a person name')
-    if(daysSel.size===0) return alert('Select at least one day')
-    if(!isValidHHMM(start) || !isValidHHMM(end)) return alert('Times must be HH:MM (00:00–24:00) with 24:00 only as an end time')
-    const sMin = toMin(start); const eMin = toMin(end)
-    if(eMin<=sMin && end!=="24:00") return alert('End must be after start (or exactly 24:00)')
-    const p=person.trim()
-    const days=Array.from(daysSel)
-    const existing = new Set(shifts.map(shiftKey))
-    const dupDays = days.filter(d=> existing.has(shiftKeyOf(p,d as any,start,end)))
-    const toAddDays = days.filter(d=> !existing.has(shiftKeyOf(p,d as any,start,end)))
-    if(dupDays.length>0) setNotice('Duplicate shift skipped for: '+dupDays.join(', '))
-    if(toAddDays.length===0) return
-    const recs = toAddDays.map(day=> ({ id: uid(), person: p, day: day as any, start, end }))
-    setShifts(prev=> prev.concat(recs))
-    setStart(end)
-  }
+  const [notice,setNotice]=React.useState<string|null>(null)
 
   function addPto(){
     if(!ptoPerson.trim()) return alert('Enter a person name')
@@ -77,7 +64,6 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
         <div className="flex gap-2">
           <button onClick={()=>setTab('shifts')} className={["px-3 py-1.5 rounded-lg border text-sm", tab==='shifts' ? (dark?"bg-neutral-800 border-neutral-600":"bg-blue-600 border-blue-600 text-white") : (dark?"border-neutral-700":"border-neutral-300")].join(' ')}>Shifts</button>
           <button onClick={()=>setTab('pto')} className={["px-3 py-1.5 rounded-lg border text-sm", tab==='pto' ? (dark?"bg-neutral-800 border-neutral-600":"bg-blue-600 border-blue-600 text-white") : (dark?"border-neutral-700":"border-neutral-300")].join(' ')}>PTO</button>
-          <button onClick={()=>setTab('remove')} className={["px-3 py-1.5 rounded-lg border text-sm", tab==='remove' ? (dark?"bg-red-700 border-red-700 text-white":"bg-red-600 border-red-600 text-white") : (dark?"border-neutral-700":"border-neutral-300")].join(' ')}>Remove</button>
         </div>
         <div className="flex gap-2">
           <button onClick={exportData} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-600":"border-neutral-300"].join(' ')}>Export JSON</button>
@@ -86,51 +72,8 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
         </div>
       </div>
 
-      {tab==='remove' ? (
-        <RemoveShiftsPanel shifts={shifts} setShifts={setShifts} dark={dark} />
-      ) : tab==='shifts' ? (
-        <div className={["rounded-xl p-3", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start lg:items-end">
-            <div className="lg:col-span-3">
-              <label className="text-sm flex flex-col">
-                <span className="mb-1">Name</span>
-                <input list="people" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={person} onChange={e=>setPerson(e.target.value)} placeholder="Agent name" />
-              </label>
-            </div>
-            <div className="lg:col-span-5">
-              <fieldset className="text-sm">
-                <legend className="mb-2 font-medium">Days</legend>
-                <DayPills value={daysSel} onChange={setDaysSel} dark={dark} />
-                <div className="mt-2 flex gap-2 text-xs">
-                  <button onClick={selectWeekdays} className={["px-2 py-1 rounded-lg border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Weekdays</button>
-                  <button onClick={selectAll} className={["px-2 py-1 rounded-lg border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>All</button>
-                  <button onClick={selectNone} className={["px-2 py-1 rounded-lg border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>None</button>
-                </div>
-              </fieldset>
-            </div>
-            <div className="lg:col-span-3">
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm flex flex-col">
-                  <span className="mb-1">Start</span>
-                  <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={start} onChange={e=>setStart(e.target.value)} />
-                </label>
-                <label className="text-sm flex flex-col">
-                  <span className="mb-1">End</span>
-                  <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={end} onChange={e=>setEnd(e.target.value)} />
-                </label>
-              </div>
-            </div>
-            <div className="lg:col-span-1 flex lg:block items-end lg:self-end">
-              <button onClick={addShift} className={["h-[42px] rounded-xl border font-medium px-4 w-full lg:w-auto", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Add</button>
-            </div>
-          </div>
-          <div className="mt-2 space-y-2">
-            <div className="text-[11px] opacity-60">Use 24:00 for end if someone works to midnight.</div>
-            {notice && (
-              <div className={["rounded-md px-3 py-2 text-sm border", dark?"bg-yellow-950/40 border-yellow-700 text-yellow-200":"bg-yellow-50 border-yellow-300 text-yellow-800"].join(' ')}>{notice}</div>
-            )}
-          </div>
-        </div>
+      {tab==='shifts' ? (
+        <ShiftManagerPanel shifts={shifts} setShifts={setShifts} dark={dark} />
       ) : (
         <div className={["rounded-xl p-3", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
@@ -154,6 +97,51 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
               <button onClick={addPto} className={["h-10 rounded-xl border font-medium px-3", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Add PTO</button>
             </div>
           </div>
+          {/* PTO list with removal */}
+          <div className="mt-4">
+            <div className="flex items-end gap-3">
+              <label className="text-sm flex flex-col">
+                <span className="mb-1">Filter by person</span>
+                <input className={["w-64 border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ptoFilter} onChange={e=>setPtoFilter(e.target.value)} placeholder="Name contains…" />
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={selectAllPtoFiltered} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Select all filtered</button>
+              <button onClick={clearPtoSelection} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Clear selection</button>
+              <button onClick={deleteSelectedPto} className={["px-3 py-1.5 rounded-lg border text-sm", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete selected ({ptoSelected.size})</button>
+              <button onClick={deleteAllFilteredPto} className={["px-3 py-1.5 rounded-lg border text-sm", "bg-red-700 border-red-700 text-white"].join(' ')}>Delete ALL filtered ({ptoRows.length})</button>
+            </div>
+            <div className={["mt-3 border rounded-xl overflow-auto", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
+              <table className="min-w-full text-sm">
+                <thead className={dark?"bg-neutral-900":"bg-white"}>
+                  <tr>
+                    <th className="px-3 py-2 text-left w-10">✓</th>
+                    <th className="px-3 py-2 text-left">Person</th>
+                    <th className="px-3 py-2 text-left">Start</th>
+                    <th className="px-3 py-2 text-left">End</th>
+                    <th className="px-3 py-2 text-left">Notes</th>
+                    <th className="px-3 py-2 text-left w-20">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
+                  {ptoRows.length===0 ? (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center opacity-70">No PTO entries.</td></tr>
+                  ) : ptoRows.map(r => (
+                    <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
+                      <td className="px-3 py-1.5"><input type="checkbox" checked={ptoSelected.has(r.id)} onChange={()=>togglePto(r.id)} /></td>
+                      <td className="px-3 py-1.5 font-medium">{r.person}</td>
+                      <td className="px-3 py-1.5">{r.startDate}</td>
+                      <td className="px-3 py-1.5">{r.endDate}</td>
+                      <td className="px-3 py-1.5">{r.notes}</td>
+                      <td className="px-3 py-1.5">
+                        <button onClick={()=>{ if(confirm('Delete this PTO entry?')) setPto(prev=>prev.filter(p=>p.id!==r.id)) }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -161,7 +149,7 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
       <div className="text-sm opacity-70">Preview</div>
       {DAYS.map((d,i)=>{
         const dayKey=d; const date=addDays(weekStartDate,i)
-        const dayShifts=shifts.filter(s=>s.day===dayKey).sort((a,b)=>toMin(a.start)-toMin(b.start))
+        const dayShifts=shiftsForDayInTZ(shifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
         const people=Array.from(new Set(dayShifts.map(s=>s.person)))
         return (
           <div key={d} className={["rounded-xl p-2", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
@@ -170,6 +158,9 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
           </div>
         )
       })}
+      <datalist id="people">
+        {allPeople.map(p=> <option key={p} value={p} />)}
+      </datalist>
     </section>
   )
 }

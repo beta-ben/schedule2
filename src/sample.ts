@@ -26,7 +26,7 @@ export function generateSample(){
           shifts.push({ id: uid(), person, day, start: minToHHMM(startMin), end: minToHHMM(endMinRaw) })
         }else{
           const spill=endMinRaw-1440
-          const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] as const
+          const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
           const nextDay = days[(days.indexOf(day as any)+1)%7] as any
           shifts.push({ id: uid(), person, day, start: minToHHMM(startMin), end: '24:00' })
           shifts.push({ id: uid(), person, day: nextDay, start: '00:00', end: minToHHMM(spill) })

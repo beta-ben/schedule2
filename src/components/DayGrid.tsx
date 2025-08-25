@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { COLS } from '../constants'
-import { hourMarksForOffset, fmtYMD, minToHHMM, parseYMD, toMin } from '../lib/utils'
+import { hourMarksForOffset, fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ } from '../lib/utils'
 import type { PTO, Shift } from '../types'
 
 export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove }:{ 
@@ -35,10 +35,10 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
 
   const [nowTick,setNowTick]=useState(Date.now())
   useEffect(()=>{ const id=setInterval(()=>setNowTick(Date.now()),30000); return ()=>clearInterval(id) },[])
-  const _now=new Date(nowTick)
-  const nowMin = _now.getHours()*60 + _now.getMinutes()
-  const isToday = fmtYMD(date)===fmtYMD(_now)
-  const nowLeft=(nowMin/totalMins)*100
+  const nowTz = nowInTZ(tz.id)
+  const displayNowMin = nowTz.minutes
+  const isToday = fmtYMD(date)===nowTz.ymd
+  const nowLeft=(displayNowMin/totalMins)*100
 
   return (
     <div className="overflow-x-auto w-full no-select">
@@ -63,7 +63,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             <div className="absolute inset-y-0 z-20 pointer-events-none" style={{ left: `${nowLeft}%` }}>
               <div className={["absolute -translate-x-1/2 h-full w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} />
               <div className={["absolute -translate-x-1/2 top-[18px] px-1.5 py-0.5 text-[10px] rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}>
-                {minToHHMM(nowMin)}
+                {minToHHMM(displayNowMin)}
               </div>
             </div>
           )}
@@ -78,9 +78,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
             backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
           }}>
-            {pto.some(p=>p.person===person && date>=parseYMD(p.startDate) && date<=parseYMD(p.endDate)) && (
-              <div className="absolute inset-y-1 left-0 right-0 rounded-md pointer-events-none" style={{background: dark?"rgba(255,255,255,.08)":"rgba(0,0,0,.05)"}} />
-            )}
+            {/** PTO: no row overlay; chips will be grayed out instead */}
+            
 
             {isToday && (
               <div className="absolute inset-y-0 z-20 pointer-events-none" style={{ left: `${nowLeft}%` }}>
@@ -89,14 +88,24 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             )}
 
             {shifts.filter(s=>s.person===person).map(s=>{
+              const hasPtoForDay = pto.some(p=>p.person===person && date>=parseYMD(p.startDate) && date<=parseYMD(p.endDate))
               const sMin=toMin(s.start); const eMinRaw=toMin(s.end); const eMin=eMinRaw>sMin?eMinRaw:1440
               const left=(sMin/totalMins)*100; const width=Math.max(0.5, ((eMin-sMin)/totalMins)*100)
               const H = (colorMap.get(person) ?? 0)
               const light=`hsla(${H},75%,70%,0.95)`; const darkbg=`hsla(${H},60%,28%,0.95)`; const darkbd=`hsl(${H},70%,55%)`
+              const grayBg = dark ? 'rgba(120,120,120,0.6)' : 'rgba(200,200,200,0.95)'
+              const grayBd = dark ? 'rgba(170,170,170,0.9)' : 'rgba(150,150,150,0.9)'
               return (
                 <div key={s.id}
                      className="absolute rounded text-[11px] border"
-                     style={{left:`${left}%`,width:`${width}%`,backgroundColor:dark?darkbg:light,borderColor:dark?darkbd:`hsl(${H},65%,50%)`,zIndex:1}}>
+                     style={{
+                       left:`${left}%`,
+                       width:`${width}%`,
+                       backgroundColor: hasPtoForDay ? grayBg : (dark?darkbg:light),
+                       borderColor: hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`),
+                       color: hasPtoForDay ? (dark? '#d4d4d8' : '#374151') : undefined,
+                       zIndex:1
+                     }}>
                   {editMode && onRemove && (
                     <button
                       onClick={(e)=>{ e.stopPropagation(); onRemove(s.id) }}

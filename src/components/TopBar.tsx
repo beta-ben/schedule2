@@ -45,7 +45,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             </select>
           </label>
           <label className="flex flex-col text-sm">
-            <span className="mb-1">Week start (Mon)</span>
+            <span className="mb-1">Week start (Sun)</span>
             <input className={["border rounded-lg px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="date" value={weekStart} onChange={e=>setWeekStart(e.target.value)} />
           </label>
           {/* Edit schedule toggle removed for schedule page per request */}

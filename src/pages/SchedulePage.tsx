@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
-import { addDays, fmtYMD, parseYMD, toMin } from '../lib/utils'
+import { addDays, fmtYMD, parseYMD, toMin, nowInTZ, shiftsForDayInTZ } from '../lib/utils'
 import type { PTO, Shift } from '../types'
+import OnDeck from '../components/OnDeck'
+import UpNext from '../components/UpNext'
 
 export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tz, canEdit, editMode, onRemoveShift }:{ 
   dark: boolean
@@ -16,10 +18,23 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   editMode: boolean
   onRemoveShift: (id:string)=>void
 }){
-  const currentDate = addDays(parseYMD(weekStart), dayIndex)
+  const today = new Date()
+  const weekStartDate = parseYMD(weekStart)
+  const selectedDate = addDays(weekStartDate, dayIndex)
   const dayKey = DAYS[dayIndex]
-  const dayShifts = useMemo(()=>shifts.filter(s=>s.day===dayKey).sort((a,b)=>toMin(a.start)-toMin(b.start)),[shifts,dayKey])
+  const dayShifts = useMemo(()=>
+    shiftsForDayInTZ(shifts, dayKey as any, tz.offset)
+      .sort((a,b)=>toMin(a.start)-toMin(b.start))
+  ,[shifts,dayKey,tz.offset])
   const people = useMemo(()=>Array.from(new Set(dayShifts.map(s=>s.person))),[dayShifts])
+
+  // Panels tied to "now": always use today's shifts regardless of selected tab
+  const nowTz = nowInTZ(tz.id)
+  const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
+  const todayShifts = useMemo(()=>
+    shiftsForDayInTZ(shifts, todayKey as any, tz.offset)
+      .sort((a,b)=>toMin(a.start)-toMin(b.start))
+  ,[shifts,todayKey,tz.offset])
 
   return (
     <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
@@ -29,7 +44,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         ))}
       </div>
       <DayGrid
-        date={currentDate}
+        date={selectedDate}
         dayKey={dayKey}
         people={people}
         shifts={dayShifts}
@@ -43,6 +58,12 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
           onRemoveShift(id)
         }}
       />
+
+      {/* Below main section: two-column area for extra features */}
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+  <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+  <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+      </div>
     </section>
   )
 }

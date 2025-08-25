@@ -1,6 +1,6 @@
 import type { TZOpt, Day } from './types'
 
-export const DAYS: Day[] = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+export const DAYS: Day[] = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export const TZ_OPTS: TZOpt[] = [
   { id: 'America/Los_Angeles', label: 'PT', offset: 0 },
