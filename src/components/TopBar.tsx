@@ -4,16 +4,16 @@ import { TZ_OPTS } from '../constants'
 
 export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
   dark: boolean
-  setDark: (f:(v:boolean)=>boolean)|((v:boolean)=>void)
+  setDark: React.Dispatch<React.SetStateAction<boolean>>
   view: 'schedule'|'manage'
   setView: (v:'schedule'|'manage')=>void
   weekStart: string
   setWeekStart: (v:string)=>void
   tz: { id:string; label:string; offset:number }
-  setTz: (v:any)=>void
+  setTz: (v:{ id:string; label:string; offset:number })=>void
   canEdit: boolean
   editMode: boolean
-  setEditMode: (f:(v:boolean)=>boolean)|((v:boolean)=>void)
+  setEditMode: React.Dispatch<React.SetStateAction<boolean>>
 }){
   const weekStartDate = parseYMD(weekStart)
   const weekEndDate = addDays(weekStartDate, 6)
