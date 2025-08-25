@@ -1,6 +1,6 @@
 # Schedule 2
 
-React + TypeScript + Vite + Tailwind. Password-gated Manage area, cloud sync, timezone-aware daily grid, and helpful "On deck"/"Up next" side panels.
+React + TypeScript + Vite + Tailwind. Password-gated Manage area, cloud sync, timezone-aware daily grid, and helpful "On deck"/"Up next" side panels. **Version 0.3** includes the new Draft Scheduling Tool with backend API integration.
 
 ## Features
 
@@ -14,6 +14,11 @@ React + TypeScript + Vite + Tailwind. Password-gated Manage area, cloud sync, ti
 	- Unified Shift Manager panel (quick add, inline edit, filter, select, bulk delete).
 	- PTO add, filter, select, bulk delete, and per-row delete.
 	- Export JSON to clipboard; Load/Save with a Cloudflare Worker API.
+- **NEW: Draft Tool** (Version 0.3):
+	- Schedule version management (active, draft, archived)
+	- Coverage heatmap visualization
+	- CSV export functionality
+	- Backend API integration
 
 ## Quickstart
 
@@ -22,7 +27,7 @@ npm i
 npm run dev:all # starts API on 3001 and Vite on 5173
 ```
 
-Open the printed local URL (Vite), then use the Manage tab to edit data.
+Open the printed local URL (Vite), then use the Manage tab to edit data or the **Draft Tool** tab to work with schedule versions.
 
 ## Environment
 - `DATABASE_URL` — Postgres connection string (default: postgres://postgres:postgres@localhost:5432/schedule2)
@@ -63,3 +68,27 @@ Then in GitHub → Settings → Pages: choose `gh-pages` as the source. Your URL
 ```
 https://<username>.github.io/schedule2/
 ```
+
+## Draft Tool (Version 0.3)
+
+The Draft Tool provides advanced schedule version management and visualization:
+
+### Running Options
+- **Full Stack**: `npm run dev:all` (API + Frontend)
+- **Frontend Only**: `npm run dev` (uses mock data if API unavailable)  
+- **API Only**: `npm run dev:api` (backend on port 3001)
+
+### Features
+- **Version Management**: View and switch between active, draft, and archived schedule versions
+- **Coverage Heatmap**: Visual 24-hour coverage analysis with 30-minute time bins
+- **CSV Export**: Download schedule data for external tools
+- **Shift Inspection**: View schedule data in JSON format
+
+### Database Setup (Optional)
+```bash
+docker compose up -d          # Start PostgreSQL
+npm run migrate              # Run database migrations  
+npm run dev:all              # Start with real database
+```
+
+Without PostgreSQL, the system uses mock data for demonstration.
