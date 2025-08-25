@@ -5,8 +5,8 @@ import { TZ_OPTS } from '../constants'
 export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
-  view: 'schedule'|'manage'
-  setView: (v:'schedule'|'manage')=>void
+  view: 'schedule'|'manage'|'draft'
+  setView: (v:'schedule'|'manage'|'draft')=>void
   weekStart: string
   setWeekStart: (v:string)=>void
   tz: { id:string; label:string; offset:number }
@@ -24,6 +24,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   <div className="flex flex-wrap gap-2 justify-end">
           <button onClick={()=>setView('schedule')} className={["inline-flex items-center h-12 px-4 rounded-xl text-base font-medium border", view==='schedule' ? (dark?"bg-neutral-800 border-neutral-600 text-white":"bg-blue-600 border-blue-600 text-white") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}>Schedule</button>
           <button onClick={()=>setView('manage')} className={["inline-flex items-center h-12 px-4 rounded-xl text-base font-medium border", view==='manage' ? (dark?"bg-neutral-800 border-neutral-600 text-white":"bg-blue-600 border-blue-600 text-white") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}>Manage Data</button>
+          <button onClick={()=>setView('draft')} className={["inline-flex items-center h-12 px-4 rounded-xl text-base font-medium border", view==='draft' ? (dark?"bg-neutral-800 border-neutral-600 text-white":"bg-blue-600 border-blue-600 text-white") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}>Draft Tool</button>
         </div>
 
         {/* Center: date range only */}
