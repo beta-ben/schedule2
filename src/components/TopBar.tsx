@@ -48,22 +48,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             <span className="mb-1">Week start (Mon)</span>
             <input className={["border rounded-lg px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="date" value={weekStart} onChange={e=>setWeekStart(e.target.value)} />
           </label>
-          {view==='schedule' && (
-            <label className="flex items-center gap-2 text-sm">
-              <span className="hidden md:inline">Edit schedule</span>
-              <button
-                role="switch"
-                aria-checked={editMode}
-                onClick={()=>{
-                  if (!canEdit) { alert('Enter the password in Manage to enable editing.'); return }
-                  setEditMode((v:boolean)=>!v)
-                }}
-                className={["w-12 h-7 rounded-full border relative transition", dark ? "bg-neutral-700 border-neutral-600" : "bg-neutral-300 border-neutral-400", !canEdit ? "opacity-50 cursor-not-allowed" : ""].join(' ')}
-              >
-                <span className={["absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform", editMode ? "translate-x-5" : "translate-x-0"].join(' ')} />
-              </button>
-            </label>
-          )}
+          {/* Edit schedule toggle removed for schedule page per request */}
         </div>
       </div>
     </header>
