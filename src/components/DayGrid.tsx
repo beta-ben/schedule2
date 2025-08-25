@@ -59,32 +59,32 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             ))}
           </div>
 
-          {isToday && (
-            <div className="absolute inset-y-0 z-20 pointer-events-none" style={{ left: `${nowLeft}%` }}>
-              <div className={["absolute -translate-x-1/2 h-full w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} />
-              <div className={["absolute -translate-x-1/2 top-[18px] px-1.5 py-0.5 text-[10px] rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}>
-                {minToHHMM(displayNowMin)}
-              </div>
-            </div>
-          )}
+          {/* Header omits its own now label; label is rendered with the body line for perfect alignment */}
         </div>
       </div>
 
       {/* Body rows */}
-      {orderedPeople.map((person)=> (
-        <div key={person} className="grid" style={{gridTemplateColumns:`150px 1fr`}}>
-          <div className={["py-1.5 pr-2 text-[13px] font-medium sticky left-0 z-10", dark?"bg-neutral-900":"bg-white"].join(' ')}>{person}</div>
-          <div className="relative h-7">
-            {/** PTO: no row overlay; chips will be grayed out instead */}
-            
+      <div className="relative">
+        {/* Single solid now line spanning all rows; anchor to right column by offsetting left column width */}
+        {isToday && (
+          <div className="absolute inset-y-0 left-[150px] right-0 z-20 pointer-events-none">
+            <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
+            <div className={["absolute -translate-x-1/2 -top-5 px-1.5 py-0.5 text-[10px] rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%` }}>
+              {minToHHMM(displayNowMin)}
+            </div>
+          </div>
+        )}
 
-            {isToday && (
-              <div className="absolute inset-y-0 z-20 pointer-events-none" style={{ left: `${nowLeft}%` }}>
-                <div className={["absolute -translate-x-1/2 h-full w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} />
-              </div>
-            )}
+        {orderedPeople.map((person)=> (
+          <div key={person} className="grid" style={{gridTemplateColumns:`150px 1fr`}}>
+            <div className={["py-1.5 pr-2 text-[13px] font-medium sticky left-0 z-10", dark?"bg-neutral-900":"bg-white"].join(' ')}>{person}</div>
+            <div className="relative" style={{
+              backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
+              backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
+            }}>
+              {/** PTO: no row overlay; chips will be grayed out instead */}
 
-            {shifts.filter(s=>s.person===person).map(s=>{
+              {shifts.filter(s=>s.person===person).map(s=>{
               const hasPtoForDay = pto.some(p=>p.person===person && date>=parseYMD(p.startDate) && date<=parseYMD(p.endDate))
               const sMin=toMin(s.start); const eMinRaw=toMin(s.end); const eMin=eMinRaw>sMin?eMinRaw:1440
               const left=(sMin/totalMins)*100; const width=Math.max(0.5, ((eMin-sMin)/totalMins)*100)
@@ -114,10 +114,11 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                   <div className="pl-3 pr-2 truncate" title={`${s.person} • ${s.start}-${s.end}`}>{s.start}-{s.end}</div>
                 </div>
               )
-            })}
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
