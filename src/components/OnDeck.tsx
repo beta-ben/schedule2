@@ -12,6 +12,23 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
   // Compute now in selected timezone
   const nowMin = ((now.getHours()*60 + now.getMinutes()) + tz.offset*60 + 1440) % 1440
 
+  // Match DayGrid coloring by assigning a hue per person based on earliest start
+  const orderedPeople = useMemo(()=>{
+    const firstStart=new Map<string,number>()
+    shifts.forEach(s=>{
+      const cur = firstStart.get(s.person)
+      const sMin = toMin(s.start)
+      if(cur==null || sMin < cur) firstStart.set(s.person, sMin)
+    })
+    return Array.from(firstStart.entries()).sort((a,b)=>a[1]-b[1]||a[0].localeCompare(b[0])).map(([p])=>p)
+  },[shifts])
+  const colorMap = useMemo(()=>{
+    const m=new Map<string,number>()
+    const n=Math.max(1, orderedPeople.length)
+    orderedPeople.forEach((p,i)=>{ const h=Math.round((i/n)*360); m.set(p,h) })
+    return m
+  },[orderedPeople])
+
   const active = useMemo(()=>{
     // Compute active shifts for the current minute
     const recs = shifts.filter(s=>{
@@ -46,12 +63,27 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
         <div className={["text-sm", dark?"text-neutral-400":"text-neutral-600"].join(' ')}>No one on right now.</div>
       ) : (
         <ul className="space-y-1">
-          {active.map(a=> (
-            <li key={a.person} className="flex items-center justify-between text-sm">
-              <span className="font-medium">{a.person}</span>
-              <span className={dark?"text-neutral-400":"text-neutral-600"}>{a.window}</span>
-            </li>
-          ))}
+          {active.map(a=> {
+            const H = colorMap.get(a.person) ?? 0
+            const bgL = dark? 28 : 82
+            const bgA1 = dark? 0.22 : 0.35
+            const bgA2 = dark? 0.10 : 0.18
+            const bdL = dark? 40 : 62
+            const accentL = dark? 50 : 48
+            const containerStyle: React.CSSProperties = {
+              background: `linear-gradient(90deg, hsla(${H},70%,${bgL}%,${bgA1}) 0%, hsla(${H},70%,${bgL}%,${bgA2}) 100%)`,
+              borderColor: `hsl(${H},70%,${bdL}%)`,
+              borderLeftColor: `hsl(${H},70%,${accentL}%)`,
+              borderLeftWidth: 6,
+              borderStyle: 'solid',
+            }
+            return (
+              <li key={a.person} className="flex items-center justify-between text-sm rounded-md border px-2 py-1" style={containerStyle}>
+                <span className="font-medium">{a.person}</span>
+                <span className={dark?"text-neutral-300":"text-neutral-700"}>{a.window}</span>
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>
