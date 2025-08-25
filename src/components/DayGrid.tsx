@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { COLS } from '../constants'
-import { hourMarksForOffset, fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ } from '../lib/utils'
+import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ } from '../lib/utils'
 import type { PTO, Shift } from '../types'
 
-export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove }:{ 
+export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true }:{ 
   date: Date
   dayKey: string
   people: string[]
@@ -14,10 +14,11 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   canEdit?: boolean
   editMode?: boolean
   onRemove?: (id: string)=>void
+  showHeaderTitle?: boolean
 }){
   const totalMins=24*60
-  const tzOffset = tz.offset
-  const hourMarks = hourMarksForOffset(tzOffset)
+  // Always show local-day hour labels left-to-right as 0–23
+  const hourMarks = Array.from({length:24},(_,i)=>i)
   const textSub = dark?"text-neutral-400":"text-neutral-500"
 
   const orderedPeople = useMemo(()=>{
@@ -39,16 +40,21 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const displayNowMin = nowTz.minutes
   const isToday = fmtYMD(date)===nowTz.ymd
   const nowLeft=(displayNowMin/totalMins)*100
+  // Centralize the name column width so header, body, and overlays stay aligned
+  const NAME_COL_PX = 120
+  const NAME_COL = `${NAME_COL_PX}px`
 
   return (
-    <div className="overflow-x-auto w-full no-select">
+  <div className="overflow-x-auto no-scrollbar w-full no-select">
       {/* Header row */}
-      <div className="grid sticky top-0 z-10" style={{gridTemplateColumns:`150px 1fr`}}>
+      <div className="grid sticky top-0 z-30" style={{gridTemplateColumns:`${NAME_COL} 1fr`}}>
         <div className={dark?"bg-neutral-900":"bg-white"}></div>
-        <div className="relative" style={{height:70}}>
-          <div className="absolute top-2 left-0 right-0 text-center font-bold text-base">
-            {dayKey} <span className={["ml-1",textSub].join(' ')}>{fmtYMD(date)}</span>
-          </div>
+        <div className={["relative", dark?"bg-neutral-900":"bg-white"].join(' ')} style={{height:70}}>
+          {showHeaderTitle && (
+            <div className="absolute top-2 left-0 right-0 text-center font-bold text-base">
+              {dayKey} <span className={["ml-1",textSub].join(' ')}>{fmtYMD(date)}</span>
+            </div>
+          )}
           <div className="absolute left-0 right-0" style={{top:38,height:16}}>
             {hourMarks.map((h,i)=> (
               <div key={i} className="absolute text-left pl-1 leading-none pointer-events-none" style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
@@ -67,7 +73,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       <div className="relative">
         {/* Single solid now line spanning all rows; anchor to right column by offsetting left column width */}
         {isToday && (
-          <div className="absolute inset-y-0 left-[150px] right-0 z-20 pointer-events-none">
+          <div className="absolute inset-y-0 right-0 z-20 pointer-events-none" style={{ left: NAME_COL }}>
             <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
             <div className={["absolute -translate-x-1/2 -top-5 px-1.5 py-0.5 text-[10px] rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%` }}>
               {minToHHMM(displayNowMin)}
@@ -76,8 +82,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         )}
 
         {orderedPeople.map((person)=> (
-          <div key={person} className="grid" style={{gridTemplateColumns:`150px 1fr`}}>
-            <div className={["py-1.5 pr-2 text-[13px] font-medium sticky left-0 z-10", dark?"bg-neutral-900":"bg-white"].join(' ')}>{person}</div>
+          <div key={person} className="grid" style={{gridTemplateColumns:`${NAME_COL} 1fr`}}>
+            <div className={["py-1.5 pr-2 text-[13px] font-medium sticky left-0 z-20 truncate", dark?"bg-neutral-900":"bg-white"].join(' ')}>{person}</div>
             <div className="relative" style={{
               backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
               backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'

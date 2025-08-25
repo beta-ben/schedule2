@@ -9,6 +9,31 @@ export function parseYMD(s: string){ const [y,m,d]=s.split('-').map(Number); ret
 export function addDays(d: Date, n: number){ const nd=new Date(d); nd.setDate(d.getDate()+n); return nd }
 export function fmtYMD(d: Date){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 export function fmtNice(d: Date){ return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) }
+// Compact date range without duplicated month/year
+export function fmtDateRange(start: Date, end: Date){
+  const sY = start.getFullYear();
+  const eY = end.getFullYear();
+  const sM = start.getMonth();
+  const eM = end.getMonth();
+  const sD = start.getDate();
+  const eD = end.getDate();
+  const sMon = start.toLocaleString(undefined, { month: 'short' });
+  const eMon = end.toLocaleString(undefined, { month: 'short' });
+  // Same exact day
+  if(sY===eY && sM===eM && sD===eD){
+    return fmtNice(start)
+  }
+  // Same month and year: Aug 25–31, 2025
+  if(sY===eY && sM===eM){
+    return `${sMon} ${sD}–${eD}, ${sY}`
+  }
+  // Same year, different months: Aug 25 – Sep 2, 2025
+  if(sY===eY){
+    return `${sMon} ${sD} – ${eMon} ${eD}, ${sY}`
+  }
+  // Different years: Dec 31, 2025 – Jan 2, 2026
+  return `${sMon} ${sD}, ${sY} – ${eMon} ${eD}, ${eY}`
+}
 // Sunday as the first day of the week
 export function startOfWeek(d: Date){ const day=d.getDay(); const diff=0-day; const m=new Date(d); m.setDate(d.getDate()+diff); m.setHours(0,0,0,0); return m }
 export function isoWeek(date: Date){ const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate())); const dayNum=d.getUTCDay()||7; d.setUTCDate(d.getUTCDate()+4-dayNum); const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1)); const week=Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7); return {year:d.getUTCFullYear(),week} }

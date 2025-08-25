@@ -163,7 +163,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark }:{
       </div>
 
       {/* Table */}
-      <div className={["mt-3 border rounded-xl overflow-auto", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
+  <div className={["mt-3 border rounded-xl overflow-auto no-scrollbar", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
         <table className="min-w-full text-sm">
           <thead className={dark?"bg-neutral-900":"bg-white"}>
             <tr>

@@ -31,7 +31,24 @@ export default function App(){
   })() }, [view])
 
   useEffect(()=>{ (async()=>{ const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto) } setLoadedFromCloud(true) })() },[])
-  useEffect(()=>{ if(!loadedFromCloud) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,loadedFromCloud])
+  // Auto-save local edits to the cloud only when editing is allowed
+  useEffect(()=>{ if(!loadedFromCloud || !canEdit) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,loadedFromCloud,canEdit])
+
+  // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
+  useEffect(()=>{
+    if(view!== 'schedule') return
+    const id = setInterval(async ()=>{
+      const data = await cloudGet()
+      if(data){
+        // Only update if changed to avoid unnecessary state churn
+        const sameShifts = JSON.stringify(data.shifts) === JSON.stringify(shifts)
+        const samePto = JSON.stringify(data.pto) === JSON.stringify(pto)
+        if(!sameShifts) setShifts(data.shifts)
+        if(!samePto) setPto(data.pto)
+      }
+    }, 5 * 60 * 1000)
+    return ()=>clearInterval(id)
+  }, [view, shifts, pto])
 
   return (
     <div className={dark?"min-h-screen w-full bg-neutral-950 text-neutral-100":"min-h-screen w-full bg-neutral-100 text-neutral-900"}>

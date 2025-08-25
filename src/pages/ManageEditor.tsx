@@ -111,7 +111,7 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
               <button onClick={deleteSelectedPto} className={["px-3 py-1.5 rounded-lg border text-sm", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete selected ({ptoSelected.size})</button>
               <button onClick={deleteAllFilteredPto} className={["px-3 py-1.5 rounded-lg border text-sm", "bg-red-700 border-red-700 text-white"].join(' ')}>Delete ALL filtered ({ptoRows.length})</button>
             </div>
-            <div className={["mt-3 border rounded-xl overflow-auto", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
+            <div className={["mt-3 border rounded-xl overflow-auto no-scrollbar", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
               <table className="min-w-full text-sm">
                 <thead className={dark?"bg-neutral-900":"bg-white"}>
                   <tr>
