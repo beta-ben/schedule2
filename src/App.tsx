@@ -5,6 +5,7 @@ import type { PTO, Shift } from './types'
 import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
 import ManagePage from './pages/ManagePage'
+import DraftToolPage from './pages/DraftToolPage'
 import { generateSample } from './sample'
 import { sha256Hex } from './lib/utils'
 import { TZ_OPTS } from './constants'
@@ -12,7 +13,7 @@ import { TZ_OPTS } from './constants'
 const SAMPLE = generateSample()
 
 export default function App(){
-  const [view,setView] = useState<'schedule'|'manage'>('schedule')
+  const [view,setView] = useState<'schedule'|'manage'|'draft'>('schedule')
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
   const [dark,setDark] = useState(true)
@@ -76,8 +77,10 @@ export default function App(){
             editMode={editMode}
             onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
           />
-        ) : (
+        ) : view==='manage' ? (
           <ManagePage dark={dark} weekStart={weekStart} shifts={shifts} setShifts={setShifts} pto={pto} setPto={setPto} tz={tz} />
+        ) : (
+          <DraftToolPage />
         )}
       </div>
     </div>

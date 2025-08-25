@@ -19,12 +19,14 @@ React + TypeScript + Vite + Tailwind. Password-gated Manage area, cloud sync, ti
 
 ```bash
 npm i
-npm run dev
+npm run dev:all # starts API on 3001 and Vite on 5173
 ```
 
 Open the printed local URL (Vite), then use the Manage tab to edit data.
 
 ## Environment
+- `DATABASE_URL` — Postgres connection string (default: postgres://postgres:postgres@localhost:5432/schedule2)
+- `PORT` — API port (default 3001)
 
 These are optional; sensible defaults are provided for local use.
 
