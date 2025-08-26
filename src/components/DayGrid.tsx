@@ -54,13 +54,19 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   }, [people, PERSON_FONT_PX, MIN_NAME_COL_PX])
   const NAME_COL_PX = Math.max(MIN_NAME_COL_PX, Math.min(MAX_NAME_COL_PX, measuredNameColPx))
   // Reduce header height by ~40% to tighten vertical space
-  const HEADER_H = Math.round(54*0.6*scale)
+  const HEADER_H = Math.round(54*0.5*scale)
   const HOUR_LABEL_PX = Math.max(9, Math.round(11*scale))
   // Keep chip label font stable (revert recent scaling change)
   const CHIP_FONT_PX = 12
-  const NOW_FONT_PX = Math.max(9, Math.round(10*scale))
+  // Make the floating "now" clock the same height as hour labels
+  const NOW_FONT_PX = HOUR_LABEL_PX
   const CHIP_H = Math.max(20, Math.round(24*scale))
+  const CHIP_RADIUS = 6
   const hourEvery = bp==='lg'?1:bp==='md'?2:3
+  // Background columns: when all 24 labels are visible (hourEvery===1) show half-hour columns; otherwise hour columns
+  const colLight = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
+  const colDark  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
+  const unitPct = (hourEvery===1) ? (100/(COLS*2)) : (100/COLS) // width of one column in % of total width
 
   const orderedPeople = useMemo(()=>{
     const firstStart=new Map<string,number>()
@@ -76,7 +82,26 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   },[orderedPeople])
 
   const [nowTick,setNowTick]=useState(Date.now())
-  useEffect(()=>{ const id=setInterval(()=>setNowTick(Date.now()),30000); return ()=>clearInterval(id) },[])
+  useEffect(()=>{
+    let to: number | undefined
+    let iv: number | undefined
+    const poke = ()=> setNowTick(Date.now())
+    const schedule = ()=>{
+      if(iv) clearInterval(iv)
+      if(to) clearTimeout(to)
+      const now = Date.now()
+      const msToNextMinute = 60000 - (now % 60000)
+      to = window.setTimeout(()=>{
+        poke()
+        iv = window.setInterval(poke, 60000)
+      }, msToNextMinute)
+    }
+    const onVis = ()=>{ if(document.visibilityState==='visible'){ poke(); schedule() } }
+    poke()
+    schedule()
+    document.addEventListener('visibilitychange', onVis)
+    return ()=>{ if(iv) clearInterval(iv); if(to) clearTimeout(to); document.removeEventListener('visibilitychange', onVis) }
+  },[])
   const nowTz = nowInTZ(tz.id)
   const displayNowMin = nowTz.minutes
   const isToday = fmtYMD(date)===nowTz.ymd
@@ -94,14 +119,16 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
     <div className="overflow-x-auto no-scrollbar w-full no-select">
       {/* Header (hidden in compact mode) */}
       {!compact && (
-        <div className={["relative sticky top-0 z-40 shadow-sm border-b px-2", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')} style={{height:HEADER_H}}>
+  <div className={["relative sticky top-0 z-40 shadow-sm px-2", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')} style={{height:HEADER_H, display:'flex', alignItems:'center'}}>
           {showHeaderTitle && (
-            <div className="absolute left-2 right-2 text-center font-bold" style={{ top: Math.max(2, Math.round(8*scale)), fontSize: Math.round(14*scale) }}>
+            <div className="absolute left-2 right-2 text-center font-bold" style={{ top: Math.max(0, Math.round(6*scale)), fontSize: Math.round(13*scale), lineHeight: 1 }}>
               {dayKey} <span className={["ml-1",textSub].join(' ')}>{fmtYMD(date)}</span>
             </div>
           )}
-          {/* Subtle AM background from 0:00 to 12:00 */}
-          <div className="absolute inset-y-0 pointer-events-none" style={{ left: 8, width: `calc(12 * (100% / ${COLS}))`, backgroundColor: dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }} />
+          {/* Subtle AM background from 0:00 to 12:00 (aligned to content width) */}
+          <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
+            <div className="absolute inset-y-0 left-0" style={{ width: `calc(12 * (100% / ${COLS}))`, backgroundColor: dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }} />
+          </div>
           <div className="absolute left-2 right-2" style={{bottom:LABEL_BOTTOM,height:LABEL_H}}>
             {hourMarks.map((h,i)=> (
               (i % hourEvery === 0) && (
@@ -129,11 +156,16 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         )}
 
         {orderedPeople.map((person)=> (
-          <div key={person} className="relative" style={{
-            height: CHIP_H + 6,
-            backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
-            backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
-          }}>
+          <div key={person} className="relative" style={{ height: CHIP_H + 6 }}>
+            {/* Background columns aligned to content width (match header columns) */}
+            <div
+              className="absolute inset-y-0 left-0 right-0 pointer-events-none"
+              style={{
+                backgroundImage: `repeating-linear-gradient(to right, ${colLight} 0, ${colLight} ${unitPct}%, ${colDark} ${unitPct}%, ${colDark} ${unitPct*2}%)`,
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '100% 100%'
+              }}
+            />
               {shifts.filter(s=>s.person===person).sort((a,b)=>toMin(a.start)-toMin(b.start)).map((s, idx, arr)=>{
                 const hasPtoForDay = pto.some(p=>p.person===person && date>=parseYMD(p.startDate) && date<=parseYMD(p.endDate))
                 const sMin=toMin(s.start); const eMinRaw=toMin(s.end); const eMin=eMinRaw>sMin?eMinRaw:1440
@@ -141,7 +173,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 const endPct = left + width
                 const H = (colorMap.get(person) ?? 0)
                 const light=`hsla(${H},75%,70%,0.95)`; const darkbg=`hsla(${H},60%,28%,0.95)`; const darkbd=`hsl(${H},70%,55%)`
-                const grayBg = dark ? 'rgba(120,120,120,0.6)' : 'rgba(200,200,200,0.95)'
+                const grayBg = dark ? 'rgba(120,120,120,0.4)' : 'rgba(180,180,180,0.85)'
                 // Dimmer border for PTO
                 const grayBd = dark ? 'rgba(160,160,160,0.55)' : 'rgba(160,160,160,0.5)'
 
@@ -181,8 +213,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                     {(() => {
                       let bgImage: string | undefined
                       if(hasPtoForDay){
-                        const stripes = `repeating-linear-gradient(135deg, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.18)'} 0 8px, transparent 8px 16px)`
-                        const darken  = `linear-gradient(0deg, ${dark?'rgba(0,0,0,0.28)':'rgba(0,0,0,0.15)'} 0%, ${dark?'rgba(0,0,0,0.28)':'rgba(0,0,0,0.15)'} 100%)`
+                        const stripes = `repeating-linear-gradient(135deg, ${dark?'rgba(0,0,0,0.40)':'rgba(0,0,0,0.22)'} 0 8px, transparent 8px 16px)`
+                        const darken  = `linear-gradient(0deg, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.22)'} 0%, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.22)'} 100%)`
                         bgImage = `${stripes}, ${darken}`
                       }
                       const style: React.CSSProperties = {
@@ -192,9 +224,10 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         height: CHIP_H,
                         backgroundColor: baseColor,
                         boxShadow: `inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : ''),
+                        borderRadius: CHIP_RADIUS,
                         ...(bgImage ? { backgroundImage: bgImage } : {}),
                       }
-                      return <div className="absolute rounded" style={style} />
+                      return <div className="absolute" style={style} />
                     })()}
 
 
@@ -217,7 +250,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         height: CHIP_H,
                         backgroundImage: stripes,
                         pointerEvents: 'none',
-                        borderRadius: 6,
+                        borderRadius: CHIP_RADIUS,
                         opacity: 0.45,
                       }
                       return <div key={seg.id} className="absolute" style={style} />
@@ -226,11 +259,11 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                     {/* Always-on top border frame to keep the main chip border visible above overlays */}
                     <div
                       className="absolute pointer-events-none"
-                      style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: 6, zIndex: 5 }}
+                      style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: CHIP_RADIUS, zIndex: 5 }}
                     />
 
                     {/* Center label: agent name */}
-                    <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-300":"text-neutral-600") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
+                    <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-500":"text-neutral-500") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
                       {person}
                     </div>
 

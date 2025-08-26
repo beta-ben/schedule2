@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import type { PTO, Shift } from '../types'
 import { DAYS } from '../constants'
-import { addDays, convertShiftsToTZ, fmtYMD, parseYMD, toMin } from '../lib/utils'
+import { addDays, convertShiftsToTZ, fmtYMD, parseYMD, toMin, tzAbbrev } from '../lib/utils'
 
 export default function AgentWeek({
   dark,
@@ -49,7 +49,7 @@ export default function AgentWeek({
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-base font-semibold">Week: <span className="font-normal">{agent}</span></h2>
         <div className="flex items-center gap-2">
-          <span className={["text-xs", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>{tz.label}</span>
+          <span className={["text-xs", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>{tzAbbrev(tz.id)}</span>
           {onClear && (
             <button onClick={onClear} className={["text-xs px-2 py-1 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>Clear</button>
           )}

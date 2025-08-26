@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import type { Shift } from '../types'
 import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
 
@@ -9,6 +9,22 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
   shifts: Shift[]
 }){
   // Compute now in selected timezone
+  const [nowTick, setNowTick] = useState(Date.now())
+  useEffect(()=>{
+    let to: number | undefined
+    let iv: number | undefined
+    const poke = ()=> setNowTick(Date.now())
+    const schedule = ()=>{
+      if(iv) clearInterval(iv)
+      if(to) clearTimeout(to)
+      const now = Date.now()
+      const msToNextMinute = 60000 - (now % 60000)
+      to = window.setTimeout(()=>{ poke(); iv = window.setInterval(poke, 60000) }, msToNextMinute)
+    }
+    const onVis = ()=>{ if(document.visibilityState==='visible'){ poke(); schedule() } }
+    poke(); schedule(); document.addEventListener('visibilitychange', onVis)
+    return ()=>{ if(iv) clearInterval(iv); if(to) clearTimeout(to); document.removeEventListener('visibilitychange', onVis) }
+  },[])
   const nowTz = nowInTZ(tz.id)
   const nowMin = nowTz.minutes
 
@@ -65,7 +81,10 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
   return (
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-base font-semibold">On deck</h2>
+        <h2 className="text-base font-semibold">
+          On deck
+          <span className={["ml-2 text-sm", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>({active.length})</span>
+        </h2>
         <div className={["text-xs", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>as of {minToHHMM(nowMin)}</div>
       </div>
       {active.length === 0 ? (
