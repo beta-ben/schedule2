@@ -2,13 +2,13 @@ import React from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
 import ShiftManagerPanel from '../components/ShiftManagerPanel'
-import { addDays, fmtNice, fmtYMD, parseYMD, toMin, uid, shiftsForDayInTZ, mergeSegments } from '../lib/utils'
+import { addDays, fmtNice, fmtYMD, parseYMD, toMin, uid, shiftsForDayInTZ, mergeSegments, sha256Hex } from '../lib/utils'
 import type { PTO, Shift, Task, ShiftSegment } from '../types'
 import { cloudGet, cloudPost } from '../lib/api'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import Legend from '../components/Legend'
 
-export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz }:{ 
+export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft=false }:{ 
   dark: boolean
   weekStartDate: Date
   shifts: Shift[]
@@ -20,6 +20,7 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
   calendarSegs: { person:string; day: any; start:string; end:string; taskId:string }[]
   setCalendarSegs: (f:(prev:{ person:string; day:any; start:string; end:string; taskId:string }[])=>{ person:string; day:any; start:string; end:string; taskId:string }[])=>void
   tz: { id:string; label:string; offset:number }
+  isDraft?: boolean
 }){
   const [tab, setTab] = React.useState<'shifts'|'pto'|'tasks'>('shifts')
 
@@ -47,6 +48,23 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
 
   const allPeople = React.useMemo(()=>Array.from(new Set(shifts.map(s=>s.person))).sort(),[shifts])
   const [notice,setNotice]=React.useState<string|null>(null)
+
+  // Auto-sync posture assignments (calendarSegs) to cloud when they change
+  const lastCalHashRef = React.useRef<string|null>(null)
+  React.useEffect(()=>{
+    if(isDraft) return // never push draft changes to cloud
+    // Debounce to coalesce rapid changes
+    const timer = setTimeout(async()=>{
+      try{
+        const h = await sha256Hex(JSON.stringify(calendarSegs))
+        if(h === lastCalHashRef.current) return
+        const ok = await cloudPost({ shifts, pto, calendarSegs, updatedAt: new Date().toISOString() })
+        if(ok){ lastCalHashRef.current = h }
+      }catch{}
+    }, 600)
+    return ()=> clearTimeout(timer)
+    // Only trigger on posture assignment changes (not shifts/PTO)
+  }, [calendarSegs, isDraft])
 
   // Posture assignment (calendar-style) — allow any active posture
   const activeTasks = React.useMemo(()=> tasks.filter(t=>!t.archived),[tasks])
@@ -89,7 +107,12 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
         <div className="flex gap-2">
           <button onClick={exportData} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-600":"border-neutral-300"].join(' ')}>Export JSON</button>
           <button onClick={async()=>{ const data=await cloudGet(); if(data){ setShifts(()=>data.shifts); setPto(()=>data.pto); if(Array.isArray(data.calendarSegs)) setCalendarSegs(()=>data.calendarSegs as any) } }} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-600":"border-neutral-300"].join(' ')}>Load Cloud</button>
-          <button onClick={async()=>{ await cloudPost({shifts, pto, calendarSegs, updatedAt:new Date().toISOString()}); }} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-600":"border-neutral-300"].join(' ')}>Save Cloud</button>
+          <button
+            disabled={isDraft}
+            title={isDraft ? 'Disabled in Draft mode. Use Publish to update live.' : 'Save to cloud (live).'}
+            onClick={async()=>{ if(isDraft) return; await cloudPost({shifts, pto, calendarSegs, updatedAt:new Date().toISOString()}); }}
+            className={["px-3 py-1.5 rounded-lg border text-sm", isDraft?"opacity-50 cursor-not-allowed":(dark?"border-neutral-600":"border-neutral-300")].join(' ')}
+          >Save Cloud</button>
         </div>
       </div>
 

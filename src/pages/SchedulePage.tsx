@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
 import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments } from '../lib/utils'
@@ -57,6 +57,17 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     })
   },[shifts,todayKey,tz.offset,calendarSegs])
 
+  // Live clock (HH:MM) in selected timezone
+  const [nowHHMM, setNowHHMM] = useState(()=>{
+    const n = nowInTZ(tz.id); return `${String(n.h).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
+  })
+  useEffect(()=>{
+    function tick(){ const n = nowInTZ(tz.id); setNowHHMM(`${String(n.h).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`) }
+    tick()
+    const id = setInterval(tick, 1000 * 15) // update every 15s
+    return ()=> clearInterval(id)
+  }, [tz.id])
+
   // Simple day number (no ordinal suffix)
   function dayNumber(d: Date){
     return d.getDate()
@@ -64,8 +75,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
 
   return (
     <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-      {/* Row with selected day label on left and day selectors on right */}
-      <div className="flex items-center justify-between mb-0">
+      {/* Row with selected day label on left, live clock in the middle, and controls on the right */}
+      <div className="flex items-center justify-between mb-0 gap-2">
         {!agentView ? (
           <div className="pl-2 font-semibold">
             {/* Centered day number, very subtle color, large size; baseline lowered to align with hour labels */}
@@ -78,6 +89,14 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
             {agentView} <span className="opacity-70">Week of {fmtNice(weekStartDate)}</span>
           </div>
         )}
+
+        {/* Middle: live HH:MM clock in selected timezone */}
+        <div className="flex-1 min-w-[6rem]" />
+        <div className="min-w-[6rem] text-right pr-3">
+          <div className={["font-bold", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.5rem', lineHeight: 1 }}>
+            {nowHHMM}
+          </div>
+        </div>
 
         <div className="flex items-center gap-2">
           {/* Agent weekly view selector */}
