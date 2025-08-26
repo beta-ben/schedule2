@@ -87,41 +87,40 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const LABEL_H = Math.max(10, Math.round(14*scale))
 
   const taskMap = useMemo(()=>{ const m=new Map<string,Task>(); for(const t of (tasks||[])) m.set(t.id,t); return m },[tasks])
+  // Hover state for tooltips (track which shift and cursor x within row)
+  const [hover, setHover] = useState<{ id: string|null; x: number }>({ id: null, x: 0 })
 
   return (
     <div className="overflow-x-auto no-scrollbar w-full no-select">
       {/* Header (hidden in compact mode) */}
       {!compact && (
-        <div className="grid sticky top-0 z-40 shadow-sm" style={{gridTemplateColumns:`${NAME_COL} 1fr`}}>
-          <div className={dark?"bg-neutral-900":"bg-white"}></div>
-          <div className={["relative border-b", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')} style={{height:HEADER_H}}>
-            {showHeaderTitle && (
-              <div className="absolute left-0 right-0 text-center font-bold" style={{ top: Math.max(2, Math.round(8*scale)), fontSize: Math.round(14*scale) }}>
-                {dayKey} <span className={["ml-1",textSub].join(' ')}>{fmtYMD(date)}</span>
-              </div>
-            )}
-            {/* Subtle AM background from 0:00 to 12:00 */}
-            <div className="absolute inset-y-0 pointer-events-none" style={{ left: 0, width: `calc(12 * (100% / ${COLS}))`, backgroundColor: dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }} />
-            <div className="absolute left-0 right-0" style={{bottom:LABEL_BOTTOM,height:LABEL_H}}>
-              {hourMarks.map((h,i)=> (
-                (i % hourEvery === 0) && (
-                  <div key={i} className="absolute text-left pl-0.5 leading-none pointer-events-none" style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
-                    <div className={["font-bold hour-label tracking-tight",textSub].join(' ')} style={{ fontSize: HOUR_LABEL_PX }}>
-                      {h===0?12:h>12?h-12:h}
-                    </div>
-                  </div>
-                )
-              ))}
+        <div className={["relative sticky top-0 z-40 shadow-sm border-b px-2", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')} style={{height:HEADER_H}}>
+          {showHeaderTitle && (
+            <div className="absolute left-2 right-2 text-center font-bold" style={{ top: Math.max(2, Math.round(8*scale)), fontSize: Math.round(14*scale) }}>
+              {dayKey} <span className={["ml-1",textSub].join(' ')}>{fmtYMD(date)}</span>
             </div>
-            {/* AM/PM chips removed in favor of subtle AM background */}
+          )}
+          {/* Subtle AM background from 0:00 to 12:00 */}
+          <div className="absolute inset-y-0 pointer-events-none" style={{ left: 8, width: `calc(12 * (100% / ${COLS}))`, backgroundColor: dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }} />
+          <div className="absolute left-2 right-2" style={{bottom:LABEL_BOTTOM,height:LABEL_H}}>
+            {hourMarks.map((h,i)=> (
+              (i % hourEvery === 0) && (
+                <div key={i} className="absolute text-left pl-0.5 leading-none pointer-events-none" style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
+                  <div className={["font-bold hour-label tracking-tight",textSub].join(' ')} style={{ fontSize: HOUR_LABEL_PX }}>
+                    {h===0?12:h>12?h-12:h}
+                  </div>
+                </div>
+              )
+            ))}
           </div>
+          {/* AM/PM chips removed in favor of subtle AM background */}
         </div>
       )}
 
       {/* Body */}
-      <div className="relative">
+      <div className="relative px-2">
         {isToday && (
-          <div className="absolute inset-y-0 right-0 z-20 pointer-events-none" style={{ left: NAME_COL }}>
+          <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
             <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
             <div className={["absolute -translate-x-1/2 -top-5 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}>
               {minToHHMM(displayNowMin)}
@@ -130,51 +129,32 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         )}
 
         {orderedPeople.map((person)=> (
-          <div key={person} className="grid" style={{gridTemplateColumns:`${NAME_COL} 1fr`}}>
-            <div className={["py-1.5 pr-2 font-medium sticky left-0 z-30 truncate border-b", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')} style={{ fontSize: PERSON_FONT_PX }}>{person}</div>
-            <div className="relative" style={{
-              backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
-              backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
-            }}>
-              {shifts.filter(s=>s.person===person).map(s=>{
+          <div key={person} className="relative" style={{
+            height: CHIP_H + 6,
+            backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
+            backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
+          }}>
+              {shifts.filter(s=>s.person===person).sort((a,b)=>toMin(a.start)-toMin(b.start)).map((s, idx, arr)=>{
                 const hasPtoForDay = pto.some(p=>p.person===person && date>=parseYMD(p.startDate) && date<=parseYMD(p.endDate))
                 const sMin=toMin(s.start); const eMinRaw=toMin(s.end); const eMin=eMinRaw>sMin?eMinRaw:1440
                 const left=(sMin/totalMins)*100; const width=Math.max(0.5, ((eMin-sMin)/totalMins)*100)
+                const endPct = left + width
                 const H = (colorMap.get(person) ?? 0)
                 const light=`hsla(${H},75%,70%,0.95)`; const darkbg=`hsla(${H},60%,28%,0.95)`; const darkbd=`hsl(${H},70%,55%)`
                 const grayBg = dark ? 'rgba(120,120,120,0.6)' : 'rgba(200,200,200,0.95)'
-                const grayBd = dark ? 'rgba(170,170,170,0.9)' : 'rgba(150,150,150,0.9)'
+                // Dimmer border for PTO
+                const grayBd = dark ? 'rgba(160,160,160,0.55)' : 'rgba(160,160,160,0.5)'
 
                 const dur = eMin - sMin
                 const baseColor = hasPtoForDay ? grayBg : (dark?darkbg:light)
                 const baseBorder = hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`)
                 const segs = (Array.isArray(s.segments)? s.segments: []).slice().sort((a,b)=>a.startOffsetMin-b.startOffsetMin)
-        type Piece = { kind:'base'|'seg'; startOff:number; len:number; color:string; border?:string; title:string; key:string }
-                const pieces: Piece[] = []
-                let cursor = 0
-                for(const seg of segs){
-                  const stOff = Math.max(0, Math.min(dur, seg.startOffsetMin))
-                  const enOff = Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin))
-                  if(stOff > cursor){
-                    const st = sMin + cursor; const en = sMin + stOff
-                    pieces.push({ kind:'base', startOff: cursor, len: stOff - cursor, color: baseColor, title: `${s.person} • ${minToHHMM(st)}–${minToHHMM(en)}`, key:`gap-${cursor}` })
-                  }
-                  if(enOff > stOff){
-                    const t = taskMap.get(seg.taskId)
-                    const stAbs = sMin + stOff; const enAbs = sMin + enOff
-          const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
-          const segBg = `color-mix(in oklab, ${tColor} 42%, ${dark?'#0a0a0a':'#ffffff'} 58%)`
-          const segBorder = `color-mix(in oklab, ${tColor} 70%, ${dark?'#ffffff':'#000000'} 30%)`
-          pieces.push({ kind:'seg', startOff: stOff, len: enOff - stOff, color: segBg, border: segBorder, title: `${t?.name || 'Task'} • ${minToHHMM(stAbs)}–${minToHHMM(enAbs)}`, key:`seg-${seg.id}` })
-                  }
-                  cursor = Math.max(cursor, enOff)
-                }
-                if(cursor < dur){
-                  const st = sMin + cursor; const en = eMin
-                  pieces.push({ kind:'base', startOff: cursor, len: dur - cursor, color: baseColor, title: `${s.person} • ${minToHHMM(st)}–${minToHHMM(en)}`, key:`gap-${cursor}` })
-                }
-
-                const chipTitleLines = pieces.filter(p=>p.kind==='seg').map(p=>p.title.replace(/^.* • /,'')).map((t,i)=>`${segs[i]?.taskId ? (taskMap.get(segs[i]!.taskId)?.name || 'Task') : 'Task'}: ${t}`)
+                const chipTitleLines = segs.map(seg=>{
+                  const t = taskMap.get(seg.taskId)
+                  const stAbs = sMin + Math.max(0, Math.min(dur, seg.startOffsetMin))
+                  const enAbs = sMin + Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin))
+                  return `${t?.name || 'Task'}: ${minToHHMM(stAbs)}–${minToHHMM(enAbs)}`
+                })
                 const chipTitle = `${s.person} • ${s.start}-${s.end}` + (chipTitleLines.length? `\n\nTasks:\n${chipTitleLines.join('\n')}`:'')
 
                 // Simple overlap detection among this person's shifts for warning style
@@ -183,18 +163,109 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 ))
                 const outline = overlapsAnother ? (dark? 'inset 0 0 0 2px rgba(255,0,0,0.6)' : 'inset 0 0 0 2px rgba(255,0,0,0.7)') : undefined
                 return (
-                  <div key={s.id} className="relative" title={chipTitle + (overlapsAnother? '\n\nWarning: overlaps another shift.' : '')}>
-                    {pieces.map(p=>{
-                      const pLeft = ((sMin + p.startOff)/totalMins)*100
-                      const pW = (p.len/totalMins)*100
-                      const borderCol = p.kind==='seg' && p.border ? p.border : baseBorder
-                      return (
-                        <div key={p.key} className="absolute rounded" style={{ left:`${pLeft}%`, width:`${pW}%`, height: CHIP_H, backgroundColor:p.color, boxShadow:`inset 0 0 0 1px ${borderCol}${outline?`, ${outline}`:''}` }} title={p.title} />
-                      )
+                  <div
+                    key={s.id}
+                    className="relative"
+                    title={chipTitle + (overlapsAnother? '\n\nWarning: overlaps another shift.' : '')}
+                    onMouseEnter={()=>setHover({ id: s.id, x: 0 })}
+                    onMouseLeave={()=>setHover({ id: null, x: 0 })}
+                    onMouseMove={(e)=>{
+                      const el = e.currentTarget as HTMLElement
+                      const r = el.getBoundingClientRect()
+                      const raw = e.clientX - r.left
+                      const clamped = Math.max(8, Math.min(raw, r.width - 8))
+                      setHover(h=> h.id===s.id ? { id: s.id, x: clamped } : h)
+                    }}
+                  >
+                    {/* Unified base chip */}
+                    {(() => {
+                      let bgImage: string | undefined
+                      if(hasPtoForDay){
+                        const stripes = `repeating-linear-gradient(135deg, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.18)'} 0 8px, transparent 8px 16px)`
+                        const darken  = `linear-gradient(0deg, ${dark?'rgba(0,0,0,0.28)':'rgba(0,0,0,0.15)'} 0%, ${dark?'rgba(0,0,0,0.28)':'rgba(0,0,0,0.15)'} 100%)`
+                        bgImage = `${stripes}, ${darken}`
+                      }
+                      const style: React.CSSProperties = {
+                        left: `${left}%`,
+                        width: `${width}%`,
+                        top: 2,
+                        height: CHIP_H,
+                        backgroundColor: baseColor,
+                        boxShadow: `inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : ''),
+                        ...(bgImage ? { backgroundImage: bgImage } : {}),
+                      }
+                      return <div className="absolute rounded" style={style} />
+                    })()}
+
+
+                    {/* Posture overlays (striped) */}
+                    {segs.map(seg => {
+                      const stOff = Math.max(0, Math.min(dur, seg.startOffsetMin))
+                      const enOff = Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin))
+                      if(enOff <= stOff) return null
+                      const segLeft = ((sMin + stOff)/totalMins)*100
+                      const segW = ((enOff - stOff)/totalMins)*100
+                      const t = taskMap.get(seg.taskId)
+                      const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
+                      // More subtle posture stripes
+                      const stripes = `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
+                      const style: React.CSSProperties = {
+                        left: `${segLeft}%`,
+                        width: `${segW}%`,
+                        // Align overlays to the chip area; border frame remains on top
+                        top: 2,
+                        height: CHIP_H,
+                        backgroundImage: stripes,
+                        pointerEvents: 'none',
+                        borderRadius: 6,
+                        opacity: 0.45,
+                      }
+                      return <div key={seg.id} className="absolute" style={style} />
                     })}
-                    <div className="absolute flex items-center justify-center px-2 truncate pointer-events-none" style={{ left:`${left}%`, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
-                      {s.start}-{s.end}
+
+                    {/* Always-on top border frame to keep the main chip border visible above overlays */}
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: 6, zIndex: 5 }}
+                    />
+
+                    {/* Center label: agent name */}
+                    <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-300":"text-neutral-600") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
+                      {person}
                     </div>
+
+                    {/* Tooltip */}
+          {hover.id===s.id && (
+                      <div
+            className={["absolute z-40 px-2 py-1 rounded-md text-xs shadow-lg border", dark?"bg-neutral-900/95 border-neutral-700 text-neutral-100":"bg-white/95 border-neutral-300 text-neutral-900"].join(' ')}
+            style={{ left: hover.x, transform:'translate(-50%, -6px)', bottom: CHIP_H + 2 }}
+                        role="tooltip"
+                      >
+                        <div className="font-semibold mb-1">{person}</div>
+                        <div className={dark?"text-neutral-300":"text-neutral-700"}>Shift: {s.start}–{s.end}</div>
+                        {segs.length>0 && (
+                          <div className="mt-1">
+                            <ul className="space-y-0.5">
+                              {segs.map(seg=>{
+                                const t = taskMap.get(seg.taskId)
+                                const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
+                                const stAbs = minToHHMM(sMin + Math.max(0, Math.min(dur, seg.startOffsetMin)))
+                                const enAbs = minToHHMM(sMin + Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin)))
+                                return (
+                                  <li key={seg.id} className="flex items-center gap-2">
+                                    <span className="inline-block w-3 h-3 rounded-sm border" style={{ background:tColor, borderColor: tColor }} />
+                                    <span className="truncate">
+                                      <span className="font-medium">{t?.name || 'Task'}</span>
+                                      <span className={"ml-1 "+(dark?"text-neutral-300":"text-neutral-700")}>{stAbs}–{enAbs}</span>
+                                    </span>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {editMode && onRemove && (
                       <button onClick={(e)=>{ e.stopPropagation(); onRemove(s.id) }} title="Delete shift" className="absolute -top-1 w-4 h-4 rounded-full leading-[14px] text-[12px] text-center border bg-white/90 hover:bg-white" style={{ left:`calc(${left}% + ${width}% - 8px)` }}>×</button>
                     )}
@@ -202,9 +273,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 )
               })}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
