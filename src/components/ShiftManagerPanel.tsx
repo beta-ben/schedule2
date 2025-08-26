@@ -172,8 +172,8 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
             </div>
           </fieldset>
         </div>
-        <div className="lg:col-span-3">
-    <div className="grid grid-cols-2 gap-3 items-end">
+        <div className="lg:col-span-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 items-end">
             <label className="text-sm flex flex-col">
               <span className="mb-1">Start</span>
               <input className={["w-full border rounded-xl px-3 h-10", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={start} onChange={e=>{ setStart(e.target.value) }} />
@@ -182,12 +182,14 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
               <span className="mb-1">End</span>
               <input className={["w-full border rounded-xl px-3 h-10", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={end} onChange={e=>{ setEndTouched(true); setEnd(e.target.value) }} />
             </label>
+            {/* Add button aligned with inputs */}
+            <div className="flex items-end">
+              <button onClick={addShift} className={["h-10 rounded-xl border font-medium px-4 w-full", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Add</button>
+            </div>
           </div>
              {/* Overnight inferred automatically when End <= Start (except 24:00) */}
         </div>
-        <div className="lg:col-span-1 flex lg:block items-end lg:self-end">
-          <button onClick={addShift} className={["h-10 rounded-xl border font-medium px-4 w-full lg:w-auto", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Add</button>
-        </div>
+        
         </div>
 
         {/* Preview of week with pending additions (skips exact duplicates and conflicts) */}
