@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import type { Shift } from '../types'
-import { minToHHMM, toMin } from '../lib/utils'
+import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
 
 export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
   dark: boolean
@@ -9,8 +9,8 @@ export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
   shifts: Shift[]
   windowMin?: number
 }){
-  const now = new Date()
-  const nowMin = ((now.getHours()*60 + now.getMinutes()) + tz.offset*60 + 1440) % 1440
+  const nowTz = nowInTZ(tz.id)
+  const nowMin = nowTz.minutes
   const cutoff = nowMin + windowMin
 
   // Match DayGrid/OnDeck coloring by assigning a hue per person based on earliest start
@@ -50,6 +50,16 @@ export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
       .map(([person,info])=> ({ person, at: info.label, start: info.start }))
   },[shifts,nowMin,cutoff])
 
+  const formatIn = (mins:number) => {
+    const m = Math.max(0, mins)
+    const h = Math.floor(m/60)
+    const mm = m % 60
+    if (h>0 && mm>0) return `${h}h ${mm}m`
+    if (h>0) return `${h}h`
+    if (mm>0) return `${mm}m`
+    return 'now'
+  }
+
   return (
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       <div className="flex items-baseline justify-between mb-2">
@@ -74,10 +84,13 @@ export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
               borderLeftWidth: 6,
               borderStyle: 'solid',
             }
+            const startsIn = Math.max(0, a.start - nowMin)
             return (
               <li key={a.person} className="flex items-center justify-between text-sm rounded-md border px-2 py-1" style={containerStyle}>
                 <span className="font-medium">{a.person}</span>
-                <span className={dark?"text-neutral-300":"text-neutral-700"}>{a.at}</span>
+                <span className={dark?"text-neutral-300":"text-neutral-700"}>
+                  {a.at} <span className={dark?"text-neutral-400":"text-neutral-500"}>• in {formatIn(startsIn)}</span>
+                </span>
               </li>
             )
           })}

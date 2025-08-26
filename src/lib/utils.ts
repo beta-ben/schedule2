@@ -115,6 +115,61 @@ export function shiftsForDayInTZ(all: Shift[], targetDay: Day, offsetHours: numb
   return segs.filter(s=>s.day===targetDay)
 }
 
+// External calendar segments stub type (taskId, absolute start/end within the shift window)
+export type CalendarSegment = {
+  person: string
+  day: Day
+  start: string // HH:MM within day (local after convert)
+  end: string   // HH:MM within day (local)
+  taskId: string
+}
+
+// Merge calendar-provided segments into local manual segments. Manual beats calendar on overlap; calendar fills gaps.
+export function mergeSegments(
+  shift: Shift,
+  calendarSegs: { taskId: string; start: string; end: string }[]
+): Shift['segments']{
+  const sMin = toMin(shift.start)
+  const eMinRaw = toMin(shift.end)
+  const eMin = eMinRaw > sMin ? eMinRaw : 1440
+  const dur = eMin - sMin
+  const manual = shift.segments || []
+  // Convert calendar absolute HH:MM into offsets
+  const cal = calendarSegs.map(cs=>{
+    const a = toMin(cs.start), b = toMin(cs.end)
+    const st = Math.max(0, Math.min(dur, a - sMin))
+    const en = Math.max(0, Math.min(dur, (b - sMin)))
+    const dm = Math.max(0, en - st)
+    return dm>0 ? { taskId: cs.taskId, startOffsetMin: st, durationMin: dm } : null
+  }).filter(Boolean) as { taskId:string; startOffsetMin:number; durationMin:number }[]
+
+  // Build an occupancy map in minutes to resolve overlaps (manual wins)
+  const occ = new Array(dur).fill(null as null | { taskId:string; source:'manual'|'cal' })
+  for(const seg of cal){
+    for(let i=seg.startOffsetMin; i<seg.startOffsetMin+seg.durationMin && i<dur; i++){
+      if(occ[i]==null) occ[i] = { taskId: seg.taskId, source: 'cal' }
+    }
+  }
+  for(const seg of manual){
+    for(let i=seg.startOffsetMin; i<seg.startOffsetMin+seg.durationMin && i<dur; i++){
+      occ[i] = { taskId: seg.taskId, source: 'manual' }
+    }
+  }
+  // Collapse back to segments
+  const res: NonNullable<Shift['segments']> = []
+  let i=0
+  while(i<dur){
+    const cell = occ[i]
+    if(!cell){ i++; continue }
+    const start=i; const taskId=cell.taskId
+    let j=i+1
+    while(j<dur && occ[j] && occ[j]!.taskId===taskId && occ[j]!.source===cell.source) j++
+    res.push({ id: `${shift.id}-${taskId}-${start}`, shiftId: shift.id, taskId, startOffsetMin: start, durationMin: j-start })
+    i=j
+  }
+  return res
+}
+
 export async function sha256Hex(s: string){
   try{
     if(typeof crypto !== 'undefined' && crypto.subtle){

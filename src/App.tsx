@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { fmtYMD, startOfWeek } from './lib/utils'
 import { cloudGet, cloudPost } from './lib/api'
-import type { PTO, Shift } from './types'
+import type { PTO, Shift, Task } from './types'
+import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
 import ManagePage from './pages/ManagePage'
@@ -19,6 +20,26 @@ export default function App(){
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
+  const [tasks, setTasks] = useState<Task[]>(()=>{
+    try{
+      const raw = localStorage.getItem('schedule_tasks')
+      if(raw){
+        const parsed = JSON.parse(raw)
+        if(Array.isArray(parsed)) return parsed as Task[]
+      }
+    }catch{}
+    return []
+  })
+  const [calendarSegs, setCalendarSegs] = useState<CalendarSegment[]>(()=>{
+    try{
+      const raw = localStorage.getItem('schedule_calendarSegs')
+      if(raw){
+        const parsed = JSON.parse(raw)
+        if(Array.isArray(parsed)) return parsed as CalendarSegment[]
+      }
+    }catch{}
+    return []
+  })
   const [loadedFromCloud,setLoadedFromCloud]=useState(false)
 
   const [canEdit, setCanEdit] = useState(false)
@@ -30,9 +51,28 @@ export default function App(){
     setCanEdit(saved === expected)
   })() }, [view])
 
-  useEffect(()=>{ (async()=>{ const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto) } setLoadedFromCloud(true) })() },[])
+  useEffect(()=>{ (async()=>{ const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto); if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any) } setLoadedFromCloud(true) })() },[])
+  // Seed default postures if none exist on first mount
+  useEffect(()=>{
+    if(tasks.length===0){
+      setTasks([
+        { id: 'support', name: 'Support Inbox', color: '#2563eb' },
+        { id: 'meetings', name: 'Meetings', color: '#16a34a' },
+      ])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[])
+
+  // Persist postures locally
+  useEffect(()=>{
+    try{ localStorage.setItem('schedule_tasks', JSON.stringify(tasks)) }catch{}
+  },[tasks])
+  // Persist posture assignments (calendar segments) locally
+  useEffect(()=>{
+    try{ localStorage.setItem('schedule_calendarSegs', JSON.stringify(calendarSegs)) }catch{}
+  },[calendarSegs])
   // Auto-save local edits to the cloud only when editing is allowed
-  useEffect(()=>{ if(!loadedFromCloud || !canEdit) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,loadedFromCloud,canEdit])
+  useEffect(()=>{ if(!loadedFromCloud || !canEdit) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,calendarSegs,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,calendarSegs,loadedFromCloud,canEdit])
 
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   useEffect(()=>{
@@ -71,13 +111,15 @@ export default function App(){
             setDayIndex={setDayIndex}
             shifts={shifts}
             pto={pto}
+            tasks={tasks}
+            calendarSegs={calendarSegs}
             tz={tz}
             canEdit={canEdit}
             editMode={editMode}
             onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
           />
         ) : (
-          <ManagePage dark={dark} weekStart={weekStart} shifts={shifts} setShifts={setShifts} pto={pto} setPto={setPto} tz={tz} />
+          <ManagePage dark={dark} weekStart={weekStart} shifts={shifts} setShifts={setShifts} pto={pto} setPto={setPto} tasks={tasks} setTasks={setTasks} calendarSegs={calendarSegs} setCalendarSegs={setCalendarSegs} tz={tz} />
         )}
       </div>
     </div>

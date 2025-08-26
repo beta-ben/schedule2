@@ -1,15 +1,20 @@
 import React from 'react'
 import ManageEditor from './ManageEditor'
 import { parseYMD, sha256Hex } from '../lib/utils'
-import type { PTO, Shift } from '../types'
+import type { PTO, Shift, Task } from '../types'
+import type { CalendarSegment } from '../lib/utils'
 
-export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, setPto, tz }:{ 
+export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz }:{ 
   dark: boolean
   weekStart: string
   shifts: Shift[]
   setShifts: (f:(prev:Shift[])=>Shift[])=>void
   pto: PTO[]
   setPto: (f:(prev:PTO[])=>PTO[])=>void
+  tasks: Task[]
+  setTasks: (f:(prev:Task[])=>Task[])=>void
+  calendarSegs: CalendarSegment[]
+  setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void
   tz: { id:string; label:string; offset:number }
 }){
   const [unlocked, setUnlocked] = React.useState(false)
@@ -58,6 +63,11 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
       setShifts={setShifts}
       pto={pto}
       setPto={setPto}
+  tasks={tasks}
+  setTasks={setTasks}
+  calendarSegs={calendarSegs}
+  setCalendarSegs={setCalendarSegs}
+  // TODO: pass tasks into ManageEditor and lift state there; for now it owns its tasks state
       tz={tz}
     />
   )

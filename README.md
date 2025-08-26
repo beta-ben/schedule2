@@ -61,3 +61,7 @@ Then in GitHub → Settings → Pages: choose `gh-pages` as the source. Your URL
 ```
 https://<username>.github.io/schedule2/
 ```
+
+## Tasks & Shift Segments
+
+Optionally configure Tasks (name, color, posture) under Manage → Tasks & Postures. Shifts can include segments (minutes from shift start) that render as colored sub-bars inside each shift chip. This lets you allocate parts of a shift to different work types without changing the base shift times.

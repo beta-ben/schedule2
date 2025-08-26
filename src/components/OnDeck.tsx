@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import type { Shift } from '../types'
-import { minToHHMM, toMin } from '../lib/utils'
+import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
 
 export default function OnDeck({ dark, tz, dayKey, shifts }:{
   dark: boolean
@@ -8,9 +8,9 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
   dayKey: string
   shifts: Shift[]
 }){
-  const now = new Date()
   // Compute now in selected timezone
-  const nowMin = ((now.getHours()*60 + now.getMinutes()) + tz.offset*60 + 1440) % 1440
+  const nowTz = nowInTZ(tz.id)
+  const nowMin = nowTz.minutes
 
   // Match DayGrid coloring by assigning a hue per person based on earliest start
   const orderedPeople = useMemo(()=>{
@@ -53,6 +53,15 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
       .map(([person,info])=> ({ person, window: info.label, end: info.end }))
   },[shifts,nowMin])
 
+  const formatLeft = (mins:number) => {
+    const h = Math.floor(mins/60)
+    const m = mins % 60
+    if (h>0 && m>0) return `${h}h ${m}m`
+    if (h>0) return `${h}h`
+    if (m>0) return `${m}m`
+    return 'ending now'
+  }
+
   return (
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       <div className="flex items-baseline justify-between mb-2">
@@ -77,10 +86,13 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
               borderLeftWidth: 6,
               borderStyle: 'solid',
             }
+            const leftMins = Math.max(0, a.end - nowMin)
             return (
               <li key={a.person} className="flex items-center justify-between text-sm rounded-md border px-2 py-1" style={containerStyle}>
                 <span className="font-medium">{a.person}</span>
-                <span className={dark?"text-neutral-300":"text-neutral-700"}>{a.window}</span>
+                <span className={dark?"text-neutral-300":"text-neutral-700"}>
+                  {a.window} <span className={dark?"text-neutral-400":"text-neutral-500"}>• {formatLeft(leftMins)} left</span>
+                </span>
               </li>
             )
           })}

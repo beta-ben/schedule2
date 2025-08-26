@@ -1,55 +1,104 @@
 import React from 'react'
 import { DAYS } from '../constants'
 import DayPills from './DayPills'
-import type { Shift } from '../types'
-import { isValidHHMM, toMin, uid, shiftKey, shiftKeyOf } from '../lib/utils'
+import DayGrid from './DayGrid'
+import AgentWeekGrid from './AgentWeekGrid'
+import type { PTO, Shift, Task } from '../types'
+import { isValidHHMM, toMin, minToHHMM, uid, shiftKey, shiftKeyOf, addDays, fmtNice, fmtYMD, shiftsForDayInTZ } from '../lib/utils'
 
-export default function ShiftManagerPanel({ shifts, setShifts, dark }:{
+export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDate, pto, tz, tasks, calendarSegs }:{
   shifts: Shift[]
   setShifts: (f:(prev:Shift[])=>Shift[])=>void
   dark: boolean
+  weekStartDate: Date
+  pto: PTO[]
+  tz: { id:string; label:string; offset:number }
+  tasks: Task[]
+  calendarSegs: { person:string; day:any; start:string; end:string; taskId:string }[]
 }){
   // Quick add
   const [person, setPerson] = React.useState('')
   const [daysSel, setDaysSel] = React.useState(()=> new Set<string>([DAYS[1]])) // default Mon with Sun-first DAYS
   const [start, setStart] = React.useState('09:00')
   const [end, setEnd] = React.useState('17:30')
-  const [overnight, setOvernight] = React.useState(false)
+  const [endTouched, setEndTouched] = React.useState(false)
+  const [showOtherAgentsInPreview, setShowOtherAgentsInPreview] = React.useState(true)
+  const [addOpen, setAddOpen] = React.useState(true)
+  const [editOpen, setEditOpen] = React.useState(true)
   const allPeople = React.useMemo(()=>Array.from(new Set(shifts.map(s=>s.person))).sort(),[shifts])
 
-  // Filters
-  const [fPerson, setFPerson] = React.useState('')
-  const [fDays, setFDays] = React.useState(()=> new Set<string>(DAYS))
+  // Helpers for overlap detection (same person)
+  function normalizeInterval(startHHMM:string, endHHMM:string){
+    const s = toMin(startHHMM)
+    const eRaw = endHHMM==='24:00' ? 1440 : toMin(endHHMM)
+    const e = eRaw > s ? eRaw : 1440
+    return { s, e, overnight: eRaw<=s && endHHMM!== '24:00' }
+  }
+  function nextDay(day:string){ const i=DAYS.indexOf(day as any); return DAYS[(i+1)%7] }
+  function overlaps(aS:number,aE:number,bS:number,bE:number){ return aS < bE && aE > bS }
+  function hasConflict(personName:string, day:string, sHHMM:string, eHHMM:string){
+    const { s, e, overnight: isOver } = normalizeInterval(sHHMM, eHHMM)
+    // Same-day conflicts
+    const sameDay = shifts.filter(x=> x.person===personName && x.day===day)
+    for(const ex of sameDay){ const r=normalizeInterval(ex.start, ex.end); if(overlaps(s,e,r.s,r.e)) return true }
+    // If overnight, also check next day overlap for range past midnight [0, e-1440)
+    if(isOver){
+      const spill = e - 1440
+      if(spill>0){
+        const nd = nextDay(day)
+        const nextDayShifts = shifts.filter(x=> x.person===personName && x.day===nd)
+        for(const ex of nextDayShifts){ const r=normalizeInterval(ex.start, ex.end); if(overlaps(0,spill,r.s,r.e)) return true }
+      }
+    }
+    return false
+  }
+
+  // Auto default end = start + 8.5h unless user overrides end
+  React.useEffect(()=>{
+    if(!isValidHHMM(start) || endTouched) return
+    const sMin = toMin(start)
+    const eAbs = sMin + 510 // 8.5 hours
+  if(eAbs === 1440){ setEnd('24:00'); return }
+    const eMod = eAbs % 1440
+    setEnd(minToHHMM(eMod))
+  },[start, endTouched])
+
+  // Edit section state
+  const [editAgent, setEditAgent] = React.useState('')
 
   // Selection for bulk
   const [selected, setSelected] = React.useState(()=> new Set<string>())
+  // Results table is now always visible; no nested collapse
 
   const rows = React.useMemo(()=>{
-    const lc = (fPerson||'').toLowerCase()
     return shifts
-      .filter(s=> (!lc || s.person.toLowerCase().includes(lc)) && (fDays.size===0 || fDays.has(s.day)))
+      .filter(s=> (!editAgent || s.person===editAgent))
       .slice()
       .sort((a,b)=> a.day.localeCompare(b.day) || toMin(a.start)-toMin(b.start) || a.person.localeCompare(b.person))
-  },[shifts,fPerson,fDays])
+  },[shifts, editAgent])
 
   function addShift(){
     if(!person.trim()) return alert('Enter a person name')
     if(daysSel.size===0) return alert('Select at least one day')
     if(!isValidHHMM(start) || !isValidHHMM(end)) return alert('Times must be HH:MM (00:00–24:00) with 24:00 only as an end time')
     const sMin = toMin(start); const eMin = toMin(end)
-    if(!overnight && eMin<=sMin && end!=="24:00") return alert('End must be after start (or exactly 24:00), or enable Overnight')
+  // If end <= start and not 24:00, treat as overnight (next day)
     const p = person.trim()
     const days = Array.from(daysSel)
     const existing = new Set(shifts.map(shiftKey))
     const toAdd: Shift[] = []
+    const conflicts: string[] = []
     for(const d of days){
       const k = shiftKeyOf(p, d as any, start, end)
       if(existing.has(k)) continue
+      if(hasConflict(p, d, start, end)) { conflicts.push(d); continue }
       toAdd.push({ id: uid(), person: p, day: d as any, start, end })
     }
+    if(conflicts.length){ alert(`Overlaps existing shifts for ${p} on: ${conflicts.join(', ')}. Adjust times or remove conflicts.`); return }
     if(toAdd.length===0) return
-    setShifts(prev=> prev.concat(toAdd))
-    setStart(end)
+  setShifts(prev=> prev.concat(toAdd))
+  setStart(end)
+  setEndTouched(false)
   }
 
   function toggleDay(d:string){ const n=new Set(daysSel); if(n.has(d)) n.delete(d); else n.add(d); setDaysSel(n) }
@@ -57,9 +106,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark }:{
   function selectAll(){ setDaysSel(new Set(DAYS)) }
   function selectNone(){ setDaysSel(new Set()) }
 
-  function toggleFilterDay(d:string){ const n=new Set(fDays); if(n.has(d)) n.delete(d); else n.add(d); setFDays(n) }
-  function selectAllFilterDays(){ setFDays(new Set(DAYS)) }
-  function clearAllFilterDays(){ setFDays(new Set()) }
+  // removed day filter controls (edit is agent-focused)
 
   function toggle(id:string){ const n=new Set(selected); if(n.has(id)) n.delete(id); else n.add(id); setSelected(n) }
   function selectAllFiltered(){ setSelected(new Set(rows.map(r=>r.id))) }
@@ -73,27 +120,45 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark }:{
   const [eDay, setEDay] = React.useState<Shift['day']>('Mon' as any)
   const [eStart, setEStart] = React.useState('')
   const [eEnd, setEEnd] = React.useState('')
-  const [eOvernight, setEOvernight] = React.useState(false)
 
-  function beginEdit(r: Shift){ setEditing(r.id); setEPerson(r.person); setEDay(r.day); setEStart(r.start); setEEnd(r.end); setEOvernight(toMin(r.end)<=toMin(r.start) && r.end!=="24:00") }
+  function beginEdit(r: Shift){ setEditing(r.id); setEPerson(r.person); setEDay(r.day); setEStart(r.start); setEEnd(r.end) }
   function cancelEdit(){ setEditing(null) }
   function saveEdit(id:string){
     if(!ePerson.trim()) return alert('Enter a person name')
     if(!isValidHHMM(eStart) || !isValidHHMM(eEnd)) return alert('Times must be HH:MM (00:00–24:00)')
-    const sMin = toMin(eStart); const eMin = toMin(eEnd)
-    if(!eOvernight && eMin<=sMin && eEnd!=="24:00") return alert('End must be after start (or exactly 24:00), or enable Overnight')
-    setShifts(prev=> prev.map(s=> s.id===id ? {...s, person:ePerson.trim(), day:eDay, start:eStart, end:eEnd } : s))
+    // Overnight implied automatically if end <= start and not exactly 24:00
+    const p = ePerson.trim()
+    const conflicts = shifts.some(s=> s.id!==id && s.person===p && (
+      (s.day===eDay && overlaps(normalizeInterval(eStart,eEnd).s, normalizeInterval(eStart,eEnd).e, normalizeInterval(s.start,s.end).s, normalizeInterval(s.start,s.end).e)) ||
+      // if edited is overnight, also check next day
+      ((normalizeInterval(eStart,eEnd).overnight) && (s.day===nextDay(eDay as any) && overlaps(0, normalizeInterval(eStart,eEnd).e-1440, normalizeInterval(s.start,s.end).s, normalizeInterval(s.start,s.end).e)))
+    ))
+    if(conflicts) return alert('This shift overlaps another shift for this person. Adjust times or split shifts.')
+    setShifts(prev=> prev.map(s=> s.id===id ? {...s, person:p, day:eDay, start:eStart, end:eEnd } : s))
     setEditing(null)
   }
 
   return (
-    <div className={["rounded-xl p-3", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
-      {/* Add */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start lg:items-end">
+  <div className={["rounded-xl p-3 space-y-4", dark?"bg-neutral-900":"bg-neutral-50"].join(' ')}>
+      {/* Add Shifts section */}
+  <details open={addOpen} onToggle={(e)=> setAddOpen((e.currentTarget as HTMLDetailsElement).open)} className="rounded-xl">
+  <summary className={"cursor-pointer select-none px-3 py-2 text-sm font-semibold flex items-center gap-2 rounded-xl border "+(dark?"border-neutral-800":"border-neutral-200")}
+     onClick={(e)=>{ e.preventDefault(); const d=(e.currentTarget.parentElement as HTMLDetailsElement); d.open=!d.open; setAddOpen(d.open) }}
+                 aria-expanded={addOpen}
+                 style={{ listStyle: 'none' }}
+                 aria-controls="add-shifts-body"
+        >
+          <span className={["inline-flex items-center justify-center w-5 h-5 rounded", dark?"bg-neutral-800":"bg-neutral-100"].join(' ')} aria-hidden>
+            {addOpen ? '▾' : '▸'}
+          </span>
+          <span>Add Shifts</span>
+        </summary>
+        <div id="add-shifts-body" className="px-1 pt-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         <div className="lg:col-span-3">
           <label className="text-sm flex flex-col">
-            <span className="mb-1">Name</span>
-            <input list="people" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={person} onChange={e=>setPerson(e.target.value)} placeholder="Agent name" />
+            <span className="mb-2">Name</span>
+            <input list="people" className={["w-full border rounded-xl px-3 h-10", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={person} onChange={e=>setPerson(e.target.value)} placeholder="Agent name" />
           </label>
         </div>
         <div className="lg:col-span-5">
@@ -108,122 +173,183 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark }:{
           </fieldset>
         </div>
         <div className="lg:col-span-3">
-          <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 items-end">
             <label className="text-sm flex flex-col">
               <span className="mb-1">Start</span>
-              <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={start} onChange={e=>setStart(e.target.value)} />
+              <input className={["w-full border rounded-xl px-3 h-10", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={start} onChange={e=>{ setStart(e.target.value) }} />
             </label>
             <label className="text-sm flex flex-col">
               <span className="mb-1">End</span>
-              <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={end} onChange={e=>setEnd(e.target.value)} />
+              <input className={["w-full border rounded-xl px-3 h-10", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} type="time" value={end} onChange={e=>{ setEndTouched(true); setEnd(e.target.value) }} />
             </label>
           </div>
-          <label className="mt-2 inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={overnight} onChange={e=>setOvernight(e.target.checked)} />
-            <span>Overnight (ends next day)</span>
-          </label>
+             {/* Overnight inferred automatically when End <= Start (except 24:00) */}
         </div>
         <div className="lg:col-span-1 flex lg:block items-end lg:self-end">
-          <button onClick={addShift} className={["h-[42px] rounded-xl border font-medium px-4 w-full lg:w-auto", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Add</button>
+          <button onClick={addShift} className={["h-10 rounded-xl border font-medium px-4 w-full lg:w-auto", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Add</button>
         </div>
-      </div>
+        </div>
 
-      {/* Filters & actions */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-        <div className="md:col-span-3">
-          <label className="text-sm flex flex-col">
-            <span className="mb-1">Filter by person</span>
-            <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={fPerson} onChange={e=>setFPerson(e.target.value)} placeholder="Name contains…" />
+        {/* Preview of week with pending additions (skips exact duplicates and conflicts) */}
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm opacity-70">Preview of additions</div>
+            <label className="text-xs inline-flex items-center gap-2 opacity-80">
+              <input type="checkbox" checked={showOtherAgentsInPreview} onChange={e=>setShowOtherAgentsInPreview(e.target.checked)} />
+              <span>Show other agents</span>
+            </label>
+          </div>
+          {DAYS.map((d,i)=>{
+            const dayKey=d; const date=addDays(weekStartDate,i)
+            const toAdd: Shift[] = []
+            if(person.trim() && daysSel.has(d)){
+              const k = shiftKeyOf(person.trim(), d as any, start, end)
+              const exists = new Set(shifts.map(shiftKey))
+              if(!exists.has(k) && !hasConflict(person.trim(), d, start, end)){
+                toAdd.push({ id:`preview-${d}-${start}-${end}`, person: person.trim(), day: d as any, start, end })
+              }
+            }
+            const combined = shifts.concat(toAdd)
+            const dayShiftsAll=shiftsForDayInTZ(combined, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+            const onlyPerson = person.trim()
+            const dayShifts = (!showOtherAgentsInPreview && onlyPerson)
+              ? dayShiftsAll.filter(s=> s.person===onlyPerson)
+              : dayShiftsAll
+            const people=Array.from(new Set(dayShifts.map(s=>s.person)))
+            return (
+              <div key={d} className={["rounded-xl p-2 mt-2", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
+                <div className="text-sm font-semibold mb-1">{d} <span className="opacity-60">{fmtNice(date)}</span></div>
+                <DayGrid
+                  date={date}
+                  dayKey={dayKey}
+                  people={people}
+                  shifts={dayShifts}
+                  pto={pto}
+                  dark={dark}
+                  tz={tz}
+                  tasks={tasks}
+                  showHeaderTitle={false}
+                  compact={showOtherAgentsInPreview}
+                />
+              </div>
+            )
+          })}
+        </div>
+        </div>
+      </details>
+
+      {/* Edit Shifts section */}
+  <details open={editOpen} onToggle={(e)=> setEditOpen((e.currentTarget as HTMLDetailsElement).open)} className="rounded-xl">
+  <summary className={"cursor-pointer select-none px-3 py-2 text-sm font-semibold flex items-center gap-2 rounded-xl border "+(dark?"border-neutral-800":"border-neutral-200")}
+     onClick={(e)=>{ e.preventDefault(); const d=(e.currentTarget.parentElement as HTMLDetailsElement); d.open=!d.open; setEditOpen(d.open) }}
+                 aria-expanded={editOpen}
+                 style={{ listStyle: 'none' }}
+                 aria-controls="edit-shifts-body"
+        >
+          <span className={["inline-flex items-center justify-center w-5 h-5 rounded", dark?"bg-neutral-800":"bg-neutral-100"].join(' ')} aria-hidden>
+            {editOpen ? '▾' : '▸'}
+          </span>
+          <span>Edit Shifts</span>
+        </summary>
+        <div id="edit-shifts-body" className="pt-2">
+        <div className="flex flex-wrap gap-2 items-end mb-2">
+          <label className="text-sm flex items-center gap-2">
+            <span>Agent</span>
+            <select className={["border rounded-xl px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={editAgent} onChange={e=>setEditAgent(e.target.value)}>
+              <option value="">—</option>
+              {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+            </select>
           </label>
+          <div className="ml-auto flex gap-2">
+            <button onClick={selectAllFiltered} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Select all</button>
+            <button onClick={clearSelection} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Clear selection</button>
+            <button onClick={deleteSelected} className={["px-3 py-1.5 rounded-lg border text-sm", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete selected ({selected.size})</button>
+            <button onClick={dedupeExact} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-neutral-200 border-neutral-300"].join(' ')}>Remove exact duplicates</button>
+          </div>
         </div>
-        <div className="md:col-span-5">
-          <fieldset className="text-sm">
-            <legend className="mb-1">Days</legend>
-            <div className="flex flex-wrap gap-2">
-              {DAYS.map(d=>{
-                const active = fDays.has(d)
-                const base = 'px-3 py-1.5 rounded-full border text-sm leading-none'
-                const activeCls = dark?'bg-neutral-800 border-neutral-600 text-white':'bg-blue-600 border-blue-600 text-white'
-                const idleCls = dark?'border-neutral-700 text-neutral-200 hover:bg-neutral-900':'border-neutral-300 text-neutral-700 hover:bg-neutral-100'
-                return (
-                  <button key={d} type="button" onClick={()=>toggleFilterDay(d)} className={[base, active?activeCls:idleCls].join(' ')}>{d}</button>
-                )
-              })}
-              <button onClick={selectAllFilterDays} className={["px-2 py-1 rounded-lg border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>All</button>
-              <button onClick={clearAllFilterDays} className={["px-2 py-1 rounded-lg border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>None</button>
-            </div>
-          </fieldset>
-        </div>
-        <div className="md:col-span-4 flex flex-wrap gap-2">
-          <button onClick={selectAllFiltered} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Select all filtered</button>
-          <button onClick={clearSelection} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Clear selection</button>
-          <button onClick={deleteSelected} className={["px-3 py-1.5 rounded-lg border text-sm", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete selected ({selected.size})</button>
-          <button onClick={dedupeExact} className={["px-3 py-1.5 rounded-lg border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-neutral-200 border-neutral-300"].join(' ')}>Remove exact duplicates</button>
-        </div>
-      </div>
 
-      {/* Table */}
-  <div className={["mt-3 border rounded-xl overflow-auto no-scrollbar", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
-        <table className="min-w-full text-sm">
-          <thead className={dark?"bg-neutral-900":"bg-white"}>
-            <tr>
-              <th className="px-3 py-2 text-left w-10">✓</th>
-              <th className="px-3 py-2 text-left">Person</th>
-              <th className="px-3 py-2 text-left">Day</th>
-              <th className="px-3 py-2 text-left">Start</th>
-              <th className="px-3 py-2 text-left">End</th>
-              <th className="px-3 py-2 text-left w-28">Actions</th>
-            </tr>
-          </thead>
-          <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
-            {rows.length===0 ? (
-              <tr><td colSpan={6} className="px-3 py-6 text-center opacity-70">No shifts match the current filters.</td></tr>
-            ) : rows.map(r=> (
-              <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
-                <td className="px-3 py-1.5"><input type="checkbox" checked={selected.has(r.id)} onChange={()=>toggle(r.id)} /></td>
-                {editing===r.id ? (
-                  <>
-                    <td className="px-3 py-1.5"><input list="people" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ePerson} onChange={e=>setEPerson(e.target.value)} /></td>
-                    <td className="px-3 py-1.5">
-                      <select className={["border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eDay} onChange={e=>setEDay(e.target.value as any)}>
-                        {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-1.5"><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eStart} onChange={e=>setEStart(e.target.value)} /></td>
-                    <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-2">
-                        <input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eEnd} onChange={e=>setEEnd(e.target.value)} />
-                        <label className="inline-flex items-center gap-1 text-xs opacity-80"><input type="checkbox" checked={eOvernight} onChange={e=>setEOvernight(e.target.checked)} /> Overnight</label>
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <div className="flex gap-2">
-                        <button onClick={()=>saveEdit(r.id)} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
-                        <button onClick={cancelEdit} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="px-3 py-1.5 font-medium">{r.person}</td>
-                    <td className="px-3 py-1.5">{r.day}</td>
-                    <td className="px-3 py-1.5">{r.start}</td>
-                    <td className="px-3 py-1.5">{r.end}</td>
-                    <td className="px-3 py-1.5">
-                      <div className="flex gap-2">
-                        <button onClick={()=>beginEdit(r)} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Edit</button>
-                        <button onClick={()=>{ if(confirm('Delete this shift?')) setShifts(prev=>prev.filter(s=>s.id!==r.id)) }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
-                      </div>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {editAgent ? (
+          <div className={["rounded-xl p-2", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
+            <AgentWeekGrid
+              dark={dark}
+              tz={tz}
+              weekStart={fmtYMD(weekStartDate)}
+              agent={editAgent}
+              shifts={shifts}
+              pto={pto}
+              tasks={tasks}
+              calendarSegs={calendarSegs as any}
+            />
+          </div>
+        ) : null}
 
-      {/* datalist options for people */}
+        {/* Results (table) - static */}
+        <div className="mt-2">
+          <div className={"px-3 py-2 text-sm font-medium flex items-center gap-2 rounded-xl border "+(dark?"border-neutral-800":"border-neutral-200")}>
+            <span>Results</span>
+            <span className="opacity-60 text-xs">({rows.length})</span>
+          </div>
+          <div className={["mt-2 border rounded-xl overflow-auto no-scrollbar", dark?"border-neutral-800":"border-neutral-300"].join(' ')}>
+            <table className="min-w-full text-sm">
+              <thead className={dark?"bg-neutral-900":"bg-white"}>
+                <tr>
+                  <th className="px-3 py-2 text-left w-10">✓</th>
+                  <th className="px-3 py-2 text-left">Person</th>
+                  <th className="px-3 py-2 text-left">Day</th>
+                  <th className="px-3 py-2 text-left">Start</th>
+                  <th className="px-3 py-2 text-left">End</th>
+                  <th className="px-3 py-2 text-left w-28">Actions</th>
+                </tr>
+              </thead>
+              <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
+                {rows.length===0 ? (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center opacity-70">{editAgent? 'No shifts for this agent.' : 'Choose an agent to edit shifts.'}</td></tr>
+                ) : rows.map(r=> (
+                  <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
+                    <td className="px-3 py-1.5"><input type="checkbox" checked={selected.has(r.id)} onChange={()=>toggle(r.id)} /></td>
+                    {editing===r.id ? (
+                      <>
+                        <td className="px-3 py-1.5"><input list="people" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ePerson} onChange={e=>setEPerson(e.target.value)} /></td>
+                        <td className="px-3 py-1.5">
+                          <select className={["border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eDay} onChange={e=>setEDay(e.target.value as any)}>
+                            {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-1.5"><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eStart} onChange={e=>setEStart(e.target.value)} /></td>
+                        <td className="px-3 py-1.5"><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eEnd} onChange={e=>setEEnd(e.target.value)} /></td>
+                        <td className="px-3 py-1.5">
+                          <div className="flex gap-2">
+                            <button onClick={()=>saveEdit(r.id)} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
+                            <button onClick={cancelEdit} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-1.5 font-medium">{r.person}</td>
+                        <td className="px-3 py-1.5">{r.day}</td>
+                        <td className="px-3 py-1.5">{r.start}</td>
+                        <td className="px-3 py-1.5">{r.end}</td>
+                        <td className="px-3 py-1.5">
+                          <div className="flex gap-2">
+                            <button onClick={()=>beginEdit(r)} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Edit</button>
+                            <button onClick={()=>{ if(confirm('Delete this shift?')) setShifts(prev=>prev.filter(s=>s.id!==r.id)) }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+      </details>
+
+      
+
+  {/* datalist options for people */}
       <datalist id="people">
         {allPeople.map(p=> <option key={p} value={p} />)}
       </datalist>
