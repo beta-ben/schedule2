@@ -329,17 +329,21 @@ function AssignedPosturesList({ dark, calendarSegs, setCalendarSegs, tasks, allP
   const rows = React.useMemo(()=>{
     const dayIndex = new Map(DAYS.map((d,i)=>[d,i]))
     const filtered = calendarSegs.filter(r=> !filterTaskId || r.taskId===filterTaskId)
-    return filtered.slice().sort((a,b)=>
-      (a.person.localeCompare(b.person) || (dayIndex.get(a.day as any)! - dayIndex.get(b.day as any)!) || a.start.localeCompare(b.start))
-    )
+    return filtered.slice().sort((a,b)=>{
+      const dA = dayIndex.get(a.day as any) ?? 0
+      const dB = dayIndex.get(b.day as any) ?? 0
+      if(dA !== dB) return dA - dB
+      const tA = toMin(a.start)
+      const tB = toMin(b.start)
+      if(tA !== tB) return tA - tB
+      return a.person.localeCompare(b.person) || a.taskId.localeCompare(b.taskId) || a.end.localeCompare(b.end)
+    })
   },[calendarSegs, filterTaskId])
 
-  function beginEdit(i:number){
-    const r = rows[i]
+  function beginEdit(origIdx:number){
+    const r = calendarSegs[origIdx]
     if(!r) return
-    // Need to map to original index to save/delete accurately
-    const originalIndex = calendarSegs.findIndex(cs=> cs===r)
-    setEditingIdx(originalIndex>=0 ? originalIndex : i)
+    setEditingIdx(origIdx)
     setEaPerson(r.person)
     setEaDay(r.day)
     setEaStart(r.start)
