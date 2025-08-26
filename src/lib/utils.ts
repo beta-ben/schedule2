@@ -23,9 +23,10 @@ export function fmtDateRange(start: Date, end: Date){
   if(sY===eY && sM===eM && sD===eD){
     return fmtNice(start)
   }
-  // Same month and year: Aug 25–31, 2025
+  // Same month and year: Aug 25–31, 2025 (use thin spaces around the en dash for nicer kerning)
   if(sY===eY && sM===eM){
-    return `${sMon} ${sD}–${eD}, ${sY}`
+    const thin = '\u202F'
+    return `${sMon} ${sD}${thin}–${thin}${eD}, ${sY}`
   }
   // Same year, different months: Aug 25 – Sep 2, 2025
   if(sY===eY){
@@ -66,6 +67,28 @@ export function nowInTZ(tzId: string){
     const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][n.getDay()]
     return { minutes: n.getHours()*60+n.getMinutes(), ymd: fmtYMD(n), weekdayShort: wd as any, h:n.getHours(), m:n.getMinutes(), y:n.getFullYear(), mo:n.getMonth()+1, d:n.getDate() }
   }
+}
+
+// Get short timezone abbreviation like PST/PDT/EST/EDT for a timezone id and date
+export function tzAbbrev(tzId: string, date: Date = new Date()): string{
+  try{
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzId,
+      timeZoneName: 'short',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+    const parts = fmt.formatToParts(date)
+    const abbr = parts.find(p=>p.type==='timeZoneName')?.value
+    if(abbr && /[A-Z]{2,4}/.test(abbr)) return abbr
+  }catch{}
+  // Fallback: try offset-based GMT format
+  try{
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tzId, timeZoneName: 'shortOffset' })
+    const parts = fmt.formatToParts(date)
+    const abbr = parts.find(p=>p.type==='timeZoneName')?.value
+    if(abbr) return abbr
+  }catch{}
+  return 'UTC'
 }
 
 function mod(n:number,m:number){ return ((n % m) + m) % m }

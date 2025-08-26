@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
-import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments } from '../lib/utils'
+import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import OnDeck from '../components/OnDeck'
@@ -57,15 +57,39 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     })
   },[shifts,todayKey,tz.offset,calendarSegs])
 
-  // Live clock (HH:MM) in selected timezone
-  const [nowHHMM, setNowHHMM] = useState(()=>{
-    const n = nowInTZ(tz.id); return `${String(n.h).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
+  // Live clock in selected timezone (12-hour + meridiem)
+  const [nowClock, setNowClock] = useState(()=>{
+    const n = nowInTZ(tz.id)
+    const h12 = ((n.h % 12) || 12)
+    const hhmm = `${String(h12).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
+    const ampm = n.h >= 12 ? 'PM' : 'AM'
+    return { hhmm, ampm }
   })
   useEffect(()=>{
-    function tick(){ const n = nowInTZ(tz.id); setNowHHMM(`${String(n.h).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`) }
+    let to: number | undefined
+    let iv: number | undefined
+    const tick = ()=>{
+      const n = nowInTZ(tz.id)
+      const h12 = ((n.h % 12) || 12)
+      const hhmm = `${String(h12).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
+      const ampm = n.h >= 12 ? 'PM' : 'AM'
+      setNowClock({ hhmm, ampm })
+    }
+    const schedule = ()=>{
+      if(iv) { clearInterval(iv) }
+      if(to) { clearTimeout(to) }
+      const now = Date.now()
+      const msToNextMinute = 60000 - (now % 60000)
+      to = window.setTimeout(()=>{
+        tick()
+        iv = window.setInterval(tick, 60000)
+      }, msToNextMinute)
+    }
+    const onVis = ()=>{ if(document.visibilityState==='visible'){ tick(); schedule() } }
     tick()
-    const id = setInterval(tick, 1000 * 15) // update every 15s
-    return ()=> clearInterval(id)
+    schedule()
+    document.addEventListener('visibilitychange', onVis)
+    return ()=>{ if(iv) clearInterval(iv); if(to) clearTimeout(to); document.removeEventListener('visibilitychange', onVis) }
   }, [tz.id])
 
   // Simple day number (no ordinal suffix)
@@ -76,12 +100,12 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   return (
     <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       {/* Row with selected day label on left, live clock in the middle, and controls on the right */}
-      <div className="flex items-center justify-between mb-0 gap-2">
+  <div className="flex items-center justify-between mb-2 gap-2">
         {!agentView ? (
-          <div className="pl-2 font-semibold">
-            {/* Centered day number, very subtle color, large size; baseline lowered to align with hour labels */}
-            <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '3rem', lineHeight: 1, textAlign: 'center', position: 'relative' }}>
-              {dayNumber(selectedDate)}
+          <div className="pl-2 font-semibold self-end">
+            {/* Big day label with month; align size with clock */}
+              <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.7rem', lineHeight: 1.1, whiteSpace: 'nowrap', position: 'relative', top: -2 }}>
+                {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
             </div>
           </div>
         ) : (
@@ -93,27 +117,44 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         {/* Middle: live HH:MM clock in selected timezone */}
         <div className="flex-1 min-w-[6rem]" />
         <div className="min-w-[6rem] text-right pr-3">
-          <div className={["font-bold", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.5rem', lineHeight: 1 }}>
-            {nowHHMM}
+          <div className="inline-flex items-end justify-end gap-2">
+            <div className={["font-bold", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
+              {nowClock.hhmm}
+            </div>
+            <div className="flex flex-col items-start leading-tight text-left">
+              <div className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
+                {nowClock.ampm}
+              </div>
+              <div className={["uppercase tracking-wide", dark?"text-neutral-500":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
+                {tzAbbrev(tz.id)}
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Agent weekly view selector */}
+          {/* Agent weekly view selector (icon inside field, no text label) */}
           <div className="flex items-center gap-2">
-            <label className={["text-sm", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>Agent:</label>
-            <select
-              className={["text-sm px-2 py-1 rounded border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-              value={agentView}
-              onChange={(e)=>setAgentView(e.target.value)}
-            >
-              <option value="">—</option>
-              {allPeople.map(p=> (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <svg aria-hidden className={["pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5", dark?"text-neutral-300":"text-neutral-600"].join(' ')} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <select
+                aria-label="Agent"
+                title="Agent"
+                className={["border rounded-xl pl-9 pr-2 py-1 sm:py-1.5 text-xs sm:text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                value={agentView}
+                onChange={(e)=>setAgentView(e.target.value)}
+              >
+                <option value="">—</option>
+                {allPeople.map(p=> (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
             {agentView && (
-              <button onClick={()=>setAgentView('')} className={["text-xs px-2 py-1 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>Clear</button>
+              <button onClick={()=>setAgentView('')} className={["px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border text-xs sm:text-sm", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>Clear</button>
             )}
           </div>
 
