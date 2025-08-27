@@ -6,6 +6,7 @@ import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
 import ManagePage from './pages/ManagePage'
+import ManageV2Page from './pages/ManageV2Page'
 import { generateSample } from './sample'
 import { sha256Hex } from './lib/utils'
 import { TZ_OPTS } from './constants'
@@ -13,13 +14,32 @@ import { TZ_OPTS } from './constants'
 const SAMPLE = generateSample()
 
 export default function App(){
-  const [view,setView] = useState<'schedule'|'manage'>('schedule')
+  const hashToView = (hash:string): 'schedule'|'manage'|'manageV2' => {
+    const h = (hash||'').toLowerCase()
+    if(h.includes('manage2')) return 'manageV2'
+    if(h.includes('manage')) return 'manage'
+    return 'schedule'
+  }
+  const [view,setView] = useState<'schedule'|'manage'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
   const [dark,setDark] = useState(true)
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
+  // v2: dedicated agents list (temporary local persistence)
+  type AgentRow = { firstName: string; lastName: string; tzId?: string }
+  const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
+    try{
+      const raw = localStorage.getItem('schedule_agents_v2_v1')
+      if(raw){
+        const parsed = JSON.parse(raw)
+        if(Array.isArray(parsed)) return parsed as AgentRow[]
+      }
+    }catch{}
+    // No saved list yet; start empty and bootstrap after cloud loads
+    return []
+  })
   const [tasks, setTasks] = useState<Task[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_tasks')
@@ -134,12 +154,28 @@ export default function App(){
   }
 
   useEffect(()=>{ (async()=>{
+    const usingProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
+    if(usingProxy){
+      const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
+      setCanEdit(!!hasCsrf)
+      return
+    }
     const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
     const saved = localStorage.getItem('schedule_pw_hash')
     setCanEdit(saved === expected)
   })() }, [view])
 
   useEffect(()=>{ (async()=>{ const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto); if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any) } setLoadedFromCloud(true) })() },[])
+  // Keep view in sync with URL hash and vice versa
+  useEffect(()=>{
+    const handler = ()=> setView(hashToView(window.location.hash))
+    window.addEventListener('hashchange', handler)
+    return ()=> window.removeEventListener('hashchange', handler)
+  },[])
+  useEffect(()=>{
+    const desired = view==='manageV2' ? '#manage2' : view==='manage' ? '#manage' : '#schedule'
+    if(window.location.hash !== desired){ window.location.hash = desired }
+  },[view])
   // Seed default postures if none exist on first mount
   useEffect(()=>{
     if(tasks.length===0){
@@ -159,24 +195,54 @@ export default function App(){
   useEffect(()=>{
     try{ localStorage.setItem('schedule_calendarSegs', JSON.stringify(calendarSegs)) }catch{}
   },[calendarSegs])
+  // Persist v2 agents locally
+  useEffect(()=>{
+    try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(agentsV2)) }catch{}
+  },[agentsV2])
   // Auto-save local edits to the cloud only when editing is allowed and NOT in draft mode
   useEffect(()=>{ if(!loadedFromCloud || !canEdit || draftActive) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,calendarSegs,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,calendarSegs,loadedFromCloud,canEdit,draftActive])
 
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   useEffect(()=>{
     if(view!== 'schedule') return
-    const id = setInterval(async ()=>{
+    let stopped = false
+    const pull = async ()=>{
       const data = await cloudGet()
-      if(data){
-        // Only update if changed to avoid unnecessary state churn
-        const sameShifts = JSON.stringify(data.shifts) === JSON.stringify(shifts)
-        const samePto = JSON.stringify(data.pto) === JSON.stringify(pto)
-        if(!sameShifts) setShifts(data.shifts)
-        if(!samePto) setPto(data.pto)
-      }
-    }, 5 * 60 * 1000)
-    return ()=>clearInterval(id)
-  }, [view, shifts, pto])
+      if(!data || stopped) return
+      if(JSON.stringify(data.shifts)!==JSON.stringify(shifts)) setShifts(data.shifts)
+      if(JSON.stringify(data.pto)!==JSON.stringify(pto)) setPto(data.pto)
+      if(Array.isArray(data.calendarSegs) && JSON.stringify(data.calendarSegs)!==JSON.stringify(calendarSegs)) setCalendarSegs(data.calendarSegs as any)
+    }
+    pull()
+    const id = setInterval(pull, 5 * 60 * 1000)
+    return ()=>{ stopped = true; clearInterval(id) }
+  }, [view, shifts, pto, calendarSegs])
+
+  // Derived: list of unique agent names
+  const agents = useMemo(()=> Array.from(new Set(shifts.map(s=>s.person))).sort(), [shifts])
+
+  // Bootstrap v2 agents from real shifts once cloud data is loaded, only if not already saved
+  useEffect(()=>{
+    if(!loadedFromCloud) return
+    const namesFrom = (arr: { firstName:string; lastName:string }[])=> arr.map(a=>`${a.firstName} ${a.lastName}`.trim()).sort()
+    const uniqNames = (people:string[])=> Array.from(new Set(people)).sort()
+
+    const currentAgentNames = namesFrom(agentsV2)
+    const sampleNames = uniqNames(SAMPLE.shifts.map(s=>s.person))
+    const cloudNames = uniqNames(shifts.map(s=>s.person))
+
+    const isEmpty = agentsV2.length===0
+    const equals = (a:string[], b:string[])=> a.length===b.length && a.every((v,i)=>v===b[i])
+    const looksLikeSample = equals(currentAgentNames, sampleNames)
+
+    if(isEmpty || looksLikeSample){
+      const derived = cloudNames.map(n=>{
+        const parts = n.split(' ')
+        return { firstName: parts[0]||n, lastName: parts.slice(1).join(' ')||'', tzId: TZ_OPTS[0]?.id }
+      })
+      setAgentsV2(derived)
+    }
+  }, [loadedFromCloud, shifts, agentsV2])
 
   return (
     <ErrorCatcher dark={dark}>
@@ -207,7 +273,7 @@ export default function App(){
               editMode={editMode}
               onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
             />
-          ) : (
+          ) : view==='manage' ? (
             <ManagePage
               dark={dark}
               weekStart={weekStart}
@@ -228,6 +294,23 @@ export default function App(){
               onStartDraftEmpty={startDraftEmpty}
               onDiscardDraft={discardDraft}
               onPublishDraft={publishDraft}
+            />
+          ) : (
+            <ManageV2Page
+              dark={dark}
+              agents={agentsV2}
+              onAddAgent={(a:{ firstName:string; lastName:string; tzId:string })=> setAgentsV2(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))}
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string })=> setAgentsV2(prev=> prev.map((r,i)=> i===index ? a : r))}
+              onDeleteAgent={(index:number)=> setAgentsV2(prev=> prev.filter((_,i)=> i!==index))}
+              weekStart={weekStart}
+              tz={tz}
+              shifts={draftActive ? (draft!.data.shifts) : shifts}
+              pto={draftActive ? (draft!.data.pto) : pto}
+              tasks={tasks}
+              calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
+              onUpdateShift={(id, patch)=> setShiftsRouted(prev=> prev.map(s=> s.id===id ? { ...s, ...patch } : s))}
+              onDeleteShift={(id)=> setShiftsRouted(prev=> prev.filter(s=> s.id!==id))}
+              onAddShift={(s)=> setShiftsRouted(prev=> prev.concat([s]))}
             />
           )}
         </div>

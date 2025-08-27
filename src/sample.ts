@@ -28,8 +28,8 @@ export function generateSample(){
           const spill=endMinRaw-1440
           const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
           const nextDay = days[(days.indexOf(day as any)+1)%7] as any
-          shifts.push({ id: uid(), person, day, start: minToHHMM(startMin), end: '24:00' })
-          shifts.push({ id: uid(), person, day: nextDay, start: '00:00', end: minToHHMM(spill) })
+          shifts.push({ id: uid(), person, day, start: minToHHMM(startMin), end: '24:00', endDay: nextDay })
+          shifts.push({ id: uid(), person, day: nextDay, start: '00:00', end: minToHHMM(spill), endDay: nextDay })
         }
       }
     }

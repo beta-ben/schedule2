@@ -45,7 +45,13 @@ export default function AgentWeekGrid({
   const NOW_FONT_PX = Math.max(9, Math.round(10*scale))
   const CHIP_H = Math.max(20, Math.round(24*scale))
   const RAIL_H = Math.max(6, Math.round(8*scale))
-  const hourEvery = bp==='lg'?1:bp==='md'?2:3
+  // Show fewer time labels to reduce visual noise
+  const hourEvery = bp==='lg'?2:bp==='md'?3:4
+  // Start the visible axis at 2am
+  const START_MIN = 2 * 60
+  const timeToPct = (min:number) => (((min - START_MIN + totalMins) % totalMins) / totalMins) * 100
+  // Match column count to number of labels (24 hours / hourEvery)
+  const cols = Math.max(1, Math.round(24 / hourEvery))
   const NAME_COL = `${NAME_COL_PX}px`
   const LABEL_TOP = Math.round(30*scale)
   const LABEL_H = Math.max(12, Math.round(16*scale))
@@ -75,7 +81,7 @@ export default function AgentWeekGrid({
   const [nowTick,setNowTick]=useState(Date.now())
   useEffect(()=>{ const id=setInterval(()=>setNowTick(Date.now()),30000); return ()=>clearInterval(id) },[])
   const nowTz = nowInTZ(tz.id)
-  const nowLeft=((nowTz.minutes)/totalMins)*100
+  const nowLeft=timeToPct(nowTz.minutes)
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
 
   // Colors
@@ -89,15 +95,16 @@ export default function AgentWeekGrid({
         <div className={dark?"bg-neutral-900":"bg-white"}></div>
         <div className={["relative", dark?"bg-neutral-900":"bg-white"].join(' ')} style={{height:HEADER_H}}>
           <div className="absolute left-0 right-0" style={{top:LABEL_TOP,height:LABEL_H}}>
-            {Array.from({length:24},(_,i)=>i).map((h,i)=> (
-              (i % hourEvery === 0) && (
-                <div key={i} className="absolute text-left pl-1 leading-none pointer-events-none" style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
-                  <div className={["font-medium hour-label",textSub].join(' ')} style={{ fontSize: HOUR_LABEL_PX }}>
+            {Array.from({length: cols},(_,j)=>j).map(j=>{
+              const h = (2 + j * hourEvery) % 24
+              return (
+                <div key={j} className="absolute text-left pl-1 leading-none pointer-events-none" style={{ left: `calc(${j} * (100% / ${cols}))`, width: `calc(100% / ${cols})` }}>
+                  <div className={["hour-label font-normal opacity-70",textSub].join(' ')} style={{ fontSize: HOUR_LABEL_PX }}>
                     {h===0?12:h>12?h-12:h}{h<12?"am":"pm"}
                   </div>
                 </div>
               )
-            ))}
+            })}
           </div>
         </div>
       </div>
@@ -128,11 +135,23 @@ export default function AgentWeekGrid({
               </div>
               <div className="relative" style={{
                 backgroundImage:`linear-gradient(to right, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 0, ${dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.03)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 50%, ${dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)'} 100%)`,
-                backgroundSize:`calc(100%/${COLS}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
+                backgroundSize:`calc(100%/${cols}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
               }}>
                 {items.map(s=>{
                   const sMin=toMin(s.start); const eMinRaw=toMin(s.end); const eMin=eMinRaw>sMin?eMinRaw:1440
-                  const left=(sMin/totalMins)*100; const width=Math.max(0.5, ((eMin-sMin)/totalMins)*100)
+                  // Map to axis that starts at 6am; split across wrap if needed
+                  const axisStart = (sMin - START_MIN + totalMins) % totalMins
+                  const axisEnd = (eMin - START_MIN + totalMins) % totalMins
+                  const segsAxis: Array<{ leftPct:number; widthPct:number }> = []
+                  if(axisEnd > axisStart){
+                    segsAxis.push({ leftPct: (axisStart/totalMins)*100, widthPct: Math.max(0.5, ((axisEnd-axisStart)/totalMins)*100) })
+                  }else{
+                    // Wraps past end
+                    segsAxis.push({ leftPct: (axisStart/totalMins)*100, widthPct: Math.max(0.5, ((totalMins-axisStart)/totalMins)*100) })
+                    if(axisEnd > 0){
+                      segsAxis.push({ leftPct: 0, widthPct: Math.max(0.5, (axisEnd/totalMins)*100) })
+                    }
+                  }
                   const dur = eMin - sMin
                   const baseColor = (dark?darkbg:light)
                   const baseBorder = (dark?darkbd:`hsl(${hue},65%,50%)`)
@@ -163,21 +182,36 @@ export default function AgentWeekGrid({
                   }
 
                   const segLines = pieces.filter(p=>p.kind==='seg').map(p=>p.title.replace(/^.* • /,''))
-                  const chipTitle = `${s.person} • ${s.start}-${s.end}` + (segLines.length ? `\n\nTasks:\n${segLines.join('\n')}` : '')
+                  const chipTitle = `${s.person} \u2022 ${s.start}-${s.end}` + (segLines.length ? `\n\nTasks:\n${segLines.join('\n')}` : '')
 
                   return (
                     <div key={`${s.person}-${s.day}-${s.start}-${s.end}`} className="relative" title={chipTitle}>
                       {pieces.map(p=>{
-                        const pLeft = ((sMin + p.startOff)/totalMins)*100
-                        const pW = (p.len/totalMins)*100
+                        // Map piece positions into axis space, possibly split across wrap
+                        const pStart = (sMin + p.startOff)
+                        const pEnd = pStart + p.len
+                        const aStart = (pStart - START_MIN + totalMins) % totalMins
+                        const aEnd = (pEnd - START_MIN + totalMins) % totalMins
+                        const parts: Array<{ leftPct:number; widthPct:number; key:string }> = []
+                        if(aEnd > aStart){
+                          parts.push({ leftPct:(aStart/totalMins)*100, widthPct:(p.len/totalMins)*100, key:`one-${p.key}` })
+                        }else{
+                          const firstLen = totalMins - aStart
+                          const secondLen = p.len - firstLen
+                          parts.push({ leftPct:(aStart/totalMins)*100, widthPct:(firstLen/totalMins)*100, key:`wrapA-${p.key}` })
+                          if(secondLen > 0){ parts.push({ leftPct:0, widthPct:(secondLen/totalMins)*100, key:`wrapB-${p.key}` }) }
+                        }
                         const borderCol = p.kind==='seg' && p.border ? p.border : baseBorder
-                        return (
-                          <div key={p.key} className="absolute rounded" style={{ left:`${pLeft}%`, width:`${pW}%`, height: CHIP_H, backgroundColor:p.color, boxShadow:`inset 0 0 0 1px ${borderCol}` }} title={p.title} />
-                        )
+                        return parts.map(part=> (
+                          <div key={part.key} className="absolute rounded" style={{ left:`${part.leftPct}%`, width:`${part.widthPct}%`, height: CHIP_H, backgroundColor:p.color, boxShadow:`inset 0 0 0 1px ${borderCol}` }} title={p.title} />
+                        ))
                       })}
-                      <div className="absolute flex items-center justify-center px-2 truncate pointer-events-none" style={{ left:`${left}%`, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
-                        {s.start}-{s.end}
-                      </div>
+                      {/* Label overlay on first axis segment */}
+                      {segsAxis.length>0 && (
+                        <div className="absolute flex items-center justify-center px-2 truncate pointer-events-none" style={{ left:`${segsAxis[0].leftPct}%`, width:`${segsAxis[0].widthPct}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
+                          {s.start}-{s.end}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
