@@ -6,6 +6,8 @@ export type Shift = {
   day: Day
   start: string // HH:MM
   end: string   // HH:MM
+  // Optional: explicit day the shift ends (same week key). If omitted, overnight is inferred when end <= start (except 24:00)
+  endDay?: Day
   // Optional task segments within this shift (minutes relative to start)
   segments?: ShiftSegment[]
 }

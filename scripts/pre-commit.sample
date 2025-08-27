@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+has_match() {
+  git diff --cached -G"$1" --name-only | grep -q .
+}
+
+if has_match 'sk-[a-zA-Z0-9_-]{20,}'; then
+  echo "Error: Potential OpenAI-like secret detected in staged changes."
+  exit 1
+fi
+
+if has_match 'AKIA[0-9A-Z]{16}'; then
+  echo "Error: Potential AWS key detected in staged changes."
+  exit 1
+fi
+
+if has_match '(?i)password\s*[:=]'; then
+  echo "Error: Plaintext password assignment detected in staged changes."
+  exit 1
+fi
+
+exit 0

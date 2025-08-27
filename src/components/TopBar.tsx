@@ -5,8 +5,8 @@ import { TZ_OPTS } from '../constants'
 export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
-  view: 'schedule'|'manage'
-  setView: (v:'schedule'|'manage')=>void
+  view: 'schedule'|'manage'|'manageV2'
+  setView: (v:'schedule'|'manage'|'manageV2')=>void
   weekStart: string
   setWeekStart: (v:string)=>void
   tz: { id:string; label:string; offset:number }
@@ -19,9 +19,9 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   const weekEndDate = addDays(weekStartDate, 6)
   return (
     <header className="mb-1">
-  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 pt-1 pb-2">
+  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1 pb-2">
         {/* Left: view buttons */}
-  <div className="flex flex-wrap items-center gap-2 justify-end">
+  <div className="flex flex-wrap items-center gap-2 justify-start">
           <button
             onClick={()=>setView('schedule')}
             aria-label="Schedule"
@@ -52,6 +52,20 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
               <circle cx="9" cy="6" r="2"/>
               <circle cx="15" cy="12" r="2"/>
               <circle cx="11" cy="18" r="2"/>
+            </svg>
+          </button>
+          <button
+            onClick={()=>setView('manageV2')}
+            aria-label="Manage v2"
+            title="Manage v2"
+            className={["inline-flex items-center justify-center h-10 px-3 rounded-lg text-sm font-medium border", view==='manageV2' ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}
+          >
+            {/* Wand icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <path d="M15 4l-3 3"/>
+              <path d="M19 8l-3 3"/>
+              <path d="M5 14l-3 3"/>
+              <path d="M7 2l2 2M2 7l2 2M17 12l2 2M12 17l2 2"/>
             </svg>
           </button>
         </div>

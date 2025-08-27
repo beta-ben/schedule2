@@ -27,22 +27,35 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
   const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
   const weekStartDate = parseYMD(weekStart)
+  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
 
   React.useEffect(()=> { (async () => {
+    if(useDevProxy){
+      // Best-effort: if csrf cookie exists, assume signed-in session
+      const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
+      if(hasCsrf) setUnlocked(true)
+      return
+    }
     const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
     try {
       const saved = localStorage.getItem('schedule_pw_hash')
       if (saved === expected) setUnlocked(true)
     } catch {}
-  })() }, [])
+  })() }, [useDevProxy])
 
   if (!unlocked) {
     return (
       <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
         <div className="max-w-md mx-auto space-y-3">
           <div className="text-lg font-semibold">Protected — Manage Data</div>
-          <p className="text-sm opacity-80">Enter password to continue.</p>
+          <p className="text-sm opacity-80">{useDevProxy ? 'Sign in to your local dev session.' : 'Enter password to continue.'}</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
+            if(useDevProxy){
+              const { devLogin } = await import('../lib/api')
+              const ok = await devLogin(pwInput)
+              if(ok){ setUnlocked(true); setMsg('') } else { setMsg('Login failed') }
+              return
+            }
             const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
             const entered  = await sha256Hex(pwInput || '')
             if (pwInput === (import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares') || entered === expected) {
@@ -52,10 +65,11 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
           })() }}>
             <div className="flex gap-2">
               <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />
-              <button type="submit" className={["rounded-xl px-4 py-2 font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>Unlock</button>
+              <button type="submit" className={["rounded-xl px-4 py-2 font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>{useDevProxy ? 'Sign in' : 'Unlock'}</button>
             </div>
           </form>
           {msg && (<div className={["text-sm", dark ? "text-red-300" : "text-red-600"].join(' ')}>{msg}</div>)}
+          {useDevProxy && (<div className="text-xs opacity-70">Run the dev auth proxy and set VITE_DEV_PROXY_BASE to use it.</div>)}
         </div>
       </section>
     )

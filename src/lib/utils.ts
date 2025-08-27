@@ -105,10 +105,11 @@ export function convertShiftsToTZ(shifts: Shift[], offsetHours: number): Shift[]
   for(const s of shifts){
     const sMinPT = toMin(s.start)
     const eMinPTRaw = s.end === '24:00' ? 1440 : toMin(s.end)
-    // Support overnight (single record where end < start): treat end as next-day time
+    // Determine duration; if endDay is explicit, use that to decide cross-midnight
+    const crosses = typeof s.endDay === 'string' ? (s.endDay !== s.day) : (eMinPTRaw < sMinPT && s.end !== '24:00')
     const duration = s.end === '24:00'
       ? (1440 - sMinPT)
-      : (eMinPTRaw >= sMinPT ? (eMinPTRaw - sMinPT) : ((1440 - sMinPT) + eMinPTRaw))
+      : crosses ? ((1440 - sMinPT) + eMinPTRaw) : (eMinPTRaw - sMinPT)
     const eMinPT = sMinPT + duration
     const sMinLocal = sMinPT + offsetMin
     const eMinLocal = eMinPT + offsetMin
@@ -125,8 +126,8 @@ export function convertShiftsToTZ(shifts: Shift[], offsetHours: number): Shift[]
       res.push({ ...s, day: startDay, start: minToHHMM(startLocal), end: eMinLocal - sMinLocal === 1440 ? '24:00' : minToHHMM(endLocal) })
     }else{
       // Spans midnight in local TZ: split into two segments
-      res.push({ ...s, day: startDay, start: minToHHMM(startLocal), end: '24:00' })
-      res.push({ ...s, day: endDay,   start: '00:00', end: minToHHMM(endLocal) })
+      res.push({ ...s, day: startDay, start: minToHHMM(startLocal), end: '24:00', endDay: endDay })
+      res.push({ ...s, day: endDay,   start: '00:00', end: minToHHMM(endLocal), endDay: endDay })
     }
   }
   return res

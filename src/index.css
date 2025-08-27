@@ -16,3 +16,23 @@ html, body, #root { height: 100%; }
 /* Also hide page-level scrollbars globally */
 html, body { -ms-overflow-style: none; scrollbar-width: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+
+/* Quick animate-in for newly added list items */
+@keyframes shift-add-in-keyframes {
+	0% { opacity: 0; transform: translateY(-4px) scale(0.98); }
+	100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.shift-add-in {
+	animation: shift-add-in-keyframes 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	.shift-add-in { animation: none; }
+}
+
+/* Time input normalization to avoid icon overlapping text across browsers */
+input[type="time"]::-webkit-calendar-picker-indicator{
+	opacity: 1; /* keep visible in Chrome/Edge */
+}
+/* Reserve space so text doesn't sit under the native icon */
+input[type="time"]{ padding-right: 2.25rem; }
+/* On Firefox, keep default icon; avoid WebKit-specific rules */

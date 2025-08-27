@@ -1,6 +1,6 @@
 # Schedule 2
 
-React + TypeScript + Vite + Tailwind. Password-gated Manage area, cloud sync, timezone-aware daily grid, and helpful "On deck"/"Up next" side panels.
+React + TypeScript + Vite + Tailwind. Manage area (dev proxy sign-in or local gate), cloud sync, timezone-aware daily grid, and helpful "On deck"/"Up next" side panels.
 
 ## Features
 
@@ -29,9 +29,22 @@ Open the printed local URL (Vite), then use the Manage tab to edit data.
 These are optional; sensible defaults are provided for local use.
 
 - `VITE_SCHEDULE_API_BASE` — Cloud API base (default: `https://team-schedule-api.bsteward.workers.dev`)
-- `VITE_SCHEDULE_WRITE_PASSWORD` — Manage password and API write password (default: `betacares`)
+- `VITE_SCHEDULE_WRITE_PASSWORD` — Legacy local Manage gate (default: `betacares`). Do not use for dev writes when using the proxy.
+- `VITE_DEV_PROXY_BASE` — Optional dev auth proxy (e.g., `http://localhost:8787`). When set, the app uses cookie auth + CSRF and never sends passwords from the client.
 
-The Manage page is gated by this password. It’s also sent as `X-Admin-Password` for cloud writes.
+When `VITE_DEV_PROXY_BASE` is set, Manage uses a sign-in flow backed by the local dev proxy, and requests include credentials and CSRF headers. No secrets are embedded client-side.
+
+### Dev auth proxy
+
+A minimal dev-only server sits in `dev-server/` to avoid client-embedded secrets:
+
+```
+cd dev-server
+cp .env.example .env # set DEV_ADMIN_PASSWORD
+npm i && npm start
+```
+
+Set `VITE_DEV_PROXY_BASE=http://localhost:8787` in your frontend `.env.local`. The Manage page will prompt for sign-in and then use cookies + CSRF for GET/POST of schedule data.
 
 ## Using Manage
 
