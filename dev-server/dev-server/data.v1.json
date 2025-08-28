@@ -1,0 +1,2037 @@
+{
+  "schemaVersion": 1,
+  "org": {
+    "id": "org-1",
+    "name": "Schedule"
+  },
+  "timezone": "America/Los_Angeles",
+  "employees": [
+    {
+      "id": "emp-1",
+      "displayName": "Andi",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-2",
+      "displayName": "Andres",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-3",
+      "displayName": "Avery",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-4",
+      "displayName": "Ben",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-5",
+      "displayName": "Brandon",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-6",
+      "displayName": "Cameron",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-7",
+      "displayName": "Charlene",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-8",
+      "displayName": "Chase",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-9",
+      "displayName": "Cheri",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-10",
+      "displayName": "Chris",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-11",
+      "displayName": "Ethan",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-12",
+      "displayName": "Helena",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-13",
+      "displayName": "Ian",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-14",
+      "displayName": "Jimmy Fivefingers",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-15",
+      "displayName": "Josh",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-16",
+      "displayName": "Kenzie",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-17",
+      "displayName": "Lillian",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-18",
+      "displayName": "Lindsay",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-19",
+      "displayName": "Mali",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-20",
+      "displayName": "Miguel",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-21",
+      "displayName": "Mike",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-22",
+      "displayName": "Patrick",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-23",
+      "displayName": "Peyton",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-24",
+      "displayName": "Richard",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-25",
+      "displayName": "Rocio",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-26",
+      "displayName": "Sam",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-27",
+      "displayName": "Sampson",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-28",
+      "displayName": "Sierra",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-29",
+      "displayName": "Soroush",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-30",
+      "displayName": "Tabitha",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-31",
+      "displayName": "Tanner",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-32",
+      "displayName": "Test Agent",
+      "active": true,
+      "roleIds": []
+    },
+    {
+      "id": "emp-33",
+      "displayName": "VIctor",
+      "active": true,
+      "roleIds": []
+    }
+  ],
+  "roles": [],
+  "locations": [],
+  "events": [
+    {
+      "kind": "shift",
+      "id": "kepzflq",
+      "start": "2025-08-25T08:00:00.000Z",
+      "end": "2025-08-25T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-26",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "yeoncjw",
+      "start": "2025-08-26T08:00:00.000Z",
+      "end": "2025-08-26T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-26",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "p8mxcja",
+      "start": "2025-08-27T08:00:00.000Z",
+      "end": "2025-08-27T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-26",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "9c9ixjv",
+      "start": "2025-08-28T08:00:00.000Z",
+      "end": "2025-08-28T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-26",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "7fcbc3k",
+      "start": "2025-08-29T08:00:00.000Z",
+      "end": "2025-08-29T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-26",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "3ow4p0u",
+      "start": "2025-08-25T03:00:00.000Z",
+      "end": "2025-08-25T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-7",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xb8h438",
+      "start": "2025-08-26T06:30:00.000Z",
+      "end": "2025-08-26T15:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-7",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xlka9sv",
+      "start": "2025-08-27T02:00:00.000Z",
+      "end": "2025-08-27T10:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-7",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "rj37i23",
+      "start": "2025-08-24T06:30:00.000Z",
+      "end": "2025-08-24T15:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-7",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "cwiu9kf",
+      "start": "2025-08-25T05:00:00.000Z",
+      "end": "2025-08-25T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-30",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "fphndx6",
+      "start": "2025-08-26T05:00:00.000Z",
+      "end": "2025-08-26T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-30",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "lc23f4v",
+      "start": "2025-08-27T05:00:00.000Z",
+      "end": "2025-08-27T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-30",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "dm3dwja",
+      "start": "2025-08-28T05:00:00.000Z",
+      "end": "2025-08-28T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-30",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "zwpr06g",
+      "start": "2025-08-29T05:00:00.000Z",
+      "end": "2025-08-29T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-30",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "04ccvfk",
+      "start": "2025-08-26T09:00:00.000Z",
+      "end": "2025-08-26T17:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-20",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "fwwtybc",
+      "start": "2025-08-27T09:00:00.000Z",
+      "end": "2025-08-27T17:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-20",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "nw1bpiw",
+      "start": "2025-08-28T09:00:00.000Z",
+      "end": "2025-08-28T17:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-20",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "m1oc6wv",
+      "start": "2025-08-29T09:00:00.000Z",
+      "end": "2025-08-29T17:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-20",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "cksljp0",
+      "start": "2025-08-30T09:00:00.000Z",
+      "end": "2025-08-30T17:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-20",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "em09emw",
+      "start": "2025-08-25T06:00:00.000Z",
+      "end": "2025-08-25T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-15",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "j73k52v",
+      "start": "2025-08-26T06:00:00.000Z",
+      "end": "2025-08-26T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-15",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "of3nuyq",
+      "start": "2025-08-27T06:00:00.000Z",
+      "end": "2025-08-27T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-15",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "i2nt0p8",
+      "start": "2025-08-28T06:00:00.000Z",
+      "end": "2025-08-28T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-15",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "w57fh8t",
+      "start": "2025-08-29T06:00:00.000Z",
+      "end": "2025-08-29T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-15",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "p8pk98w",
+      "start": "2025-08-26T07:00:00.000Z",
+      "end": "2025-08-26T15:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-13",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "4q5b4q6",
+      "start": "2025-08-27T07:00:00.000Z",
+      "end": "2025-08-27T15:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-13",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "p56e5d0",
+      "start": "2025-08-28T07:00:00.000Z",
+      "end": "2025-08-28T15:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-13",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "3lxdtru",
+      "start": "2025-08-29T07:00:00.000Z",
+      "end": "2025-08-29T15:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-13",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "l79244p",
+      "start": "2025-08-30T07:00:00.000Z",
+      "end": "2025-08-30T15:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-13",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "nmioho8",
+      "start": "2025-08-26T04:00:00.000Z",
+      "end": "2025-08-26T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-9",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ns8ygmi",
+      "start": "2025-08-27T04:00:00.000Z",
+      "end": "2025-08-27T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-9",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "yisf0es",
+      "start": "2025-08-28T04:00:00.000Z",
+      "end": "2025-08-28T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-9",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "awt26w1",
+      "start": "2025-08-25T04:00:00.000Z",
+      "end": "2025-08-25T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-9",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "t9u2i3l",
+      "start": "2025-08-24T04:00:00.000Z",
+      "end": "2025-08-24T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-9",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ixx4p1j",
+      "start": "2025-08-26T03:00:00.000Z",
+      "end": "2025-08-26T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-17",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "7fo7ccr",
+      "start": "2025-08-27T03:00:00.000Z",
+      "end": "2025-08-27T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-17",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "19y4pka",
+      "start": "2025-08-28T03:00:00.000Z",
+      "end": "2025-08-28T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-17",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "v96ch9y",
+      "start": "2025-08-29T03:00:00.000Z",
+      "end": "2025-08-29T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-17",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "z32zvc9",
+      "start": "2025-08-30T05:00:00.000Z",
+      "end": "2025-08-30T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-17",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "alxnoau",
+      "start": "2025-08-26T05:00:00.000Z",
+      "end": "2025-08-26T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-5",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "19p1c9a",
+      "start": "2025-08-27T05:00:00.000Z",
+      "end": "2025-08-27T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-5",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ob90kbz",
+      "start": "2025-08-28T05:00:00.000Z",
+      "end": "2025-08-28T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-5",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "vjwwnh8",
+      "start": "2025-08-29T05:00:00.000Z",
+      "end": "2025-08-29T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-5",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "rturqvx",
+      "start": "2025-08-30T05:00:00.000Z",
+      "end": "2025-08-30T13:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-5",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "mvr47j1",
+      "start": "2025-08-25T03:00:00.000Z",
+      "end": "2025-08-25T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-28",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "q92oeyh",
+      "start": "2025-08-26T03:00:00.000Z",
+      "end": "2025-08-26T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-28",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "d9lxznj",
+      "start": "2025-08-27T03:00:00.000Z",
+      "end": "2025-08-27T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-28",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "px82lc7",
+      "start": "2025-08-28T03:00:00.000Z",
+      "end": "2025-08-28T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-28",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "wzbrrc3",
+      "start": "2025-08-29T03:00:00.000Z",
+      "end": "2025-08-29T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-28",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "d08f8q2",
+      "start": "2025-08-26T06:00:00.000Z",
+      "end": "2025-08-26T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-31",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "jcpm1vz",
+      "start": "2025-08-27T06:00:00.000Z",
+      "end": "2025-08-27T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-31",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "5kq3sm8",
+      "start": "2025-08-28T06:00:00.000Z",
+      "end": "2025-08-28T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-31",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "u1xysy3",
+      "start": "2025-08-29T06:00:00.000Z",
+      "end": "2025-08-29T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-31",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "hurluze",
+      "start": "2025-08-30T06:00:00.000Z",
+      "end": "2025-08-30T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-31",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xy90o2o",
+      "start": "2025-08-26T06:00:00.000Z",
+      "end": "2025-08-26T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-33",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "mq4fwrj",
+      "start": "2025-08-27T06:00:00.000Z",
+      "end": "2025-08-27T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-33",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "q4fefk5",
+      "start": "2025-08-28T06:00:00.000Z",
+      "end": "2025-08-28T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-33",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "opnqzfy",
+      "start": "2025-08-29T06:00:00.000Z",
+      "end": "2025-08-29T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-33",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "obt4jgp",
+      "start": "2025-08-30T06:00:00.000Z",
+      "end": "2025-08-30T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-33",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "w1oaj8y",
+      "start": "2025-08-26T12:00:00.000Z",
+      "end": "2025-08-26T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-8",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "bl3r46j",
+      "start": "2025-08-27T12:00:00.000Z",
+      "end": "2025-08-27T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-8",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "hxlfn9b",
+      "start": "2025-08-28T12:00:00.000Z",
+      "end": "2025-08-28T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-8",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "6ss181b",
+      "start": "2025-08-29T12:00:00.000Z",
+      "end": "2025-08-29T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-8",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "7yl9esd",
+      "start": "2025-08-30T12:00:00.000Z",
+      "end": "2025-08-30T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-8",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "38r433r",
+      "start": "2025-08-26T10:00:00.000Z",
+      "end": "2025-08-26T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-29",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "gcf3kwy",
+      "start": "2025-08-27T10:00:00.000Z",
+      "end": "2025-08-27T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-29",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "okojq4a",
+      "start": "2025-08-28T10:00:00.000Z",
+      "end": "2025-08-28T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-29",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "8kch3jt",
+      "start": "2025-08-29T10:00:00.000Z",
+      "end": "2025-08-29T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-29",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "sutwk95",
+      "start": "2025-08-30T10:00:00.000Z",
+      "end": "2025-08-30T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-29",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "bq2ma6d",
+      "start": "2025-08-26T03:00:00.000Z",
+      "end": "2025-08-26T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-24",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "2952im6",
+      "start": "2025-08-27T03:00:00.000Z",
+      "end": "2025-08-27T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-24",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "jroz22u",
+      "start": "2025-08-28T03:00:00.000Z",
+      "end": "2025-08-28T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-24",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "fh2epvl",
+      "start": "2025-08-25T03:00:00.000Z",
+      "end": "2025-08-25T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-24",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "72jdmae",
+      "start": "2025-08-24T03:00:00.000Z",
+      "end": "2025-08-24T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-24",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "9x37dyz",
+      "start": "2025-08-26T03:00:00.000Z",
+      "end": "2025-08-26T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-22",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "b9iez5l",
+      "start": "2025-08-27T03:00:00.000Z",
+      "end": "2025-08-27T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-22",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "bouj0pu",
+      "start": "2025-08-28T03:00:00.000Z",
+      "end": "2025-08-28T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-22",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "kfion5w",
+      "start": "2025-08-29T03:00:00.000Z",
+      "end": "2025-08-29T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-22",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "zm33pln",
+      "start": "2025-08-30T03:00:00.000Z",
+      "end": "2025-08-30T11:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-22",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "6n1f9hf",
+      "start": "2025-08-26T15:30:00.000Z",
+      "end": "2025-08-27T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "1jhlofv",
+      "start": "2025-08-27T15:30:00.000Z",
+      "end": "2025-08-28T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "rzcg1k6",
+      "start": "2025-08-28T15:30:00.000Z",
+      "end": "2025-08-29T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "bdhrovj",
+      "start": "2025-08-29T15:30:00.000Z",
+      "end": "2025-08-30T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "krjrx2e",
+      "start": "2025-08-30T15:30:00.000Z",
+      "end": "2025-08-30T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "k7uhdgr",
+      "start": "2025-08-26T14:30:00.000Z",
+      "end": "2025-08-26T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-16",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "mbpqbbx",
+      "start": "2025-08-27T14:30:00.000Z",
+      "end": "2025-08-27T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-16",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xp89m01",
+      "start": "2025-08-28T14:30:00.000Z",
+      "end": "2025-08-28T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-16",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ay9g5gv",
+      "start": "2025-08-29T14:30:00.000Z",
+      "end": "2025-08-29T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-16",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "fex6pgs",
+      "start": "2025-08-30T14:30:00.000Z",
+      "end": "2025-08-30T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-16",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "kazwuvb",
+      "start": "2025-08-26T14:30:00.000Z",
+      "end": "2025-08-26T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-21",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "x5xc0gj",
+      "start": "2025-08-27T14:30:00.000Z",
+      "end": "2025-08-27T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-21",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ve1rr4l",
+      "start": "2025-08-28T14:30:00.000Z",
+      "end": "2025-08-28T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-21",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "kpr5f5n",
+      "start": "2025-08-29T14:30:00.000Z",
+      "end": "2025-08-29T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-21",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "6renhps",
+      "start": "2025-08-30T14:30:00.000Z",
+      "end": "2025-08-30T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-21",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ff2s4tj",
+      "start": "2025-08-26T12:00:00.000Z",
+      "end": "2025-08-26T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-19",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "kmajlbp",
+      "start": "2025-08-27T12:00:00.000Z",
+      "end": "2025-08-27T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-19",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "c7s2yzc",
+      "start": "2025-08-28T12:00:00.000Z",
+      "end": "2025-08-28T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-19",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "5qjkamq",
+      "start": "2025-08-29T12:00:00.000Z",
+      "end": "2025-08-29T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-19",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "3can4ed",
+      "start": "2025-08-30T12:00:00.000Z",
+      "end": "2025-08-30T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-19",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "0s22f6d",
+      "start": "2025-08-24T10:00:00.000Z",
+      "end": "2025-08-24T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "9ltgbbm",
+      "start": "2025-08-25T07:00:00.000Z",
+      "end": "2025-08-25T08:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "h2e1wz7",
+      "start": "2025-08-26T07:00:00.000Z",
+      "end": "2025-08-26T08:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "vt866ny",
+      "start": "2025-08-27T07:00:00.000Z",
+      "end": "2025-08-27T08:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "i0ovtxw",
+      "start": "2025-08-28T07:00:00.000Z",
+      "end": "2025-08-28T08:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "psoafq8",
+      "start": "2025-08-25T10:30:00.000Z",
+      "end": "2025-08-25T17:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ksvk6l7",
+      "start": "2025-08-26T10:30:00.000Z",
+      "end": "2025-08-26T17:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "kqk9tds",
+      "start": "2025-08-27T10:30:00.000Z",
+      "end": "2025-08-27T17:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "grufy9p",
+      "start": "2025-08-28T10:30:00.000Z",
+      "end": "2025-08-28T17:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-11",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "jwuo54t",
+      "start": "2025-08-25T10:00:00.000Z",
+      "end": "2025-08-25T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-27",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xk0ckig",
+      "start": "2025-08-26T10:00:00.000Z",
+      "end": "2025-08-26T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-27",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "86nh65q",
+      "start": "2025-08-27T10:00:00.000Z",
+      "end": "2025-08-27T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-27",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "8033ad4",
+      "start": "2025-08-28T10:00:00.000Z",
+      "end": "2025-08-28T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-27",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "vt6vj7x",
+      "start": "2025-08-24T10:00:00.000Z",
+      "end": "2025-08-24T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-27",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "52wowtp",
+      "start": "2025-08-25T08:00:00.000Z",
+      "end": "2025-08-25T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-25",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "zdx5qft",
+      "start": "2025-08-26T08:00:00.000Z",
+      "end": "2025-08-26T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-25",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "m5alha9",
+      "start": "2025-08-27T08:00:00.000Z",
+      "end": "2025-08-27T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-25",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "yz7bxqz",
+      "start": "2025-08-28T08:00:00.000Z",
+      "end": "2025-08-28T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-25",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "p42too9",
+      "start": "2025-08-24T08:00:00.000Z",
+      "end": "2025-08-24T16:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-25",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "tbv7uib",
+      "start": "2025-08-30T08:30:00.000Z",
+      "end": "2025-08-30T19:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-23",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "37k6pat",
+      "start": "2025-08-24T08:30:00.000Z",
+      "end": "2025-08-24T19:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-23",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "d1b1big",
+      "start": "2025-08-26T08:30:00.000Z",
+      "end": "2025-08-26T19:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-23",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "mvs9hth",
+      "start": "2025-08-25T14:30:00.000Z",
+      "end": "2025-08-25T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-10",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "6ya9aou",
+      "start": "2025-08-24T14:30:00.000Z",
+      "end": "2025-08-24T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-10",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "81mhaah",
+      "start": "2025-08-26T14:30:00.000Z",
+      "end": "2025-08-26T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-10",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ti51j37",
+      "start": "2025-08-27T14:30:00.000Z",
+      "end": "2025-08-27T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-10",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "sh2dsmq",
+      "start": "2025-08-28T14:30:00.000Z",
+      "end": "2025-08-28T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-10",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "uhugpek",
+      "start": "2025-08-25T15:30:00.000Z",
+      "end": "2025-08-26T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "7ug033y",
+      "start": "2025-08-24T15:30:00.000Z",
+      "end": "2025-08-25T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-18",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "3xf17tn",
+      "start": "2025-08-24T17:30:00.000Z",
+      "end": "2025-08-24T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-3",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "smrkaw1",
+      "start": "2025-08-25T17:30:00.000Z",
+      "end": "2025-08-25T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-3",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "2gs3xar",
+      "start": "2025-08-26T17:30:00.000Z",
+      "end": "2025-08-26T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-3",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "232hp3c",
+      "start": "2025-08-27T17:30:00.000Z",
+      "end": "2025-08-27T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-3",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "lrqci9p",
+      "start": "2025-08-28T17:30:00.000Z",
+      "end": "2025-08-28T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-3",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "rhry455",
+      "start": "2025-08-26T03:30:00.000Z",
+      "end": "2025-08-26T12:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-1",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "1wo6s99",
+      "start": "2025-08-25T04:00:00.000Z",
+      "end": "2025-08-25T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-1",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "yh3bsb1",
+      "start": "2025-08-27T04:00:00.000Z",
+      "end": "2025-08-27T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-1",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "om9tcwg",
+      "start": "2025-08-28T04:30:00.000Z",
+      "end": "2025-08-28T13:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-1",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "w6udgp7",
+      "start": "2025-08-29T04:00:00.000Z",
+      "end": "2025-08-29T12:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-1",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "nrdxmmc",
+      "start": "2025-08-25T17:30:00.000Z",
+      "end": "2025-08-25T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-2",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "vmx2lvs",
+      "start": "2025-08-30T17:30:00.000Z",
+      "end": "2025-08-30T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-2",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "v6a56rp",
+      "start": "2025-08-24T17:30:00.000Z",
+      "end": "2025-08-24T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-2",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "mmn379y",
+      "start": "2025-08-26T17:30:00.000Z",
+      "end": "2025-08-27T02:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-2",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "01kb81m",
+      "start": "2025-08-27T17:30:00.000Z",
+      "end": "2025-08-27T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-2",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "hayuli6",
+      "start": "2025-08-26T17:30:00.000Z",
+      "end": "2025-08-26T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-12",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "sc18y7a",
+      "start": "2025-08-27T14:30:00.000Z",
+      "end": "2025-08-27T23:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-12",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "dfbzvxp",
+      "start": "2025-08-28T17:30:00.000Z",
+      "end": "2025-08-28T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-12",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "qv17dei",
+      "start": "2025-08-29T17:30:00.000Z",
+      "end": "2025-08-29T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-12",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "ds90a9b",
+      "start": "2025-08-30T17:30:00.000Z",
+      "end": "2025-08-30T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-12",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "dh7sj8l",
+      "start": "2025-08-25T08:30:00.000Z",
+      "end": "2025-08-25T19:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-23",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "kj1r9n2",
+      "start": "2025-08-25T12:00:00.000Z",
+      "end": "2025-08-25T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-6",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "98wlk0y",
+      "start": "2025-08-24T12:00:00.000Z",
+      "end": "2025-08-24T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-6",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "yfkd4xs",
+      "start": "2025-08-26T12:00:00.000Z",
+      "end": "2025-08-26T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-6",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "0ginor9",
+      "start": "2025-08-27T12:00:00.000Z",
+      "end": "2025-08-27T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-6",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "42axfuc",
+      "start": "2025-08-28T12:00:00.000Z",
+      "end": "2025-08-28T20:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-6",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "3eb4579d-3a6e-4a2d-837a-c3d2a078d5a3",
+      "start": "2025-08-26T03:30:00.000Z",
+      "end": "2025-08-27T12:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-32",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "f8f88050-8c90-4eb2-9a9f-0bc922c8547e",
+      "start": "2025-08-25T21:30:00.000Z",
+      "end": "2025-08-26T06:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-14",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "754b7400-2782-4b01-9085-82fb9c222b1a",
+      "start": "2025-08-26T21:30:00.000Z",
+      "end": "2025-08-27T06:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-14",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "6e9585bc-5f07-40b6-bed6-6df7abb8af53",
+      "start": "2025-08-27T22:30:00.000Z",
+      "end": "2025-08-28T07:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-14",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "d977314a-6e9e-4e48-9f4f-d98736c8ab91",
+      "start": "2025-08-29T06:00:00.000Z",
+      "end": "2025-08-29T14:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-14",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "mzzy4cx",
+      "start": "2025-08-27T10:00:00.000Z",
+      "end": "2025-08-27T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-4",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xowbib8",
+      "start": "2025-08-28T10:00:00.000Z",
+      "end": "2025-08-28T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-4",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "jkd3qsv",
+      "start": "2025-08-30T10:00:00.000Z",
+      "end": "2025-08-30T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-4",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "xhw7zz1",
+      "start": "2025-08-26T10:00:00.000Z",
+      "end": "2025-08-26T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-4",
+      "status": "planned"
+    },
+    {
+      "kind": "shift",
+      "id": "itt2jnx",
+      "start": "2025-08-29T10:00:00.000Z",
+      "end": "2025-08-29T18:30:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-4",
+      "status": "planned"
+    },
+    {
+      "kind": "pto",
+      "id": "y0c1thf",
+      "start": "2025-08-25T00:00:00.000Z",
+      "end": "2025-08-27T00:00:00.000Z",
+      "tz": "America/Los_Angeles",
+      "createdAt": "2025-08-28T01:44:44.258Z",
+      "updatedAt": "2025-08-28T01:44:44.258Z",
+      "employeeId": "emp-4",
+      "ptoType": "vacation",
+      "state": "approved",
+      "status": "planned"
+    }
+  ],
+  "published": {
+    "from": null,
+    "to": null
+  },
+  "meta": {
+    "generatedAt": "2025-08-28T01:44:44.258Z",
+    "source": "https://team-schedule-api.bsteward.workers.dev/v1/schedule"
+  }
+}
