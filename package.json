@@ -4,15 +4,22 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+  "dev": "vite",
+  "dev:proxy": "npm --prefix dev-server run dev",
+  "dev:all": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,proxy -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix dev-server run dev\"",
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+  "deploy": "gh-pages -d dist",
+  "seed": "node ./scripts/seed-from-cloud.mjs",
+  "seed:v1": "node ./scripts/seed-v1-from-live.mjs",
+  "typecheck": "tsc --noEmit",
+  "validate:legacy": "node ./scripts/validate-legacy.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+  "react-dom": "^18.3.1",
+  "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
@@ -23,6 +30,7 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2"
+  "vite": "^5.4.2",
+  "concurrently": "^9.0.1"
   }
 }

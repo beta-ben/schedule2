@@ -576,7 +576,16 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																						type="time"
 																						className={["w-full border rounded px-2 pr-10 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
 																						value={eStart}
-																						onChange={e=>setEStart(e.target.value)}
+																						onChange={e=>{
+																							const v = e.target.value
+																							setEStart(v)
+																							// Default end to 8.5 hours after new start
+																							const newEnd = addMin(v, 8*60 + 30)
+																							setEEnd(newEnd)
+																							// If end wraps past midnight, bump end day
+																							const wraps = toMinLocal(newEnd) <= toMinLocal(v)
+																							setEEndDay(wraps ? nextDay(eDay) : eDay)
+																						}}
 																					/>
 																					<button
 																						type="button"

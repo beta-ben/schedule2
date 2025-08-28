@@ -3,6 +3,8 @@ export type Day = 'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun'
 export type Shift = {
   id: string
   person: string
+  // Optional normalized reference to the agent; during transition, person remains the display fallback
+  agentId?: string
   day: Day
   start: string // HH:MM
   end: string   // HH:MM
@@ -15,6 +17,8 @@ export type Shift = {
 export type PTO = {
   id: string
   person: string
+  // Optional normalized reference to the agent; during transition, person remains the display fallback
+  agentId?: string
   startDate: string // YYYY-MM-DD
   endDate: string   // YYYY-MM-DD
   notes?: string

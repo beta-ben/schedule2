@@ -28,11 +28,10 @@ Open the printed local URL (Vite), then use the Manage tab to edit data.
 
 These are optional; sensible defaults are provided for local use.
 
-- `VITE_SCHEDULE_API_BASE` — Cloud API base (default: `https://team-schedule-api.bsteward.workers.dev`)
-- `VITE_SCHEDULE_WRITE_PASSWORD` — Legacy local Manage gate (default: `betacares`). Do not use for dev writes when using the proxy.
-- `VITE_DEV_PROXY_BASE` — Optional dev auth proxy (e.g., `http://localhost:8787`). When set, the app uses cookie auth + CSRF and never sends passwords from the client.
+- `VITE_SCHEDULE_API_BASE` — Cloud API base for read (default: `https://team-schedule-api.bsteward.workers.dev`). For production writes, your API must implement cookie session auth and CSRF at `/api/schedule`.
+- `VITE_DEV_PROXY_BASE` — Dev auth proxy (e.g., `http://localhost:8787`). When set, the app uses cookie auth + CSRF and never sends passwords from the client.
 
-When `VITE_DEV_PROXY_BASE` is set, Manage uses a sign-in flow backed by the local dev proxy, and requests include credentials and CSRF headers. No secrets are embedded client-side.
+Manage now requires an authenticated session (cookie + CSRF). The legacy client-side password header path has been removed.
 
 ### Dev auth proxy
 
@@ -44,7 +43,7 @@ cp .env.example .env # set DEV_ADMIN_PASSWORD
 npm i && npm start
 ```
 
-Set `VITE_DEV_PROXY_BASE=http://localhost:8787` in your frontend `.env.local`. The Manage page will prompt for sign-in and then use cookies + CSRF for GET/POST of schedule data.
+Set `VITE_DEV_PROXY_BASE=http://localhost:8787` in your frontend `.env.local`. The Manage page will prompt for sign-in and then use cookies + CSRF for GET/POST of schedule data. Without a proxy (or a production API that sets session cookies), the app runs in read-only mode.
 
 ## Using Manage
 
@@ -62,18 +61,23 @@ Set `VITE_DEV_PROXY_BASE=http://localhost:8787` in your frontend `.env.local`. T
 
 ## Deploy to GitHub Pages
 
-This project is preconfigured with Vite `base` = `/schedule2/`.
+This project is configured for a custom domain (Vite `base` = `/`). A `CNAME` file is included for `teamschedule.cc`.
 
 ```bash
 npm run build
 npm run deploy
 ```
 
-Then in GitHub → Settings → Pages: choose `gh-pages` as the source. Your URL will be:
+Then in GitHub → Settings → Pages:
+- Source: `gh-pages` branch
+- Custom domain: `teamschedule.cc`
+- Enable “Enforce HTTPS”
 
-```
-https://<username>.github.io/schedule2/
-```
+DNS (at your registrar):
+- CNAME `www` → `<username>.github.io`
+- Apex `@` → ALIAS/ANAME to `www` or A records to GitHub Pages IPs
+
+If you need to deploy under a subpath instead, set `GHPAGES_BASE` (e.g., `/schedule2/`) before building.
 
 ## Tasks & Shift Segments
 

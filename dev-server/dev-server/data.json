@@ -1,5 +1,591 @@
 {
-  "shifts": [],
-  "pto": [],
-  "calendarSegs": []
+  "shifts": [
+    {
+      "id": "205d5c9d-c1a8-424e-9668-ba759259885e",
+      "person": "Agent1",
+      "day": "Sun",
+      "start": "03:00",
+      "end": "11:30",
+      "endDay": "Sun"
+    },
+    {
+      "id": "eadec2db-025b-407e-a6a0-f4eba7598ad6",
+      "person": "Agent1",
+      "day": "Mon",
+      "start": "03:00",
+      "end": "11:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "a3e6c501-8f96-4ada-8a3b-9c1fefbb02b2",
+      "person": "Agent1",
+      "day": "Tue",
+      "start": "03:00",
+      "end": "11:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "e2d4fdb4-cf14-4937-8e20-cf32067f4628",
+      "person": "Agent1",
+      "day": "Wed",
+      "start": "03:00",
+      "end": "11:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "1a4d1c7b-188f-4a2b-af43-2753ecdd8c31",
+      "person": "Agent1",
+      "day": "Thu",
+      "start": "03:00",
+      "end": "11:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "a02363aa-5a90-4eda-aebb-6590b202c64a",
+      "person": "Agent10",
+      "day": "Sun",
+      "start": "05:30",
+      "end": "14:00",
+      "endDay": "Sun"
+    },
+    {
+      "id": "ebac71d6-16a2-49fc-9571-1c5f12eb26bd",
+      "person": "Agent10",
+      "day": "Mon",
+      "start": "05:30",
+      "end": "14:00",
+      "endDay": "Mon"
+    },
+    {
+      "id": "fd65b4ac-c2d6-47e2-ab65-1c2e5fb3315c",
+      "person": "Agent10",
+      "day": "Tue",
+      "start": "05:30",
+      "end": "14:00",
+      "endDay": "Tue"
+    },
+    {
+      "id": "811395c5-5d49-455b-b613-924ace99f7e0",
+      "person": "Agent10",
+      "day": "Wed",
+      "start": "05:30",
+      "end": "14:00",
+      "endDay": "Wed"
+    },
+    {
+      "id": "192d434e-0a92-49cb-ba32-2b86d1e87739",
+      "person": "Agent10",
+      "day": "Thu",
+      "start": "05:30",
+      "end": "14:00",
+      "endDay": "Thu"
+    },
+    {
+      "id": "a475330b-36f8-4b87-b64c-e293938a2a28",
+      "person": "Agent11",
+      "day": "Sun",
+      "start": "08:00",
+      "end": "16:30",
+      "endDay": "Sun"
+    },
+    {
+      "id": "304359fd-73d1-46ae-ad9e-a37daa3b5966",
+      "person": "Agent11",
+      "day": "Mon",
+      "start": "08:00",
+      "end": "16:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "88b68571-1ecc-4f69-b31e-b450bddc377e",
+      "person": "Agent11",
+      "day": "Tue",
+      "start": "08:00",
+      "end": "16:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "1ac7926c-817a-49b7-a45d-1a13d285c98d",
+      "person": "Agent11",
+      "day": "Wed",
+      "start": "08:00",
+      "end": "16:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "3370142b-4c95-402a-a69c-039b018e7735",
+      "person": "Agent11",
+      "day": "Thu",
+      "start": "08:00",
+      "end": "16:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "531528d9-6f1c-490f-b3db-0b20ffae6167",
+      "person": "Agent12",
+      "day": "Sun",
+      "start": "12:00",
+      "end": "20:30",
+      "endDay": "Sun"
+    },
+    {
+      "id": "838e5241-54c4-4f60-84a1-ed1213ba1b37",
+      "person": "Agent12",
+      "day": "Mon",
+      "start": "12:00",
+      "end": "20:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "e7748705-8533-4826-91e8-d789f46463cc",
+      "person": "Agent12",
+      "day": "Tue",
+      "start": "12:00",
+      "end": "20:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "d9960823-6003-4d1e-b747-192226fa404b",
+      "person": "Agent12",
+      "day": "Wed",
+      "start": "12:00",
+      "end": "20:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "39790caf-2f53-48d6-806d-650f75d9df59",
+      "person": "Agent12",
+      "day": "Thu",
+      "start": "12:00",
+      "end": "20:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "5c01de17-cfce-42da-ac93-0c3e32cba67e",
+      "person": "Agent13",
+      "day": "Sun",
+      "start": "17:00",
+      "end": "01:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "371cb705-d6ca-4308-981b-be85f95a49e8",
+      "person": "Agent13",
+      "day": "Mon",
+      "start": "17:00",
+      "end": "01:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "16e064be-dc35-48da-9065-12db1a92293a",
+      "person": "Agent13",
+      "day": "Tue",
+      "start": "17:00",
+      "end": "01:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "04d0b636-c2e2-4455-a8f7-62fd6d28e8b2",
+      "person": "Agent13",
+      "day": "Wed",
+      "start": "17:00",
+      "end": "01:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "7ce83522-6d5e-4ffa-b02a-1382c687acfb",
+      "person": "Agent13",
+      "day": "Thu",
+      "start": "17:00",
+      "end": "01:30",
+      "endDay": "Fri"
+    },
+    {
+      "id": "55cb0ad4-68a9-4afa-b540-7df38f56dcd2",
+      "person": "Agent14",
+      "day": "Sun",
+      "start": "23:00",
+      "end": "07:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "62919ca5-b58a-4079-a711-d042512f50e1",
+      "person": "Agent14",
+      "day": "Mon",
+      "start": "23:00",
+      "end": "07:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "b5ccc4ab-6488-450f-a298-66cf2d926a57",
+      "person": "Agent14",
+      "day": "Tue",
+      "start": "23:00",
+      "end": "07:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "2a7c7b45-b5b5-4f28-9a1f-5f04a03633bb",
+      "person": "Agent14",
+      "day": "Wed",
+      "start": "23:00",
+      "end": "07:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "9c539e8a-902c-4e37-bfb9-e6882ea0dd89",
+      "person": "Agent14",
+      "day": "Thu",
+      "start": "23:00",
+      "end": "07:30",
+      "endDay": "Fri"
+    },
+    {
+      "id": "166d593c-e330-407e-bbd4-a2094f67888b",
+      "person": "Agent15",
+      "day": "Mon",
+      "start": "03:30",
+      "end": "12:00",
+      "endDay": "Mon"
+    },
+    {
+      "id": "d1d9e9da-1433-4b06-abde-154e7a098ccb",
+      "person": "Agent15",
+      "day": "Tue",
+      "start": "03:30",
+      "end": "12:00",
+      "endDay": "Tue"
+    },
+    {
+      "id": "9139ca58-58bc-4e5f-b768-67d69a03bf72",
+      "person": "Agent15",
+      "day": "Wed",
+      "start": "03:30",
+      "end": "12:00",
+      "endDay": "Wed"
+    },
+    {
+      "id": "b44e5cd6-22d4-428e-9e42-5010d8eef1ae",
+      "person": "Agent15",
+      "day": "Thu",
+      "start": "03:30",
+      "end": "12:00",
+      "endDay": "Thu"
+    },
+    {
+      "id": "c8088b86-5102-4e97-80bb-025c68ed8b97",
+      "person": "Agent15",
+      "day": "Fri",
+      "start": "03:30",
+      "end": "12:00",
+      "endDay": "Fri"
+    },
+    {
+      "id": "53a0fe8a-cc90-41b2-9f34-93cc853c8092",
+      "person": "Agent16",
+      "day": "Mon",
+      "start": "08:30",
+      "end": "17:00",
+      "endDay": "Mon"
+    },
+    {
+      "id": "83b85506-888c-4e6c-bbbf-bb6cebd989d1",
+      "person": "Agent16",
+      "day": "Tue",
+      "start": "08:30",
+      "end": "17:00",
+      "endDay": "Tue"
+    },
+    {
+      "id": "81ed8047-f60b-4fdb-ba48-b11a9ed910a2",
+      "person": "Agent16",
+      "day": "Wed",
+      "start": "08:30",
+      "end": "17:00",
+      "endDay": "Wed"
+    },
+    {
+      "id": "ac82f50a-3d36-4121-be12-51734546a234",
+      "person": "Agent16",
+      "day": "Thu",
+      "start": "08:30",
+      "end": "17:00",
+      "endDay": "Thu"
+    },
+    {
+      "id": "454bfdbf-6e46-4ffb-8909-c3a2c92ac258",
+      "person": "Agent16",
+      "day": "Fri",
+      "start": "08:30",
+      "end": "17:00",
+      "endDay": "Fri"
+    },
+    {
+      "id": "331b4d13-e616-4c99-b0ff-001094b2225f",
+      "person": "Agent2",
+      "day": "Mon",
+      "start": "13:00",
+      "end": "21:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "e2810f62-c0b3-4617-8635-5e93fc6b7cc7",
+      "person": "Agent2",
+      "day": "Tue",
+      "start": "13:00",
+      "end": "21:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "6e8c39d5-16db-4311-8c35-407f69b73e26",
+      "person": "Agent2",
+      "day": "Wed",
+      "start": "13:00",
+      "end": "21:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "9edd7d57-4f8a-4c9d-b2fb-faae16334937",
+      "person": "Agent2",
+      "day": "Thu",
+      "start": "13:00",
+      "end": "21:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "aeb9276c-f0ff-4b12-8250-8a1dfea6a779",
+      "person": "Agent2",
+      "day": "Fri",
+      "start": "13:00",
+      "end": "21:30",
+      "endDay": "Fri"
+    },
+    {
+      "id": "35559383-1680-46de-9c75-787a4716a4b8",
+      "person": "Soroush",
+      "day": "Mon",
+      "start": "09:00",
+      "end": "17:30",
+      "endDay": "Mon"
+    },
+    {
+      "id": "04291b04-469c-429b-bf9d-279169215722",
+      "person": "Soroush",
+      "day": "Tue",
+      "start": "09:00",
+      "end": "17:30",
+      "endDay": "Tue"
+    },
+    {
+      "id": "429b3e0b-af73-4a5c-a81f-c1f03a33a96e",
+      "person": "Soroush",
+      "day": "Wed",
+      "start": "09:00",
+      "end": "17:30",
+      "endDay": "Wed"
+    },
+    {
+      "id": "28feffa3-cebd-44e8-8a4d-a989a0e232e7",
+      "person": "Soroush",
+      "day": "Thu",
+      "start": "09:00",
+      "end": "17:30",
+      "endDay": "Thu"
+    },
+    {
+      "id": "63548592-995f-4a8a-9d9f-20c3642e5e2b",
+      "person": "Soroush",
+      "day": "Fri",
+      "start": "09:00",
+      "end": "17:30",
+      "endDay": "Fri"
+    }
+  ],
+  "pto": [
+    {
+      "id": "hms2d2k",
+      "person": "Agent5",
+      "startDate": "2025-08-21",
+      "endDate": "2025-08-23",
+      "notes": "Vacation"
+    },
+    {
+      "id": "crzju87",
+      "person": "Agent12",
+      "startDate": "2025-08-22",
+      "endDate": "2025-08-22",
+      "notes": "Appt"
+    }
+  ],
+  "calendarSegs": [
+    {
+      "person": "Cameron",
+      "day": "Mon",
+      "start": "19:00",
+      "end": "21:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Chris",
+      "day": "Mon",
+      "start": "21:00",
+      "end": "23:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Andres",
+      "day": "Mon",
+      "start": "23:00",
+      "end": "23:59",
+      "taskId": "support"
+    },
+    {
+      "person": "Andres",
+      "day": "Mon",
+      "start": "00:00",
+      "end": "02:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Charlene",
+      "day": "Tue",
+      "start": "03:00",
+      "end": "06:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Miguel",
+      "day": "Tue",
+      "start": "14:00",
+      "end": "17:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Peyton",
+      "day": "Tue",
+      "start": "17:00",
+      "end": "20:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Andres",
+      "day": "Tue",
+      "start": "20:00",
+      "end": "23:59",
+      "taskId": "support"
+    },
+    {
+      "person": "Andres",
+      "day": "Wed",
+      "start": "00:00",
+      "end": "02:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Patrick",
+      "day": "Wed",
+      "start": "03:00",
+      "end": "06:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Tanner",
+      "day": "Wed",
+      "start": "06:00",
+      "end": "14:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Tanner",
+      "day": "Tue",
+      "start": "06:00",
+      "end": "14:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Miguel",
+      "day": "Wed",
+      "start": "14:00",
+      "end": "17:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Cameron",
+      "day": "Wed",
+      "start": "17:00",
+      "end": "20:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Kenzie",
+      "day": "Wed",
+      "start": "20:00",
+      "end": "23:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Andi",
+      "day": "Wed",
+      "start": "23:00",
+      "end": "23:59",
+      "taskId": "support"
+    },
+    {
+      "person": "Andi",
+      "day": "Thu",
+      "start": "00:00",
+      "end": "02:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Patrick",
+      "day": "Thu",
+      "start": "03:00",
+      "end": "06:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Tanner",
+      "day": "Thu",
+      "start": "06:00",
+      "end": "14:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Sampson",
+      "day": "Thu",
+      "start": "14:00",
+      "end": "17:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Cameron",
+      "day": "Thu",
+      "start": "17:00",
+      "end": "20:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Helena",
+      "day": "Thu",
+      "start": "20:00",
+      "end": "23:59",
+      "taskId": "support"
+    },
+    {
+      "person": "Helena",
+      "day": "Fri",
+      "start": "00:00",
+      "end": "02:00",
+      "taskId": "support"
+    },
+    {
+      "person": "Miguel",
+      "day": "Fri",
+      "start": "14:00",
+      "end": "16:00",
+      "taskId": "support"
+    }
+  ],
+  "updatedAt": "2025-08-28T22:36:38.737Z"
 }

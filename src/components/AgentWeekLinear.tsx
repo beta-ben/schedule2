@@ -14,6 +14,7 @@ export default function AgentWeekLinear({
   pto,
   tasks,
   calendarSegs,
+  agents,
   onDragAll,
   onDragShift,
   draggable = true,
@@ -29,6 +30,7 @@ export default function AgentWeekLinear({
   showEdgeTimeTagsForHighlights,
   selectedIds,
   onToggleSelect,
+  avoidLabelOverlap,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -38,6 +40,7 @@ export default function AgentWeekLinear({
   pto: PTO[]
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
   onDragAll?: (deltaMinutes:number)=>void
   onDragShift?: (id:string, deltaMinutes:number)=>void
   draggable?: boolean
@@ -55,6 +58,8 @@ export default function AgentWeekLinear({
   showEdgeTimeTagsForHighlights?: boolean
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
+  // When true, suppress outer time tags that would overlap neighboring tags
+  avoidLabelOverlap?: boolean
 }){
   const totalMins = 7 * 24 * 60 // 10080
   const weekStartDate = parseYMD(weekStart)
@@ -153,6 +158,11 @@ export default function AgentWeekLinear({
   const [hoverBand, setHoverBand] = React.useState(false)
   const [hoverGroupId, setHoverGroupId] = React.useState<string|null>(null)
   const didDragRef = React.useRef(false)
+  // Tracking for simple label collision avoidance (approximate widths)
+  let lastStartEdgePx = -Infinity
+  let lastEndRightPx = -Infinity
+  const LABEL_W = 48 // approx width of "HH:MM" tag with padding
+  const LABEL_GAP = 4
 
   React.useEffect(()=>{
     const measure = ()=>{
@@ -310,7 +320,8 @@ export default function AgentWeekLinear({
         <div
           ref={containerRef}
           className="absolute inset-y-0"
-      style={{ left: framed? 6 : 0, right: framed? 6 : 0 }}
+      // Give a small bleed when framed so outer time tags near edges aren't clipped
+      style={{ left: framed? 0 : 0, right: framed? 0 : 0, paddingLeft: framed? 6 : 0, paddingRight: framed? 6 : 0 }}
       onMouseDown={draggable ? beginAllDrag : undefined}
   onMouseEnter={()=> setHoverBand(true)}
   onMouseLeave={()=> { setHoverBand(false); setHoverGroupId(null) }}
@@ -377,10 +388,57 @@ export default function AgentWeekLinear({
                     ? selectedIds.has(g.id)
                     : (selectedIds as string[]).includes(g.id)
                 )
-                const ringHover = isHover ? (dark? '0 0 0 2px rgba(59,130,246,0.6)':'0 0 0 2px rgba(37,99,235,0.6)') : ''
+                // Use high-contrast hover ring; when framed (overflow-hidden), use inset to avoid clipping top/bottom
+                const ringHover = isHover
+                  ? (framed
+                      ? (dark ? 'inset 0 0 0 2px rgba(255,255,255,0.85)' : 'inset 0 0 0 2px rgba(0,0,0,0.7)')
+                      : (dark ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 0 0 2px rgba(0,0,0,0.7)'))
+                  : ''
                 const ringSelected = isSel ? (dark? '0 0 0 2px rgba(234,179,8,0.95)':'0 0 0 2px rgba(234,179,8,0.95)') : ''
                 const boxShadow = [ringHover, ringSelected].filter(Boolean).join(', ')
                 const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || (showEdgeTimeTagsForHighlights && isHi) || isSel
+                // Collision avoidance for outer labels when requested
+                let allowStartTag = showTags && showStart
+                let allowEndTag = showTags && showEnd
+                // If the chip piece is extremely narrow (< approx 2 label widths), avoid showing both tags which can jitter
+                if(pxW < (LABEL_W * 1.6)){
+                  // Prefer the edge-gated tag; when both requested, keep only one to reduce churn
+                  if(allowStartTag && allowEndTag){
+                    // Keep the tag closer to band edge for clarity
+                    const closerToLeft = pLeft <= (totalMins - pRight)
+                    if(closerToLeft) allowEndTag = false
+                    else allowStartTag = false
+                  }
+                }
+                if(avoidLabelOverlap){
+                  const chipLeftPx = (pLeft/totalMins) * containerW
+                  const chipRightPx = (pRight/totalMins) * containerW
+                  // Reset trackers on wrap (monotonicity break)
+                  if(chipLeftPx < lastStartEdgePx) lastStartEdgePx = -Infinity
+                  if(chipRightPx < (lastEndRightPx - LABEL_W)) lastEndRightPx = -Infinity
+                  const wantsOuterStart = (opts?.forceStartOuter || forceOuterTimeTags)
+                  const wantsOuterEnd = (opts?.forceEndOuter || forceOuterTimeTags)
+                  if(wantsOuterStart && allowStartTag){
+                    // Start label sits immediately to the left of chip
+                    const labelRight = chipLeftPx
+                    const minAllowed = lastStartEdgePx + LABEL_W + LABEL_GAP
+                    if(labelRight < minAllowed){
+                      allowStartTag = false
+                    }else{
+                      lastStartEdgePx = labelRight
+                    }
+                  }
+                  if(wantsOuterEnd && allowEndTag){
+                    // End label sits immediately to the right of chip
+                    const labelLeft = chipRightPx
+                    const minLeft = lastEndRightPx + LABEL_GAP
+                    if(labelLeft < minLeft){
+                      allowEndTag = false
+                    }else{
+                      lastEndRightPx = labelLeft + LABEL_W
+                    }
+                  }
+                }
                 return (
                   <div
                     key={partKey}
@@ -403,16 +461,16 @@ export default function AgentWeekLinear({
                     }}
                   >
                     {/* Dense mode: no internal labels or chevrons */}
-          {showTags && showStart && (
+          {allowStartTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
-            (opts?.forceStartOuter || forceOuterTimeTags) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
+            ((opts?.forceStartOuter || forceOuterTimeTags) && !framed) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
                         dark?"bg-black/70 text-white":"bg-black/70 text-white"].join(' ')}>
                         {minToHHMM(groupStartMin)}
                       </div>
                     )}
-          {showTags && showEnd && (
+          {allowEndTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
-            (opts?.forceEndOuter || forceOuterTimeTags) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
+            ((opts?.forceEndOuter || forceOuterTimeTags) && !framed) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
                         dark?"bg-black/70 text-white":"bg-black/70 text-white"].join(' ')}>
                         {minToHHMM(groupEndMin)}
                       </div>
@@ -423,28 +481,32 @@ export default function AgentWeekLinear({
               if(dur <= 0){ return [] }
               const isStartSeg = seg.startAbs === g.earliest
               const isEndSeg = seg.endAbs === g.latest
-              // Week-boundary helpers: Sat part ends exactly at band right; Sun part starts at band left
-              const segEndsAtBandRight = seg.endAbs === totalMins
-              const segStartsAtBandLeft = seg.startAbs === 0
-              // Gated labels: first/last segments, plus explicit week-edge overrides for wrapped pairs
-              const startGate = isStartSeg || segStartsAtBandLeft
-              const endGate   = isEndSeg   || segEndsAtBandRight
+              // Gates are decided based on post-drag positions relative to the band, so they work regardless of the original 0/24 markers
+              // For non-wrap parts we want: show start if this is the logical first segment OR it touches the band left; show end if logical last OR touches band right
+              // For wrap parts, we determine on each piece using its own pLeft/pRight (computed below)
               if(a < b){
-                // Single segment in-band: start on first (or Sun edge), end on last (or Sat edge)
-                return [mkPart(a, b, `${seg.key}-p0`, startGate, endGate)]
+                // Single segment in-band after drag
+                const startGateNow = isStartSeg || a === 0
+                const endGateNow   = isEndSeg   || b === totalMins
+                return [mkPart(a, b, `${seg.key}-p0`, startGateNow, endGateNow)]
               }else{
-                // Wrap across week edge: two parts; but use true duration, not band edge, to size parts
+                // Wrap across week edge after drag: split into [a .. T) and [0 .. lenRem)
                 const lenFirst = Math.min(totalMins - a, dur)
                 const lenRem = Math.max(0, dur - lenFirst)
                 if(lenRem > 0){
-                  // First part (Sat side) shows END label on its right edge; second part (Sun side) shows START on its left edge
+                  const p0L = a, p0R = a+lenFirst
+                  const p1L = 0, p1R = lenRem
+                  const endGateP0   = isEndSeg   || p0R === totalMins
+                  const startGateP1 = isStartSeg || p1L === 0
                   return [
-                    mkPart(a, a+lenFirst, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGate, { forceEndOuter: true }),
-                    mkPart(0, lenRem, `${seg.key}-p1`, /*showStart*/ startGate, /*showEnd*/ false, { forceStartOuter: true })
+                    mkPart(p0L, p0R, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGateP0, { forceEndOuter: true }),
+                    mkPart(p1L, p1R, `${seg.key}-p1`, /*showStart*/ startGateP1, /*showEnd*/ false, { forceStartOuter: true })
                   ]
                 }else{
                   // Entire remainder fits before band end
-                  return [ mkPart(a, a+lenFirst, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGate, { forceEndOuter: true }) ]
+                  const p0L = a, p0R = a+lenFirst
+                  const endGateP0 = isEndSeg || p0R === totalMins
+                  return [ mkPart(p0L, p0R, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGateP0, { forceEndOuter: true }) ]
                 }
               }
             })
@@ -452,7 +514,7 @@ export default function AgentWeekLinear({
 
           {/* Band hover highlight when over background (not over a chip) */}
           {hoverBand && !hoverGroupId && (
-            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: dark? 'inset 0 0 0 2px rgba(59,130,246,0.35)':'inset 0 0 0 2px rgba(37,99,235,0.35)' }} />
+            <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: dark? 'inset 0 0 0 2px rgba(255,255,255,0.35)':'inset 0 0 0 2px rgba(0,0,0,0.35)' }} />
           )}
 
           {/* Now line and optional label */}

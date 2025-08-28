@@ -8,7 +8,7 @@ import { cloudGet, cloudPost } from '../lib/api'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import Legend from '../components/Legend'
 
-export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft=false }:{ 
+export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft=false, agents }:{ 
   dark: boolean
   weekStartDate: Date
   shifts: Shift[]
@@ -21,6 +21,7 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
   setCalendarSegs: (f:(prev:{ person:string; day:any; start:string; end:string; taskId:string }[])=>{ person:string; day:any; start:string; end:string; taskId:string }[])=>void
   tz: { id:string; label:string; offset:number }
   isDraft?: boolean
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   const [tab, setTab] = React.useState<'shifts'|'pto'|'tasks'>('shifts')
 
@@ -126,6 +127,7 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
           tz={tz}
           tasks={tasks}
           calendarSegs={calendarSegs}
+          agents={agents}
         />
       ) : (
         tab==='pto' ? (

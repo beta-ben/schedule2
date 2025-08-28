@@ -16,7 +16,7 @@ export default function AllAgentsWeekRibbons({
   pto,
   tasks,
   calendarSegs,
-  hideShiftLabels = false,
+  showAllTimeLabels = false,
   onDragAll,
   onDragShift,
   sortMode = 'start',
@@ -32,7 +32,7 @@ export default function AllAgentsWeekRibbons({
   pto: PTO[]
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
-  hideShiftLabels?: boolean
+  showAllTimeLabels?: boolean
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
   sortMode?: 'start'|'name'
@@ -103,7 +103,10 @@ export default function AllAgentsWeekRibbons({
                 showWeekLabel={false}
                 framed={false}
                 showNowLabel={false}
-                showShiftLabels={!hideShiftLabels}
+                showShiftLabels={true}
+                alwaysShowTimeTags={showAllTimeLabels}
+                forceOuterTimeTags={showAllTimeLabels}
+                avoidLabelOverlap={showAllTimeLabels}
                 highlightIds={highlightIds}
                 showEdgeTimeTagsForHighlights={true}
                 selectedIds={selectedIds}

@@ -1,10 +1,10 @@
 import React from 'react'
 import ManageEditor from './ManageEditor'
-import { parseYMD, sha256Hex } from '../lib/utils'
+import { parseYMD } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 
-export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft=false, draftMeta=null, onStartDraftFromLive, onStartDraftEmpty, onDiscardDraft, onPublishDraft }:{ 
+export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft=false, draftMeta=null, onStartDraftFromLive, onStartDraftEmpty, onDiscardDraft, onPublishDraft, agents }:{ 
   dark: boolean
   weekStart: string
   shifts: Shift[]
@@ -22,6 +22,7 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
   onStartDraftEmpty?: (createdBy?: string)=>void
   onDiscardDraft?: ()=>void
   onPublishDraft?: ()=>Promise<boolean>
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   const [unlocked, setUnlocked] = React.useState(false)
   const [pwInput, setPwInput] = React.useState('')
@@ -31,45 +32,45 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
 
   React.useEffect(()=> { (async () => {
     if(useDevProxy){
-      // Best-effort: if csrf cookie exists, assume signed-in session
+      // If csrf cookie exists, assume admin session (for writes)
       const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
-      if(hasCsrf) setUnlocked(true)
-      return
+      setUnlocked(!!hasCsrf)
+    } else {
+      setUnlocked(false)
     }
-    const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
-    try {
-      const saved = localStorage.getItem('schedule_pw_hash')
-      if (saved === expected) setUnlocked(true)
-    } catch {}
   })() }, [useDevProxy])
 
-  if (!unlocked) {
+  // Auth gates
+  if (useDevProxy && !unlocked) {
     return (
       <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
         <div className="max-w-md mx-auto space-y-3">
           <div className="text-lg font-semibold">Protected — Manage Data</div>
-          <p className="text-sm opacity-80">{useDevProxy ? 'Sign in to your local dev session.' : 'Enter password to continue.'}</p>
+          <p className="text-sm opacity-80">Sign in to your local dev session.</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-            if(useDevProxy){
-              const { devLogin } = await import('../lib/api')
-              const ok = await devLogin(pwInput)
-              if(ok){ setUnlocked(true); setMsg('') } else { setMsg('Login failed') }
-              return
-            }
-            const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
-            const entered  = await sha256Hex(pwInput || '')
-            if (pwInput === (import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares') || entered === expected) {
-              try { localStorage.setItem('schedule_pw_hash', expected) } catch {}
-              setUnlocked(true); setMsg('')
-            } else { setMsg('Wrong password.') }
+            const { devLogin } = await import('../lib/api')
+            const ok = await devLogin(pwInput)
+            if(ok){ setUnlocked(true); setMsg('') } else { setMsg('Login failed') }
           })() }}>
             <div className="flex gap-2">
               <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />
-              <button type="submit" className={["rounded-xl px-4 py-2 font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>{useDevProxy ? 'Sign in' : 'Unlock'}</button>
+              <button type="submit" className={["rounded-xl px-4 py-2 font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>Sign in</button>
             </div>
           </form>
           {msg && (<div className={["text-sm", dark ? "text-red-300" : "text-red-600"].join(' ')}>{msg}</div>)}
-          {useDevProxy && (<div className="text-xs opacity-70">Run the dev auth proxy and set VITE_DEV_PROXY_BASE to use it.</div>)}
+          <div className="text-xs opacity-70">Run the dev auth proxy and set VITE_DEV_PROXY_BASE to use it.</div>
+        </div>
+      </section>
+    )
+  }
+
+  // Without dev proxy (or production API with cookie auth), editing is disabled.
+  if (!useDevProxy) {
+    return (
+      <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
+        <div className="max-w-md mx-auto space-y-2">
+          <div className="text-lg font-semibold">Read-only mode</div>
+          <p className="text-sm opacity-80">Editing is disabled without an authenticated session. Configure a dev proxy (VITE_DEV_PROXY_BASE) or a production API that sets session cookies and CSRF tokens.</p>
         </div>
       </section>
     )
@@ -119,7 +120,7 @@ class ErrorBoundary extends React.Component<{ dark:boolean; children: React.Reac
   }
 }
 
-function ManageUnlocked({ dark, weekStartDate, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft, draftMeta, onStartDraftFromLive, onStartDraftEmpty, onDiscardDraft, onPublishDraft }:{
+function ManageUnlocked({ dark, weekStartDate, shifts, setShifts, pto, setPto, tasks, setTasks, calendarSegs, setCalendarSegs, tz, isDraft, draftMeta, onStartDraftFromLive, onStartDraftEmpty, onDiscardDraft, onPublishDraft, agents }:{
   dark:boolean
   weekStartDate: Date
   shifts: Shift[]
@@ -137,6 +138,7 @@ function ManageUnlocked({ dark, weekStartDate, shifts, setShifts, pto, setPto, t
   onStartDraftEmpty?: (createdBy?: string)=>void
   onDiscardDraft?: ()=>void
   onPublishDraft?: ()=>Promise<boolean>
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   // Draft banner and actions (safe: hooks are always called when ManageUnlocked is rendered)
   const [ownerName, setOwnerName] = React.useState(()=>{
@@ -193,6 +195,7 @@ function ManageUnlocked({ dark, weekStartDate, shifts, setShifts, pto, setPto, t
           setCalendarSegs={setCalendarSegs}
           tz={tz}
           isDraft={isDraft}
+          agents={agents}
         />
       </ErrorBoundary>
     </section>

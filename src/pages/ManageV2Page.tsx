@@ -1,40 +1,119 @@
 import React from 'react'
+// Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
+import { cloudPost } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
+import TaskConfigPanel from '../components/TaskConfigPanel'
+import { DAYS } from '../constants'
+import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName } from '../lib/utils'
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string }
 
-export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void }){
+export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void }){
+  // Admin auth gate (dev proxy only); no local password fallback.
+  const [unlocked, setUnlocked] = React.useState(false)
+  const [pwInput, setPwInput] = React.useState('')
+  const [msg, setMsg] = React.useState('')
+  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
+  React.useEffect(()=> { (async () => {
+    if(useDevProxy){
+      const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
+      setUnlocked(!!hasCsrf)
+    } else {
+      setUnlocked(false)
+    }
+  })() }, [useDevProxy])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
-  const tabs = ['Agents','Shifts','PTO','Postures'] as const
+  const tabs = ['Agents','Shifts','Postures','PTO'] as const
   type Subtab = typeof tabs[number]
   const [subtab, setSubtab] = React.useState<Subtab>('Agents')
-  // Filters
-  const [hideShiftLabels, setHideShiftLabels] = React.useState(false)
+  // Shifts tab: show time labels for all shifts
+  const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   const [sortMode, setSortMode] = React.useState<'start'|'name'>('start')
+  // Shifts tab: working copy (draft) of shifts
+  const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
+  const [isDirty, setIsDirty] = React.useState(false)
+  // Track whether current draft session started from live (so full undo returns to Live)
+  const startedFromLiveRef = React.useRef(false)
+  const DRAFT_KEY = React.useMemo(()=> `schedule2.v2.draft.${weekStart}.${tz.id}`,[weekStart,tz.id])
+  const DRAFT_LIST_KEY = React.useMemo(()=> `schedule2.v2.drafts`,[])
+  // Which saved draft (if any) this working session is tied to
+  const [currentDraftId, setCurrentDraftId] = React.useState<string | null>(null)
+  // Keep working copy synced to live only when not dirty
+  React.useEffect(()=>{ if(!isDirty) setWorkingShifts(shifts) },[shifts,isDirty])
+  // Load existing draft if present for this week/tz
+  React.useEffect(()=>{
+    try{
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if(raw){
+        const parsed = JSON.parse(raw)
+        if(Array.isArray(parsed?.shifts)){
+          setWorkingShifts(parsed.shifts as Shift[])
+          setIsDirty(true)
+          if(parsed?.draftId && typeof parsed.draftId === 'string') setCurrentDraftId(parsed.draftId)
+          startedFromLiveRef.current = false
+        }
+      }
+    }catch{}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[DRAFT_KEY])
+  // Autosave working when dirty
+  React.useEffect(()=>{
+    if(!isDirty) return
+    const t = setTimeout(()=>{
+    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: workingShifts, weekStart, tzId: tz.id, draftId: currentDraftId, updatedAt: new Date().toISOString() })) }catch{}
+    },300)
+    return ()=> clearTimeout(t)
+  },[isDirty,workingShifts,DRAFT_KEY,weekStart,tz.id,currentDraftId])
   // Track modified shifts to show edge time labels next render
   const [modifiedIds, setModifiedIds] = React.useState<Set<string>>(new Set())
   // Shifts tab: multi-select of shifts by id
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set())
   // Shifts tab: multi-level undo stack (keep last 10 actions)
   const [shiftUndoStack, setShiftUndoStack] = React.useState<Array<Array<{ id:string; patch: Partial<Shift> }>>>([])
+  // Redo stack mirrors undo with forward patches
+  const [shiftRedoStack, setShiftRedoStack] = React.useState<Array<Array<{ id:string; patch: Partial<Shift> }>>>([])
   const canUndoShifts = shiftUndoStack.length > 0
+  const canRedoShifts = shiftRedoStack.length > 0
+  // Shallow equality for relevant shift fields (ignores segments)
+  function eqShift(a: Shift, b: Shift){
+    return a.id===b.id && a.day===b.day && a.start===b.start && a.end===b.end && (a as any).endDay=== (b as any).endDay
+  }
+  function eqShifts(a: Shift[], b: Shift[]){
+    if(a.length!==b.length) return false
+    const map = new Map(a.map(s=> [s.id, s]))
+    for(const s of b){ const m = map.get(s.id); if(!m || !eqShift(m, s)) return false }
+    return true
+  }
   const pushShiftsUndo = React.useCallback((changes: Array<{ id:string; patch: Partial<Shift> }>)=>{
     if(changes.length===0) return
+    // If this is the first change in a clean state and working === live, mark we started from live
+    if(!isDirty && eqShifts(workingShifts, shifts)) startedFromLiveRef.current = true
     setShiftUndoStack(prev=>{
       const next = prev.concat([changes])
       if(next.length>10) next.shift()
       return next
     })
-  }, [])
+    // Any new action invalidates redo history
+    setShiftRedoStack([])
+    setIsDirty(true)
+  }, [isDirty, workingShifts, shifts])
   const undoShifts = React.useCallback(()=>{
     if(shiftUndoStack.length===0) return
     const last = shiftUndoStack[shiftUndoStack.length-1]
+    // Capture current values to enable redo
+    const redoPatches: Array<{ id:string; patch: Partial<Shift> }> = last.map(({id})=>{
+      const cur = workingShifts.find(s=> s.id===id)
+      return cur ? { id, patch: { day: cur.day, start: cur.start, end: cur.end, endDay: (cur as any).endDay } } : { id, patch: {} }
+    })
     // Apply previous patches
-    last.forEach(({id, patch})=> onUpdateShift?.(id, patch))
+    setWorkingShifts(prev=> prev.map(s=>{
+      const p = last.find(x=> x.id===s.id)
+      return p ? { ...s, ...p.patch } : s
+    }))
     // Remove reverted ids from modified set if they match the reverted state next render
     setModifiedIds(prev=>{
       const next = new Set(prev)
@@ -42,13 +121,53 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       return next
     })
     setShiftUndoStack(prev=> prev.slice(0, -1))
-  }, [shiftUndoStack, onUpdateShift])
+    // Push redo patches on stack
+    setShiftRedoStack(prev=> prev.concat([redoPatches]))
+    setIsDirty(true)
+    // If we've undone the very first change from live, revert to live and clear draft
+    const remaining = shiftUndoStack.length - 1
+    if(remaining===0 && startedFromLiveRef.current){
+      setWorkingShifts(shifts)
+      setIsDirty(false)
+      startedFromLiveRef.current = false
+      try{ localStorage.removeItem(DRAFT_KEY) }catch{}
+  setCurrentDraftId(null)
+    }
+  }, [shiftUndoStack, workingShifts, shifts, DRAFT_KEY])
+  const redoShifts = React.useCallback(()=>{
+    if(shiftRedoStack.length===0) return
+    const last = shiftRedoStack[shiftRedoStack.length-1]
+    // Capture current values to re-enable undo after redo
+    const undoPatches: Array<{ id:string; patch: Partial<Shift> }> = last.map(({id})=>{
+      const cur = workingShifts.find(s=> s.id===id)
+      return cur ? { id, patch: { day: cur.day, start: cur.start, end: cur.end, endDay: (cur as any).endDay } } : { id, patch: {} }
+    })
+    setWorkingShifts(prev=> prev.map(s=>{
+      const p = last.find(x=> x.id===s.id)
+      return p ? { ...s, ...p.patch } : s
+    }))
+    // Mark modified ids so outer time tags show
+    setModifiedIds(prev=>{
+      const next = new Set(prev)
+      last.forEach(({id})=> next.add(id))
+      return next
+    })
+    setShiftRedoStack(prev=> prev.slice(0, -1))
+    setShiftUndoStack(prev=> prev.concat([undoPatches]))
+    setIsDirty(true)
+  }, [shiftRedoStack, workingShifts])
   // Ctrl/Cmd+Z for Shifts tab
   React.useEffect(()=>{
     const onKey = (e: KeyboardEvent)=>{
       if(subtab!=='Shifts') return
       const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key==='z' || e.key==='Z')
-      if(isUndo){ e.preventDefault(); undoShifts() }
+    const isRedo = ((e.ctrlKey || e.metaKey) && (e.shiftKey && (e.key==='z' || e.key==='Z'))) || ((e.ctrlKey || e.metaKey) && (e.key==='y' || e.key==='Y'))
+    if(isUndo){ e.preventDefault(); undoShifts() }
+    else if(isRedo){ e.preventDefault(); redoShifts() }
+    const isSave = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key==='s' || e.key==='S')
+    const isSaveNew = (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key==='s' || e.key==='S')
+  if(isSave){ e.preventDefault(); currentDraftId ? saveDraft() : saveNewDraft() }
+    else if(isSaveNew){ e.preventDefault(); saveNewDraft() }
       if(e.key === 'Escape'){
         // Clear selection to allow single-shift moves without grouping
         setSelectedShiftIds(new Set())
@@ -56,7 +175,130 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     }
     window.addEventListener('keydown', onKey)
     return ()=> window.removeEventListener('keydown', onKey)
-  }, [subtab, undoShifts])
+  }, [subtab, undoShifts, redoShifts, currentDraftId])
+
+  // Postures tab form state
+  const allPeople = React.useMemo(()=>{
+    const set = new Set<string>()
+    // Prefer current Agents tab entries (full names)
+    for(const a of localAgents){ const nm = `${a.firstName} ${a.lastName}`.trim(); if(nm) set.add(nm) }
+    // Also include any names present on shifts (demo or otherwise)
+    for(const s of shifts){ if(s.person) set.add(s.person) }
+    // And any names that already exist in assigned calendar segments
+    for(const cs of calendarSegs){ if(cs.person) set.add(cs.person) }
+    return Array.from(set).sort()
+  }, [localAgents, shifts, calendarSegs])
+  const activeTasks = React.useMemo(()=> tasks.filter(t=>!t.archived), [tasks])
+  const [assignee, setAssignee] = React.useState<string>('')
+  const [assignDay, setAssignDay] = React.useState<typeof DAYS[number]>('Mon' as any)
+  const [assignStart, setAssignStart] = React.useState('09:00')
+  const [assignEnd, setAssignEnd] = React.useState('10:00')
+  const [assignTaskId, setAssignTaskId] = React.useState<string>('')
+  React.useEffect(()=>{ if(!assignTaskId && activeTasks[0]) setAssignTaskId(activeTasks[0].id) },[activeTasks, assignTaskId])
+  // Inline edit state for assigned calendar segments
+  const [editingIdx, setEditingIdx] = React.useState<number|null>(null)
+  const [eaPerson, setEaPerson] = React.useState('')
+  const [eaDay, setEaDay] = React.useState<typeof DAYS[number]>('Mon' as any)
+  const [eaStart, setEaStart] = React.useState('09:00')
+  const [eaEnd, setEaEnd] = React.useState('10:00')
+  const [eaTaskId, setEaTaskId] = React.useState('')
+  // const [filterTaskId, setFilterTaskId] = React.useState('') // not used currently
+  // Calendar filter (posture) — empty means show all
+  const [calendarFilterTaskId, setCalendarFilterTaskId] = React.useState('')
+
+  // Draft versions (saved snapshots)
+  type DraftSnapshot = { id:string; name:string; createdAt:string; weekStart:string; tzId:string; shifts: Shift[] }
+  const [savedDrafts, setSavedDrafts] = React.useState<DraftSnapshot[]>(()=>{
+    try{
+      const raw = localStorage.getItem(DRAFT_LIST_KEY)
+      if(!raw) return []
+      const arr = JSON.parse(raw)
+      if(Array.isArray(arr)) return arr
+    }catch{}
+    return []
+  })
+  function persistSavedDrafts(next: DraftSnapshot[]){
+    setSavedDrafts(next)
+    try{ localStorage.setItem(DRAFT_LIST_KEY, JSON.stringify(next)) }catch{}
+  }
+  function saveDraft(){
+    // Overwrite current draft if linked, else create a new one
+    let idToUse: string | null = currentDraftId
+    if(currentDraftId){
+      const idx = savedDrafts.findIndex(d=> d.id===currentDraftId)
+      if(idx>=0){
+        const next = savedDrafts.slice()
+        next[idx] = { ...next[idx], shifts: workingShifts }
+        const id = crypto.randomUUID()
+      } else {
+        const name = prompt('Name this draft', new Date().toLocaleString()) || new Date().toLocaleString()
+        const id = Math.random().toString(36).slice(2)
+        const snap: DraftSnapshot = { id, name, createdAt: new Date().toISOString(), weekStart, tzId: tz.id, shifts: workingShifts }
+        persistSavedDrafts(savedDrafts.concat([snap]))
+        setCurrentDraftId(id)
+        setSelectedDraftId(id)
+        idToUse = id
+      }
+    } else {
+      const name = prompt('Name this draft', new Date().toLocaleString()) || new Date().toLocaleString()
+      const id = Math.random().toString(36).slice(2)
+      const snap: DraftSnapshot = { id, name, createdAt: new Date().toISOString(), weekStart, tzId: tz.id, shifts: workingShifts }
+      persistSavedDrafts(savedDrafts.concat([snap]))
+      setCurrentDraftId(id)
+      setSelectedDraftId(id)
+      idToUse = id
+    }
+    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: workingShifts, weekStart, tzId: tz.id, draftId: idToUse || currentDraftId || undefined, updatedAt: new Date().toISOString() })) }catch{}
+  }
+  function saveNewDraft(){
+    const name = prompt('Name this draft', new Date().toLocaleString()) || new Date().toLocaleString()
+    const id = Math.random().toString(36).slice(2)
+    const snap: DraftSnapshot = { id, name, createdAt: new Date().toISOString(), weekStart, tzId: tz.id, shifts: workingShifts }
+    persistSavedDrafts(savedDrafts.concat([snap]))
+    setCurrentDraftId(id)
+    setSelectedDraftId(id)
+    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: workingShifts, weekStart, tzId: tz.id, draftId: id, updatedAt: new Date().toISOString() })) }catch{}
+  }
+  const [selectedDraftId, setSelectedDraftId] = React.useState('')
+  function loadSelectedDraft(){
+    const d = savedDrafts.find(x=> x.id===selectedDraftId)
+    if(!d) return
+    setWorkingShifts(d.shifts)
+    setIsDirty(true)
+    setCurrentDraftId(d.id)
+    setShiftUndoStack([]); setShiftRedoStack([]); setModifiedIds(new Set())
+    startedFromLiveRef.current = false
+    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: d.shifts, weekStart: d.weekStart, tzId: d.tzId, draftId: d.id, updatedAt: new Date().toISOString() })) }catch{}
+  }
+  function deleteSelectedDraft(){
+    if(!selectedDraftId) return
+    const next = savedDrafts.filter(x=> x.id!==selectedDraftId)
+    persistSavedDrafts(next)
+    setSelectedDraftId('')
+    if(currentDraftId === selectedDraftId) setCurrentDraftId(null)
+  }
+  function discardWorkingDraft(){
+    setWorkingShifts(shifts)
+    setIsDirty(false)
+    setShiftUndoStack([]); setShiftRedoStack([]); setModifiedIds(new Set())
+    try{ localStorage.removeItem(DRAFT_KEY) }catch{}
+    startedFromLiveRef.current = false
+    setCurrentDraftId(null)
+  }
+  async function publishWorkingToLive(){
+    const ok = await cloudPost({ shifts: workingShifts, pto, calendarSegs, updatedAt: new Date().toISOString() })
+    if(ok){
+      setIsDirty(false)
+      try{ localStorage.removeItem(DRAFT_KEY) }catch{}
+      alert('Published to live.')
+      startedFromLiveRef.current = false
+      setCurrentDraftId(null)
+  // Clear modified markers so shift ribbons no longer show edited tags
+  setModifiedIds(new Set())
+    }else{
+      alert('Failed to publish.')
+    }
+  }
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
     onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))
   },[onAddAgent])
@@ -66,6 +308,39 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const handleDelete = React.useCallback((index:number)=>{
     onDeleteAgent?.(index); setLocalAgents(prev=> prev.filter((_,i)=> i!==index))
   },[onDeleteAgent])
+  if (useDevProxy && !unlocked) {
+    return (
+      <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
+        <div className="max-w-md mx-auto space-y-3">
+          <div className="text-lg font-semibold">Protected — Manage Data</div>
+          <p className="text-sm opacity-80">Sign in to your local dev session.</p>
+          <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
+            const { devLogin } = await import('../lib/api')
+            const ok = await devLogin(pwInput)
+            if(ok){ setUnlocked(true); setMsg('') } else { setMsg('Login failed') }
+          })() }}>
+            <div className="flex gap-2">
+              <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />
+              <button type="submit" className={["rounded-xl px-4 py-2 font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>Sign in</button>
+            </div>
+          </form>
+          {msg && (<div className={["text-sm", dark ? "text-red-300" : "text-red-600"].join(' ')}>{msg}</div>)}
+          <div className="text-xs opacity-70">Run the dev auth proxy and set VITE_DEV_PROXY_BASE to use it.</div>
+        </div>
+      </section>
+    )
+  }
+  if (!useDevProxy) {
+    return (
+      <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
+        <div className="max-w-md mx-auto space-y-2">
+          <div className="text-lg font-semibold">Read-only mode</div>
+          <p className="text-sm opacity-80">Editing requires an authenticated server session. For local development, run the dev proxy (VITE_DEV_PROXY_BASE) which provides cookie sessions and CSRF.</p>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className={["rounded-2xl p-3 space-y-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
   <div className="flex items-center gap-2">
@@ -88,39 +363,153 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             >{t}</button>
           )
         })}
-        {subtab==='Shifts' && (
-          <div className="ml-auto flex items-center gap-3 text-xs">
-            <button
-              type="button"
-              disabled={!canUndoShifts}
-              onClick={undoShifts}
-              className={["px-2 py-1 rounded border", canUndoShifts ? (dark?"border-neutral-700 hover:bg-neutral-800":"border-neutral-300 hover:bg-neutral-100") : (dark?"border-neutral-800 opacity-50":"border-neutral-200 opacity-50")].join(' ')}
-              title="Undo (Ctrl/Cmd+Z)"
-            >Undo</button>
-            <label className="inline-flex items-center gap-1 select-none">
+      </div>
+
+      {subtab==='Shifts' && (
+        <div className={["flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs rounded-xl px-2 py-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+          {/* Left: draft status + metadata */}
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span className={["inline-flex items-center px-2 py-1 rounded-xl border font-medium", isDirty ? (dark?"bg-neutral-900 border-amber-600 text-amber-400":"bg-white border-amber-500 text-amber-700") : (dark?"bg-neutral-900 border-neutral-800 text-neutral-400":"bg-white border-neutral-200 text-neutral-500")].join(' ')}>
+              {isDirty ? 'Draft — not live' : 'Live'}
+            </span>
+            {(()=>{ const cur = savedDrafts.find(d=> d.id===currentDraftId); const text = cur ? (`Editing draft: ${cur.name} — created ${new Date(cur.createdAt).toLocaleString()}`) : 'No draft linked'; return (
+              <span className="text-[11px] opacity-70 truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[42ch] sm:max-w-[64ch]" title={text}>
+                {text}
+              </span>
+            )})()}
+          </div>
+
+          {/* Right: all controls */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* View: Sort + time labels */}
+            <label className="inline-flex items-center gap-1 select-none" title="Sort ribbons by earliest shift start or by name">
               <span className={dark?"text-neutral-300":"text-neutral-700"}>Sort</span>
               <select
-                className={["border rounded px-1.5 py-0.5", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                className={["border rounded-xl px-2 py-1 w-[9.5rem] sm:w-[11rem]", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
                 value={sortMode}
                 onChange={(e)=> setSortMode((e.target.value as 'start'|'name'))}
-                title="Sort ribbons by earliest shift start or by name"
               >
                 <option value="start">Start time</option>
                 <option value="name">Name</option>
               </select>
             </label>
-            <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Show start/end labels for all shifts">
               <input
                 type="checkbox"
-                className="accent-blue-600"
-                checked={hideShiftLabels}
-                onChange={(e)=> setHideShiftLabels(e.target.checked)}
+                className="accent-blue-600 w-4 h-4"
+                checked={showAllTimeLabels}
+                onChange={(e)=> setShowAllTimeLabels(e.target.checked)}
               />
-              <span className={dark?"text-neutral-300":"text-neutral-700"}>Hide shift time labels</span>
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span className="sr-only">Toggle time labels</span>
             </label>
+
+            {/* Edit: Undo/Redo */}
+            <div className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                disabled={!canUndoShifts}
+                onClick={undoShifts}
+                className={[
+                  "px-2.5 py-1.5 rounded-xl border font-medium",
+                  canUndoShifts ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")
+                ].join(' ')}
+                title="Undo (Ctrl/Cmd+Z)"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20a8 8 0 0 0-7-12H4"></path></svg>
+                  <span className="hidden sm:inline">Undo</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={!canRedoShifts}
+                onClick={redoShifts}
+                className={[
+                  "px-2.5 py-1.5 rounded-xl border font-medium",
+                  canRedoShifts ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")
+                ].join(' ')}
+                title="Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20a8 8 0 0 1 7-12h9"></path></svg>
+                  <span className="hidden sm:inline">Redo</span>
+                </span>
+              </button>
+            </div>
+
+            {/* Draft: Save / Save new */}
+            <div className="inline-flex items-center gap-1">
+              <button
+                onClick={saveDraft}
+                disabled={!currentDraftId}
+                className={["px-2.5 py-1.5 rounded-xl border font-medium", currentDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')}
+                title="Save current draft (Ctrl/Cmd+S)"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                  <span className="hidden sm:inline">Save</span>
+                </span>
+              </button>
+              <button
+                onClick={saveNewDraft}
+                className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+                title="Save new draft (Ctrl/Cmd+Shift+S)"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                  <span className="hidden sm:inline">Save new</span>
+                </span>
+              </button>
+            </div>
+
+            {/* Drafts: picker + load/delete */}
+            <div className="inline-flex items-center gap-1 min-w-0">
+              <select className={["border rounded-xl px-2 py-1 max-w-[28ch] sm:max-w-[36ch] truncate", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={selectedDraftId} onChange={(e)=> setSelectedDraftId(e.target.value)} title="Select a saved draft">
+                <option value="">Drafts…</option>
+                {savedDrafts.slice().reverse().map(d=> (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <button disabled={!selectedDraftId} onClick={loadSelectedDraft} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Load selected draft">
+                <span className="inline-flex items-center gap-1.5">
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  <span className="hidden sm:inline">Load</span>
+                </span>
+              </button>
+              <button disabled={!selectedDraftId} onClick={()=>{ if(confirm('Delete selected draft?')) deleteSelectedDraft() }} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Delete selected draft">
+                <span className="inline-flex items-center gap-1.5">
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  <span className="hidden sm:inline">Delete</span>
+                </span>
+              </button>
+            </div>
+
+            {/* Publish area: discard then publish at far right */}
+            <button
+              disabled={!isDirty}
+              onClick={discardWorkingDraft}
+              className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", isDirty ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')}
+              title="Discard working changes"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
+                <span className="hidden sm:inline">Discard</span>
+              </span>
+            </button>
+            <button
+              onClick={publishWorkingToLive}
+              className="px-3 py-1.5 rounded-xl border font-semibold bg-blue-600 border-blue-600 text-white hover:bg-blue-500 shrink-0"
+              title="Publish working changes to live"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="M16 5h2a2 2 0 0 1 2 2v2"></path></svg>
+                <span className="hidden sm:inline">Publish</span>
+              </span>
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
   {subtab==='Agents' ? (
         <WeekEditor
@@ -146,11 +535,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             tz={tz}
             weekStart={weekStart}
             agents={localAgents}
-            shifts={shifts}
+            shifts={workingShifts}
             pto={pto}
             tasks={tasks}
             calendarSegs={calendarSegs}
-            hideShiftLabels={hideShiftLabels}
+            showAllTimeLabels={showAllTimeLabels}
             sortMode={sortMode}
             highlightIds={modifiedIds}
             selectedIds={selectedShiftIds}
@@ -162,7 +551,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               })
             }}
             onDragAll={(name, delta)=>{
-              const personsShifts = shifts.filter(s=> s.person===name)
+              const personsShifts = workingShifts.filter(s=> s.person===name)
               // Capture pre-change snapshot for undo (all shifts for this person)
               const prevPatches = personsShifts.map(s=> ({ id: s.id, patch: { day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay } }))
               pushShiftsUndo(prevPatches)
@@ -174,7 +563,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               const addMin = (t:string, dm:number)=>{
                 const [h,m]=t.split(':').map(Number); const tot=((h||0)*60+(m||0)+dm+10080)%1440; const hh=Math.floor(tot/60).toString().padStart(2,'0'); const mm=(tot%60).toString().padStart(2,'0'); return `${hh}:${mm}`
               }
-              const next = personsShifts.map(s=>{
+              const moved = personsShifts.map(s=>{
                 const sd = idxOf(s.day); const ed = idxOf((s as any).endDay || s.day)
                 const sAbs = sd*1440 + toMin(s.start)
                 let eAbs = ed*1440 + toMin(s.end); if(eAbs<=sAbs) eAbs+=1440
@@ -187,8 +576,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               })
               // Apply updates and mark modified ids so tags show
               const ids = new Set<string>(modifiedIds)
-              next.forEach(s=> { onUpdateShift?.(s.id, { day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay }); ids.add(s.id) })
+              const movedMap = new Map(moved.map(m=> [m.id, m]))
+              setWorkingShifts(prev=> prev.map(s=> movedMap.get(s.id) || s))
+              moved.forEach(s=> ids.add(s.id))
               setModifiedIds(ids)
+              setIsDirty(true)
             }}
             onDragShift={(name, id, delta)=>{
               const DAYS_ = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
@@ -201,7 +593,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               // Move the union of selected shifts and the dragged shift
               const moveIds = new Set<string>(selectedShiftIds)
               moveIds.add(id)
-              const moveShifts = shifts.filter(s=> moveIds.has(s.id))
+              const moveShifts = workingShifts.filter(s=> moveIds.has(s.id))
               if(moveShifts.length === 0) return
               if(moveShifts.length === 1){
                 // Default single-shift move
@@ -215,9 +607,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 const neDay = Math.floor(((ne/1440)%7+7)%7)
                 const nsMin = ((ns%1440)+1440)%1440
                 const neMin = ((ne%1440)+1440)%1440
-                const next = { ...s, day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
-                onUpdateShift?.(next.id, { day: next.day, start: next.start, end: next.end, endDay: (next as any).endDay })
-                setModifiedIds(prev=>{ const n=new Set(prev); n.add(next.id); return n })
+                const patch = { day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
+                setWorkingShifts(prev=> prev.map(x=> x.id===s.id ? { ...x, ...patch } : x))
+                setModifiedIds(prev=>{ const n=new Set(prev); n.add(s.id); return n })
+                setIsDirty(true)
                 return
               }
               // Multi-shift move for union
@@ -233,19 +626,283 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 const neDay = Math.floor(((ne/1440)%7+7)%7)
                 const nsMin = ((ns%1440)+1440)%1440
                 const neMin = ((ne%1440)+1440)%1440
-                const next = { ...s, day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
-                onUpdateShift?.(next.id, { day: next.day, start: next.start, end: next.end, endDay: (next as any).endDay })
-                nextModified.add(next.id)
+                const patched = { ...s, day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
+                setWorkingShifts(prev=> prev.map(x=> x.id===patched.id ? patched : x))
+                nextModified.add(patched.id)
               }
               setModifiedIds(nextModified)
+              setIsDirty(true)
             }}
           />
         </div>
       ) : (
-        <div className={["rounded-xl p-4 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
-          <div className="text-sm font-semibold mb-1">{subtab}</div>
-          <div className="text-sm opacity-80">Coming soon.</div>
-        </div>
+        subtab==='Postures' ? (
+          <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+              {/* Left column: Postures list and assign controls */}
+              <div className="md:col-span-1 space-y-3">
+                <TaskConfigPanel
+                  tasks={tasks}
+                  onCreate={(t)=> setTasks(prev=> prev.concat([{ ...t, id: uid() }]))}
+                  onUpdate={(t)=> setTasks(prev=> prev.map(x=> x.id===t.id ? t : x))}
+                  onArchive={(id)=> setTasks(prev=> prev.map(x=> x.id===id ? { ...x, archived:true } : x))}
+                  onDelete={(id)=>{ setTasks(prev=> prev.filter(x=> x.id!==id)); setCalendarSegs(prev=> prev.filter(cs=> cs.taskId!==id)) }}
+                  dark={dark}
+                  selectedId={assignTaskId}
+                  onSelect={(id)=> setAssignTaskId(id)}
+                />
+
+                <div className={["rounded-xl p-3 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+                  <div className="text-sm font-medium mb-2">Assign posture to agent</div>
+                  <div className="grid grid-cols-1 gap-3">
+                    <label className="text-sm flex flex-col">
+                      <span className="mb-1">Agent</span>
+                      <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignee} onChange={e=>setAssignee(e.target.value)}>
+                        <option value="">—</option>
+                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <label className="text-sm flex flex-col col-span-1">
+                        <span className="mb-1">Day</span>
+                        <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignDay} onChange={e=>setAssignDay(e.target.value as any)}>
+                          {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-sm flex flex-col col-span-1">
+                        <span className="mb-1">Start</span>
+                        <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignStart} onChange={e=>setAssignStart(e.target.value)} />
+                      </label>
+                      <label className="text-sm flex flex-col col-span-1">
+                        <span className="mb-1">End</span>
+                        <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignEnd} onChange={e=>setAssignEnd(e.target.value)} />
+                      </label>
+                    </div>
+                    <button
+                      onClick={()=>{
+                        if(!assignee) return alert('Choose an agent')
+                        if(!assignTaskId) return alert('Choose a posture')
+                        const aS = toMin(assignStart), aE = toMin(assignEnd)
+                        if(!(aE>aS)) return alert('End must be after start')
+                        const dayShiftsLocal = shiftsForDayInTZ(shifts, assignDay as any, tz.offset).filter(s=>s.person===assignee)
+                        const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
+                        if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.'); }
+                        setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, start: assignStart, end: assignEnd, taskId: assignTaskId }]))
+                      }}
+                      className={["h-10 rounded-xl border font-medium px-4", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}
+                    >Add assignment</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right column: Assigned list (compact) */}
+              <div className="md:col-span-1 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">Assigned postures</div>
+                  {assignTaskId && (
+                    <div className="text-xs opacity-70">
+                      Filtered to: {tasks.find(t=>t.id===assignTaskId)?.name || assignTaskId}
+                    </div>
+                  )}
+                </div>
+                {(()=>{
+                  const dayIndex = new Map(DAYS.map((d,i)=>[d,i]))
+                  const segs = calendarSegs.map((cs,_idx)=> ({...cs, _idx}))
+                  const visiblePostures = tasks.filter(t=> !t.archived && (!assignTaskId || t.id===assignTaskId))
+                  const sections: JSX.Element[] = []
+                  for(const t of visiblePostures){
+                    const pSegs = segs.filter(s=> s.taskId===t.id)
+                    if(pSegs.length===0) continue
+                    const byPerson = new Map<string, typeof pSegs>()
+                    for(const s of pSegs){ const arr = byPerson.get(s.person) || []; arr.push(s); byPerson.set(s.person, arr) }
+                    const people = Array.from(byPerson.keys()).sort()
+                    sections.push(
+                      <div key={t.id} className={["rounded-xl border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+                        <div className={["px-3 py-2 flex items-center justify-between", dark?"bg-neutral-900":"bg-white"].join(' ')}>
+                          <span className="inline-flex items-center gap-2">
+                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: t.color || '#888' }}></span>
+                            <span className="font-medium text-sm">{t.name}</span>
+                          </span>
+                          <span className="text-xs opacity-70">{pSegs.length} item{pSegs.length===1?'':'s'}</span>
+                        </div>
+                        <div className={"divide-y " + (dark?"divide-neutral-800":"divide-neutral-200")}>
+                          {people.map(person=>{
+                            const rows = byPerson.get(person)!.slice().sort((a,b)=>{
+                              const dA = (dayIndex.get(a.day as any) ?? 0) - (dayIndex.get(b.day as any) ?? 0)
+                              if(dA!==0) return dA
+                              const tA = toMin(a.start) - toMin(b.start)
+                              if(tA!==0) return tA
+                              return a.end.localeCompare(b.end)
+                            })
+                            return (
+                              <details key={person}>
+                                <summary className={["px-3 py-1.5 cursor-pointer select-none flex items-center justify-between", dark?"hover:bg-neutral-900":"hover:bg-neutral-50"].join(' ')}>
+                                  <span className="text-sm">{agentDisplayName(localAgents as any, rows[0]?.agentId, person)}</span>
+                                  <span className="text-xs opacity-70">{rows.length} shift{rows.length===1?'':'s'}</span>
+                                </summary>
+                                <div className="px-3 py-1.5 space-y-1">
+                                  {rows.map(r=> (
+                                    <div key={`${r._idx}-${r.day}-${r.start}-${r.end}`} className="flex items-center justify-between gap-2 text-sm">
+                                      <div className="flex items-center gap-3">
+                                        <span className="w-[6ch] opacity-70">{r.day}</span>
+                                        <span className="w-[11ch] tabular-nums">{r.start}–{r.end}</span>
+                                      </div>
+                                      <div className="shrink-0 flex gap-1.5">
+                                        <button onClick={()=>{ setEditingIdx(r._idx); setEaPerson(r.person); setEaDay(r.day as any); setEaStart(r.start); setEaEnd(r.end); setEaTaskId(r.taskId) }} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Edit</button>
+                                        <button onClick={()=>{ if(confirm('Remove this assignment?')) setCalendarSegs(prev=> prev.filter((_,i)=> i!==r._idx)) }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  }
+                  if(sections.length===0){
+                    return <div className="text-sm opacity-70">No assigned postures.</div>
+                  }
+                  // Fix container height to avoid layout jump when expanding/collapsing
+                  return <div className="space-y-3 h-[28rem] overflow-auto pr-1">{sections}</div>
+                })()}
+
+                {/* Inline editor row */}
+                {editingIdx!=null && (
+                  <div className={["rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
+                    <div className="text-sm font-medium mb-2">Edit assignment</div>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                      <label className="text-sm flex flex-col">
+                        <span className="mb-1">Agent</span>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaPerson} onChange={e=>setEaPerson(e.target.value)}>
+                          {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-sm flex flex-col">
+                        <span className="mb-1">Day</span>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaDay} onChange={e=>setEaDay(e.target.value as any)}>
+                          {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-sm flex flex-col"><span className="mb-1">Start</span><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaStart} onChange={e=>setEaStart(e.target.value)} /></label>
+                      <label className="text-sm flex flex-col"><span className="mb-1">End</span><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaEnd} onChange={e=>setEaEnd(e.target.value)} /></label>
+                      <label className="text-sm flex flex-col">
+                        <span className="mb-1">Posture</span>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaTaskId} onChange={e=>setEaTaskId(e.target.value)}>
+                          {tasks.filter(t=>!t.archived).map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      </label>
+                      <div className="md:col-span-5 flex gap-2">
+                        <button onClick={()=>{
+                          if(editingIdx==null) return
+                          if(!eaPerson.trim()) return alert('Choose an agent')
+                          if(!eaTaskId) return alert('Choose a posture')
+                          const aS=toMin(eaStart), aE=toMin(eaEnd)
+                          if(!(aE>aS)) return alert('End must be after start')
+                          const dayShiftsLocal = shiftsForDayInTZ(shifts, eaDay as any, tz.offset).filter(s=>s.person===eaPerson)
+                          const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE=s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
+                          if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.') }
+                          setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, start: eaStart, end: eaEnd, taskId: eaTaskId } : cs))
+                          setEditingIdx(null)
+                        }} className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
+                        <button onClick={()=>setEditingIdx(null)} className={["px-3 py-1.5 rounded border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom calendar view: weekly calendar grid with posture filter */}
+      <div className={["mt-3 rounded-xl p-3", dark?"bg-neutral-900":"bg-white"].join(' ')}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium">Weekly posture calendar</div>
+                <label className="text-xs inline-flex items-center gap-2">
+                  <span className={dark?"text-neutral-300":"text-neutral-700"}>Filter</span>
+                  <select
+                    className={["border rounded-lg px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                    value={calendarFilterTaskId}
+                    onChange={(e)=> setCalendarFilterTaskId(e.target.value)}
+                  >
+                    <option value="">All postures</option>
+                    {tasks.filter(t=>!t.archived).map(t=> (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {(()=>{
+                const H_PX = 420 // column height
+                const hrColor = dark? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
+                const hourMarks = Array.from({length:25},(_,i)=>i)
+                const taskMap = new Map(tasks.map(t=>[t.id,t]))
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
+                    {DAYS.map(day=>{
+                      // Build lanes so overlapping items render side-by-side
+                      const dayItems = calendarSegs
+                        .map((cs, _idx)=> ({...cs, _idx}))
+                        .filter(cs=> cs.day===day && (!calendarFilterTaskId || cs.taskId===calendarFilterTaskId))
+                        .sort((a,b)=> toMin(a.start) - toMin(b.start))
+                      const lanes: number[] = [] // end minute per lane
+                      const placed = dayItems.map((it)=>{
+                        const s = toMin(it.start)
+                        const e = it.end==='24:00' ? 1440 : toMin(it.end)
+                        let lane = 0
+                        for(lane=0; lane<lanes.length; lane++){
+                          if(s >= lanes[lane]){ lanes[lane] = e; break }
+                        }
+                        if(lane===lanes.length){ lanes.push(e) }
+                        return { it, lane, s, e }
+                      })
+                      const laneCount = Math.max(1, lanes.length)
+                      const laneWidthPct = 100 / laneCount
+                      return (
+                        <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: H_PX }}>
+                          <div className="font-medium mb-1">{day}</div>
+                          {/* Hour grid */}
+                          <div className="absolute left-2 right-2 bottom-2 top-7">
+                            {hourMarks.map((h)=>{
+                              const top = (h/24)*100
+                              return <div key={h} className="absolute left-0 right-0" style={{ top: `${top}%`, height: h===0?1:1 }}>
+                                <div style={{ borderTop: `1px solid ${hrColor}` }} />
+                              </div>
+                            })}
+                            {/* Items */}
+                            {placed.map(({it, lane, s, e})=>{
+                              const top = (s/1440)*100
+                              const height = Math.max(1.5, ((e-s)/1440)*100)
+                              const left = `calc(${lane * laneWidthPct}% + 0px)`
+                              const width = `calc(${laneWidthPct}% - 4px)`
+                              const t = taskMap.get(it.taskId)
+                              const color = t?.color || '#888'
+                              const dispName = agentDisplayName(localAgents as any, it.agentId, it.person)
+                              return (
+                                <div key={`${it._idx}-${it.person}-${it.start}-${it.end}`} className={["absolute rounded-md px-2 py-1 overflow-hidden", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top:`${top}%`, height:`${height}%`, left, width }} title={`${dispName} — ${it.start}–${it.end} • ${(t?.name)||it.taskId}`}>
+                                  <div className="flex items-center gap-1.5 text-[11px] leading-tight">
+                                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
+                                    <span className="truncate">{t?.name || it.taskId}</span>
+                                  </div>
+                                  <div className="text-[11px] opacity-70 leading-tight truncate">{it.start}–{it.end} <span className="opacity-60">({dispName})</span></div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        ) : (
+          <div className={["rounded-xl p-4 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+            <div className="text-sm font-semibold mb-1">PTO</div>
+            <div className="text-sm opacity-80">Coming soon.</div>
+          </div>
+        )
       )}
     </section>
   )

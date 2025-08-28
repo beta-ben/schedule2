@@ -6,7 +6,7 @@ import AgentWeekGrid from './AgentWeekGrid'
 import type { PTO, Shift, Task } from '../types'
 import { isValidHHMM, toMin, minToHHMM, uid, shiftKey, shiftKeyOf, addDays, fmtNice, fmtYMD, shiftsForDayInTZ } from '../lib/utils'
 
-export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDate, pto, tz, tasks, calendarSegs }:{
+export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDate, pto, tz, tasks, calendarSegs, agents }:{
   shifts: Shift[]
   setShifts: (f:(prev:Shift[])=>Shift[])=>void
   dark: boolean
@@ -15,6 +15,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
   tz: { id:string; label:string; offset:number }
   tasks: Task[]
   calendarSegs: { person:string; day:any; start:string; end:string; taskId:string }[]
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   // Quick add
   const [person, setPerson] = React.useState('')
@@ -299,6 +300,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
               pto={pto}
               tasks={tasks}
               calendarSegs={calendarSegs as any}
+              agents={agents || []}
             />
           </div>
         ) : null}

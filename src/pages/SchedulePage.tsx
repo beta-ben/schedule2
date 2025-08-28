@@ -6,11 +6,12 @@ import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import OnDeck from '../components/OnDeck'
 import UpNext from '../components/UpNext'
+import PostureToday from '../components/PostureToday'
 import AgentWeek from '../components/AgentWeek'
 import AgentWeekGrid from '../components/AgentWeekGrid'
-import Legend from '../components/Legend'
+// Legend removed from Schedule page
 
-export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift }:{ 
+export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents }:{ 
   dark: boolean
   weekStart: string
   dayIndex: number
@@ -23,6 +24,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   canEdit: boolean
   editMode: boolean
   onRemoveShift: (id:string)=>void
+  // Optional: agent roster for id->name mapping in week grid
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   const today = new Date()
   const weekStartDate = parseYMD(weekStart)
@@ -197,7 +200,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       />
   </div>
   <div className="pl-1 mt-2">
-    <Legend tasks={tasks} dark={dark} />
+  {/* Legend removed */}
   </div>
   </>
   )}
@@ -205,8 +208,13 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       {/* Below main section: two-column area for extra features */}
   {!agentView ? (
     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-      <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
-      <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+      <div>
+        <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+      </div>
+      <div className="flex flex-col gap-3">
+        <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+        <PostureToday dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} tasks={tasks} />
+      </div>
     </div>
   ) : (
     <div className="mt-4">
@@ -219,10 +227,9 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         pto={pto}
   tasks={tasks}
   calendarSegs={calendarSegs}
+  agents={agents || []}
       />
-      <div className="mt-2">
-        <Legend tasks={tasks} dark={dark} />
-      </div>
+  {/* Legend removed */}
     </div>
   )}
 

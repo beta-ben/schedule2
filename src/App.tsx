@@ -8,12 +8,38 @@ import SchedulePage from './pages/SchedulePage'
 import ManagePage from './pages/ManagePage'
 import ManageV2Page from './pages/ManageV2Page'
 import { generateSample } from './sample'
-import { sha256Hex } from './lib/utils'
+// sha256Hex removed from App; keep local hashing only in components that need it
 import { TZ_OPTS } from './constants'
 
 const SAMPLE = generateSample()
 
 export default function App(){
+  // Site-wide gate when using dev proxy
+  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
+  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(!useDevProxy)
+  const [sitePw, setSitePw] = useState('')
+  const [siteMsg, setSiteMsg] = useState('')
+  useEffect(()=>{ (async()=>{
+    if(useDevProxy){
+      try{
+        const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
+        const r = await fetch(`${base}/api/schedule`, { method: 'GET', credentials: 'include' })
+        setSiteUnlocked(r.ok)
+        if(r.ok){ try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
+      }catch{ setSiteUnlocked(false) }
+    } else {
+      setSiteUnlocked(true)
+    }
+  })() }, [useDevProxy])
+  useEffect(()=>{
+    if(useDevProxy){
+      try{
+        const hint = localStorage.getItem('site_unlocked_hint')
+        if(hint==='1' && !siteUnlocked){ setSiteUnlocked(true) }
+      }catch{}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const hashToView = (hash:string): 'schedule'|'manage'|'manageV2' => {
     const h = (hash||'').toLowerCase()
     if(h.includes('manage2')) return 'manageV2'
@@ -28,7 +54,7 @@ export default function App(){
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
   // v2: dedicated agents list (temporary local persistence)
-  type AgentRow = { firstName: string; lastName: string; tzId?: string }
+  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_agents_v2_v1')
@@ -103,10 +129,12 @@ export default function App(){
   const publishDraft = async ()=>{
     if(!draft) return false
     const now = new Date().toISOString()
-    const ok = await cloudPost({ shifts: draft.data.shifts, pto: draft.data.pto, calendarSegs: draft.data.calendarSegs, updatedAt: now })
+    const shiftsWithIds = draft.data.shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
+    const ptoWithIds = draft.data.pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
+    const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs: draft.data.calendarSegs, updatedAt: now })
     if(ok){
-      setShifts(draft.data.shifts)
-      setPto(draft.data.pto)
+      setShifts(shiftsWithIds)
+      setPto(ptoWithIds)
       setCalendarSegs(draft.data.calendarSegs)
       const published: Draft = { ...draft, meta: { ...draft.meta, updatedAt: now, publishedAt: now } }
       try{ localStorage.setItem('schedule_last_published', JSON.stringify(published.meta)) }catch{}
@@ -154,18 +182,15 @@ export default function App(){
   }
 
   useEffect(()=>{ (async()=>{
-    const usingProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
-    if(usingProxy){
-      const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
-      setCanEdit(!!hasCsrf)
-      return
-    }
-    const expected = await sha256Hex(import.meta.env.VITE_SCHEDULE_WRITE_PASSWORD || 'betacares')
-    const saved = localStorage.getItem('schedule_pw_hash')
-    setCanEdit(saved === expected)
+    // Editing is allowed only when an authenticated session exists (cookie+CSRF).
+    const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
+    setCanEdit(!!hasCsrf)
   })() }, [view])
 
-  useEffect(()=>{ (async()=>{ const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto); if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any) } setLoadedFromCloud(true) })() },[])
+  useEffect(()=>{ (async()=>{
+    if(useDevProxy && !siteUnlocked) return
+    const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto); if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any) } setLoadedFromCloud(true)
+  })() },[useDevProxy, siteUnlocked])
   // Keep view in sync with URL hash and vice versa
   useEffect(()=>{
     const handler = ()=> setView(hashToView(window.location.hash))
@@ -199,24 +224,60 @@ export default function App(){
   useEffect(()=>{
     try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(agentsV2)) }catch{}
   },[agentsV2])
+  // Ensure each agent has a stable id; add if missing
+  useEffect(()=>{
+    if(agentsV2.length===0) return
+    if(agentsV2.every(a=> !!a.id)) return
+    setAgentsV2(prev=> prev.map(a=> a.id ? a : { ...a, id: crypto.randomUUID?.() || Math.random().toString(36).slice(2) }))
+  }, [agentsV2])
+  const fullNameOf = (a: AgentRow)=> `${a.firstName||''} ${a.lastName||''}`.trim()
+  const agentIdByFullName = (name: string)=>{
+    const n = (name||'').trim().toLowerCase()
+    if(!n) return undefined
+    const row = agentsV2.find(a=> fullNameOf(a).toLowerCase()===n)
+    return row?.id
+  }
   // Auto-save local edits to the cloud only when editing is allowed and NOT in draft mode
-  useEffect(()=>{ if(!loadedFromCloud || !canEdit || draftActive) return; const t=setTimeout(()=>{ cloudPost({shifts,pto,calendarSegs,updatedAt:new Date().toISOString()}) },600); return ()=>clearTimeout(t) },[shifts,pto,calendarSegs,loadedFromCloud,canEdit,draftActive])
+  useEffect(()=>{ 
+    if(!loadedFromCloud || !canEdit || draftActive) return; 
+    const t=setTimeout(()=>{ 
+      const shiftsWithIds = shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
+      const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
+      cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, updatedAt:new Date().toISOString()}) 
+    },600); 
+    return ()=>clearTimeout(t) 
+  },[shifts,pto,calendarSegs,loadedFromCloud,canEdit,draftActive])
 
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
+  // Use refs to avoid creating a render loop when setting state inside this effect.
+  const lastJsonRef = React.useRef<{ shifts: string; pto: string; cal: string }>({ shifts: '', pto: '', cal: '' })
   useEffect(()=>{
     if(view!== 'schedule') return
+    if(useDevProxy && !siteUnlocked) return
     let stopped = false
     const pull = async ()=>{
       const data = await cloudGet()
       if(!data || stopped) return
-      if(JSON.stringify(data.shifts)!==JSON.stringify(shifts)) setShifts(data.shifts)
-      if(JSON.stringify(data.pto)!==JSON.stringify(pto)) setPto(data.pto)
-      if(Array.isArray(data.calendarSegs) && JSON.stringify(data.calendarSegs)!==JSON.stringify(calendarSegs)) setCalendarSegs(data.calendarSegs as any)
+      const s = JSON.stringify(data.shifts||[])
+      const p = JSON.stringify(data.pto||[])
+      const c = JSON.stringify(Array.isArray(data.calendarSegs)? data.calendarSegs : [])
+      if(s !== lastJsonRef.current.shifts){ setShifts(data.shifts); lastJsonRef.current.shifts = s }
+      if(p !== lastJsonRef.current.pto){ setPto(data.pto); lastJsonRef.current.pto = p }
+      if(c !== lastJsonRef.current.cal){ setCalendarSegs((data.calendarSegs as any) || []); lastJsonRef.current.cal = c }
     }
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)
-    return ()=>{ stopped = true; clearInterval(id) }
-  }, [view, shifts, pto, calendarSegs])
+    // If using dev proxy, also subscribe to SSE for instant updates
+    let es: EventSource | null = null
+    const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
+    if(base){
+      try{
+        es = new EventSource(`${base}/api/events`, { withCredentials: true } as any)
+        es.addEventListener('updated', ()=> pull())
+      }catch{}
+    }
+    return ()=>{ stopped = true; clearInterval(id); try{ es?.close() }catch{} }
+  }, [view, useDevProxy, siteUnlocked])
 
   // Derived: list of unique agent names
   const agents = useMemo(()=> Array.from(new Set(shifts.map(s=>s.person))).sort(), [shifts])
@@ -235,14 +296,43 @@ export default function App(){
     const equals = (a:string[], b:string[])=> a.length===b.length && a.every((v,i)=>v===b[i])
     const looksLikeSample = equals(currentAgentNames, sampleNames)
 
-    if(isEmpty || looksLikeSample){
+  if(isEmpty || looksLikeSample){
       const derived = cloudNames.map(n=>{
         const parts = n.split(' ')
-        return { firstName: parts[0]||n, lastName: parts.slice(1).join(' ')||'', tzId: TZ_OPTS[0]?.id }
+    return { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: parts[0]||n, lastName: parts.slice(1).join(' ')||'', tzId: TZ_OPTS[0]?.id }
       })
       setAgentsV2(derived)
     }
   }, [loadedFromCloud, shifts, agentsV2])
+
+  if(!siteUnlocked){
+    const dark = true
+    return (
+      <div className={dark?"min-h-screen w-full bg-neutral-950 text-neutral-100":"min-h-screen w-full bg-neutral-100 text-neutral-900"}>
+        <div className="max-w-md mx-auto p-6">
+          <section className={["rounded-2xl p-6 space-y-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
+            <div className="text-lg font-semibold">Protected — Enter Site Password</div>
+            <p className="text-sm opacity-80">Sign in to view the schedule.</p>
+            <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
+              const { devSiteLogin } = await import('./lib/api')
+              const { ok, status } = await devSiteLogin(sitePw)
+              if(ok){ setSiteUnlocked(true); setSiteMsg(''); try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
+              else if(status===401){ setSiteMsg('Incorrect password') }
+              else if(status===403){ setSiteMsg('Origin blocked by dev proxy. Check DEV_ALLOWED_ORIGIN(S).') }
+              else if(status===404){ setSiteMsg('Endpoint missing on dev proxy. Restart it to pick up routes.') }
+              else { setSiteMsg('Network/CORS error. Is dev proxy running?') }
+            })() }}>
+              <div className="flex gap-2">
+                <input type="password" autoFocus className="flex-1 border rounded-xl px-3 py-2 bg-neutral-900 border-neutral-700" value={sitePw} onChange={(e)=>setSitePw(e.target.value)} placeholder="Password" />
+                <button type="submit" className="rounded-xl px-4 py-2 font-medium border bg-neutral-800 border-neutral-700">Sign in</button>
+              </div>
+            </form>
+            {siteMsg && (<div className="text-sm text-red-300">{siteMsg}</div>)}
+          </section>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <ErrorCatcher dark={dark}>
@@ -272,6 +362,7 @@ export default function App(){
               canEdit={canEdit}
               editMode={editMode}
               onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
+              agents={agentsV2}
             />
           ) : view==='manage' ? (
             <ManagePage
@@ -287,6 +378,7 @@ export default function App(){
               calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
               setCalendarSegs={setCalendarSegsRouted}
               tz={tz}
+              agents={agentsV2}
               // Draft controls
               isDraft={draftActive}
               draftMeta={draft?.meta || null}
@@ -299,8 +391,8 @@ export default function App(){
             <ManageV2Page
               dark={dark}
               agents={agentsV2}
-              onAddAgent={(a:{ firstName:string; lastName:string; tzId:string })=> setAgentsV2(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string })=> setAgentsV2(prev=> prev.map((r,i)=> i===index ? a : r))}
+              onAddAgent={(a:{ firstName:string; lastName:string; tzId:string })=> setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))}
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string })=> setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: a.firstName, lastName: a.lastName, tzId: a.tzId || r.tzId } : r))}
               onDeleteAgent={(index:number)=> setAgentsV2(prev=> prev.filter((_,i)=> i!==index))}
               weekStart={weekStart}
               tz={tz}
@@ -310,7 +402,9 @@ export default function App(){
               calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
               onUpdateShift={(id, patch)=> setShiftsRouted(prev=> prev.map(s=> s.id===id ? { ...s, ...patch } : s))}
               onDeleteShift={(id)=> setShiftsRouted(prev=> prev.filter(s=> s.id!==id))}
-              onAddShift={(s)=> setShiftsRouted(prev=> prev.concat([s]))}
+              onAddShift={(s)=> setShiftsRouted(prev=> prev.concat([{ ...s, agentId: s.agentId || agentIdByFullName(s.person) }]))}
+              setTasks={setTasks}
+              setCalendarSegs={setCalendarSegsRouted}
             />
           )}
         </div>

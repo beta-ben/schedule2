@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { COLS, DAYS } from '../constants'
-import { addDays, fmtYMD, minToHHMM, nowInTZ, parseYMD, toMin, convertShiftsToTZ, mergeSegments } from '../lib/utils'
+import { addDays, fmtYMD, minToHHMM, nowInTZ, parseYMD, toMin, convertShiftsToTZ, mergeSegments, agentDisplayName } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 
@@ -13,6 +13,7 @@ export default function AgentWeekGrid({
   pto,
   tasks,
   calendarSegs,
+  agents,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -22,6 +23,7 @@ export default function AgentWeekGrid({
   pto: PTO[]
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   const totalMins=24*60
   const textSub = dark?"text-neutral-400":"text-neutral-500"
@@ -122,7 +124,7 @@ export default function AgentWeekGrid({
         {days.map(d=>{
           const items = (byDay.get(d.key) || []).map(s=>{
             const cal = (calendarSegs||[])
-              .filter(cs=> cs.person===agent && cs.day===d.key)
+              .filter(cs=> cs.day===d.key && (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===agent))
               .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
             const segments = mergeSegments(s, cal)
             return segments && segments.length>0 ? { ...s, segments } : s
@@ -138,6 +140,7 @@ export default function AgentWeekGrid({
                 backgroundSize:`calc(100%/${cols}) 100%`, backgroundRepeat:'repeat-x', backgroundPosition:'0 0'
               }}>
                 {items.map(s=>{
+                  const dispName = agentDisplayName(agents||[], (s as any).agentId, s.person)
                   const sMin=toMin(s.start); const eMinRaw=toMin(s.end); const eMin=eMinRaw>sMin?eMinRaw:1440
                   // Map to axis that starts at 6am; split across wrap if needed
                   const axisStart = (sMin - START_MIN + totalMins) % totalMins
@@ -182,7 +185,7 @@ export default function AgentWeekGrid({
                   }
 
                   const segLines = pieces.filter(p=>p.kind==='seg').map(p=>p.title.replace(/^.* • /,''))
-                  const chipTitle = `${s.person} \u2022 ${s.start}-${s.end}` + (segLines.length ? `\n\nTasks:\n${segLines.join('\n')}` : '')
+                  const chipTitle = `${dispName} • ${s.start}-${s.end}` + (segLines.length ? `\n\nTasks:\n${segLines.join('\n')}` : '')
 
                   return (
                     <div key={`${s.person}-${s.day}-${s.start}-${s.end}`} className="relative" title={chipTitle}>

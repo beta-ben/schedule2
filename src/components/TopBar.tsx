@@ -39,21 +39,9 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             </svg>
           </button>
           <button
-            onClick={()=>setView('manage')}
-            aria-label="Manage Data"
-            title="Manage Data"
-            className={["inline-flex items-center justify-center h-10 px-3 rounded-lg text-sm font-medium border", view==='manage' ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}
-          >
-            {/* Sliders icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <line x1="4" y1="6" x2="20" y2="6"/>
-              <line x1="4" y1="12" x2="20" y2="12"/>
-              <line x1="4" y1="18" x2="20" y2="18"/>
-              <circle cx="9" cy="6" r="2"/>
-              <circle cx="15" cy="12" r="2"/>
-              <circle cx="11" cy="18" r="2"/>
-            </svg>
-          </button>
+            // Legacy Manage button hidden per request
+            // (left intentionally blank)
+          />
           <button
             onClick={()=>setView('manageV2')}
             aria-label="Manage v2"

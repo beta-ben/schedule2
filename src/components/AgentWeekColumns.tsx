@@ -13,6 +13,7 @@ export default function AgentWeekColumns({
   pto,
   tasks,
   calendarSegs,
+  agents,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -22,6 +23,7 @@ export default function AgentWeekColumns({
   pto: PTO[]
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
 }){
   const totalMins = 24*60
   const weekStartDate = parseYMD(weekStart)
@@ -114,7 +116,7 @@ export default function AgentWeekColumns({
 
                   // Segments overlay if provided
                   const cal = (calendarSegs||[])
-                    .filter(cs=> cs.person===agent && cs.day===d.key)
+                    .filter(cs=> cs.day===d.key && ((((s as any).agentId) && cs.agentId === (s as any).agentId) || cs.person===agent))
                     .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
                   const merged: any = mergeSegments(s as any, cal)
                   const segs: Array<{ startOffsetMin:number; durationMin:number; taskId:string; id?:string }> = Array.isArray(merged)? merged as any : []

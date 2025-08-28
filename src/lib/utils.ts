@@ -142,10 +142,29 @@ export function shiftsForDayInTZ(all: Shift[], targetDay: Day, offsetHours: numb
 // External calendar segments stub type (taskId, absolute start/end within the shift window)
 export type CalendarSegment = {
   person: string
+  agentId?: string
   day: Day
   start: string // HH:MM within day (local after convert)
   end: string   // HH:MM within day (local)
   taskId: string
+}
+
+// Simple utilities to map between agent id and display name in the client
+export function agentDisplayName(agents: { id?: string; firstName?: string; lastName?: string }[], agentId?: string, fallbackPerson?: string){
+  if(agentId){
+    const a = agents.find(a=> a.id && a.id===agentId)
+    if(a){
+      const nm = `${a.firstName||''} ${a.lastName||''}`.trim()
+      if(nm) return nm
+    }
+  }
+  return (fallbackPerson||'').trim()
+}
+export function agentIdByName(agents: { id?: string; firstName?: string; lastName?: string }[], name: string){
+  const n = (name||'').trim().toLowerCase()
+  if(!n) return undefined
+  const match = agents.find(a=>`${a.firstName||''} ${a.lastName||''}`.trim().toLowerCase()===n)
+  return match?.id
 }
 
 // Merge calendar-provided segments into local manual segments. Manual beats calendar on overlap; calendar fills gaps.
