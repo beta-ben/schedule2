@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
-  "deploy": "gh-pages -d dist",
+  "deploy": "gh-pages -d dist -c teamschedule.cc",
   "seed": "node ./scripts/seed-from-cloud.mjs",
   "seed:v1": "node ./scripts/seed-v1-from-live.mjs",
   "typecheck": "tsc --noEmit",
