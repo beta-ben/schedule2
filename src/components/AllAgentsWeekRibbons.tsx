@@ -61,11 +61,23 @@ export default function AllAgentsWeekRibbons({
     }
     return list.sort((a,b)=> (a.key - b.key) || a.name.localeCompare(b.name)).map(x=> x.name)
   }, [agents, shifts, tz.offset, sortMode])
-  const nameToFirst = useMemo(()=>{
+  const nameToShort = useMemo(()=>{
+    // Count first name occurrences (case-insensitive)
+    const firstCounts = new Map<string, number>()
+    for(const a of agents){
+      const f = (a.firstName || '').trim().toLowerCase()
+      if(!f) continue
+      firstCounts.set(f, (firstCounts.get(f)||0) + 1)
+    }
     const m = new Map<string,string>()
     for(const a of agents){
-      const full = [a.firstName, a.lastName].filter(Boolean).join(' ')
-      m.set(full, a.firstName || '')
+      const first = (a.firstName || '').trim()
+      const last = (a.lastName || '').trim()
+      const full = [first, last].filter(Boolean).join(' ')
+      const cnt = first ? (firstCounts.get(first.toLowerCase()) || 0) : 0
+      const lastInitial = last ? `${last[0].toUpperCase()}.` : ''
+      const short = cnt > 1 ? `${first}${lastInitial?` ${lastInitial}`:''}` : first
+      m.set(full, short || full)
     }
     return m
   }, [agents])
@@ -94,7 +106,7 @@ export default function AllAgentsWeekRibbons({
         <div key={name} className="py-0">
           <div className="flex items-center gap-1">
             <div className={[nameColClass, dark?"text-neutral-300":"text-neutral-700"].join(' ')} title={name}>
-              {nameToFirst.get(name) || (name.split(' ')[0] || name)}
+              {nameToShort.get(name) || (name.split(' ')[0] || name)}
             </div>
             <div className="flex-1" title={name}>
               <AgentWeekLinear

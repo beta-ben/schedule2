@@ -25,25 +25,37 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   editMode: boolean
   onRemoveShift: (id:string)=>void
   // Optional: agent roster for id->name mapping in week grid
-  agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string; hidden?: boolean }>
 }){
   const today = new Date()
   const weekStartDate = parseYMD(weekStart)
   const selectedDate = addDays(weekStartDate, dayIndex)
   const dayKey = DAYS[dayIndex]
+  const hiddenNames = useMemo(()=>{
+    const set = new Set<string>()
+    for(const a of (agents||[])){
+      const full = [a.firstName||'', a.lastName||''].filter(Boolean).join(' ').trim()
+      if(full && a.hidden){ set.add(full) }
+    }
+    return set
+  }, [agents])
   const dayShifts = useMemo(()=>{
     const base = shiftsForDayInTZ(shifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+    const filtered = base.filter(s=> !hiddenNames.has(s.person))
     // Merge calendar segments into each shift for display
-    return base.map(s=>{
+    return filtered.map(s=>{
       const cal = calendarSegs
         .filter(cs=> cs.person===s.person && cs.day===dayKey)
         .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
     })
-  },[shifts,dayKey,tz.offset,calendarSegs])
+  },[shifts,dayKey,tz.offset,calendarSegs, hiddenNames])
   const people = useMemo(()=>Array.from(new Set(dayShifts.map(s=>s.person))),[dayShifts])
-  const allPeople = useMemo(()=>Array.from(new Set(shifts.map(s=>s.person))).sort(),[shifts])
+  const allPeople = useMemo(()=>{
+    const names = Array.from(new Set(shifts.map(s=>s.person))).sort()
+    return names.filter(n=> !hiddenNames.has(n))
+  },[shifts, hiddenNames])
   const [agentView, setAgentView] = useState<string>('')
 
   // Panels tied to "now": always use today's shifts regardless of selected tab
@@ -51,14 +63,15 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
   const todayShifts = useMemo(()=>{
     const base = shiftsForDayInTZ(shifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
-    return base.map(s=>{
+    const filtered = base.filter(s=> !hiddenNames.has(s.person))
+    return filtered.map(s=>{
       const cal = calendarSegs
         .filter(cs=> cs.person===s.person && cs.day===todayKey)
         .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
     })
-  },[shifts,todayKey,tz.offset,calendarSegs])
+  },[shifts,todayKey,tz.offset,calendarSegs, hiddenNames])
 
   // Live clock in selected timezone (12-hour + meridiem)
   const [nowClock, setNowClock] = useState(()=>{

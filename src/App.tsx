@@ -54,7 +54,7 @@ export default function App(){
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
   // v2: dedicated agents list (temporary local persistence)
-  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string }
+  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_agents_v2_v1')
@@ -300,7 +300,7 @@ export default function App(){
   if(isEmpty || looksLikeSample){
       const derived = cloudNames.map(n=>{
         const parts = n.split(' ')
-    return { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: parts[0]||n, lastName: parts.slice(1).join(' ')||'', tzId: TZ_OPTS[0]?.id }
+    return { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: parts[0]||n, lastName: parts.slice(1).join(' ')||'', tzId: TZ_OPTS[0]?.id, hidden: false }
       })
       setAgentsV2(derived)
     }
@@ -397,9 +397,9 @@ export default function App(){
                 if(!newFull){ alert('Enter a first and/or last name'); return }
                 const dup = agentsV2.some(row=> nameKey(fullNameOf(row))===nameKey(newFull))
                 if(dup){ alert('An agent with that name already exists.'); return }
-                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))
+                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
               }}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string })=>{
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean })=>{
                 // Compute names and check duplicates (excluding self)
                 const cur = agentsV2[index]
                 if(!cur){ return }
@@ -421,7 +421,7 @@ export default function App(){
                 }
 
                 // Finally update the agents list
-                setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: nextFirst, lastName: nextLast, tzId: a.tzId || r.tzId } : r))
+                setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: nextFirst, lastName: nextLast, tzId: a.tzId || r.tzId, hidden: a.hidden!=null ? a.hidden : r.hidden } : r))
               }}
               onDeleteAgent={(index:number)=> setAgentsV2(prev=> prev.filter((_,i)=> i!==index))}
               weekStart={weekStart}

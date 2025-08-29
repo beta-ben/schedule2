@@ -9,7 +9,7 @@ import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
 import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD } from '../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean }
 
 export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void }){
   // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
@@ -30,6 +30,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // Shifts tab: show time labels for all shifts
   const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   const [sortMode, setSortMode] = React.useState<'start'|'name'>('start')
+  // Shifts tab: option to include hidden agents (default off)
+  const [includeHiddenAgents, setIncludeHiddenAgents] = React.useState(false)
   // Shifts tab: working copy (draft) of shifts
   const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
   // PTO tab: working copy (draft) of PTO entries
@@ -349,7 +351,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     }
   }
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
-    onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))
+  onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
   },[onAddAgent])
   const handleUpdate = React.useCallback((index:number, a:AgentRow)=>{
     onUpdateAgent?.(index, a); setLocalAgents(prev=> prev.map((row,i)=> i===index ? a : row))
@@ -416,7 +418,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         })}
       </div>
 
-      {subtab==='Shifts' && (
+  {subtab==='Shifts' && (
         <div className={["flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs rounded-xl px-2 py-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
           {/* Left: draft status + metadata */}
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -443,6 +445,15 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 <option value="start">Start time</option>
                 <option value="name">Name</option>
               </select>
+            </label>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Include agents hidden from the schedule on this Shifts view">
+              <input
+                type="checkbox"
+                className="accent-blue-600 w-4 h-4"
+                checked={includeHiddenAgents}
+                onChange={(e)=> setIncludeHiddenAgents(e.target.checked)}
+              />
+              <span className={dark?"text-neutral-300":"text-neutral-700"}>Show hidden</span>
             </label>
             <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Show start/end labels for all shifts">
               <input
@@ -685,7 +696,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             dark={dark}
             tz={tz}
             weekStart={weekStart}
-            agents={localAgents}
+            agents={includeHiddenAgents ? localAgents : localAgents.filter(a=> !a.hidden)}
             shifts={workingShifts}
             pto={pto}
             tasks={tasks}
