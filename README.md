@@ -26,7 +26,7 @@ Use this checklist to avoid surprises when promoting changes to production.
 	- `VITE_SCHEDULE_API_BASE=https://api.teamschedule.cc` (or your API domain)
 - API requirements (Cloudflare Worker or server):
 	- Endpoints: `POST /api/login`, `POST /api/logout`, `GET /api/schedule`, `POST /api/schedule`
-	- Cookies: `sid` must be `Secure; HttpOnly; SameSite=Lax; Domain=.teamschedule.cc`. `csrf` must be `Secure; SameSite=Lax; Domain=.teamschedule.cc` (not HttpOnly so the client can read it to send `x-csrf-token`).
+	- Cookies: `sid` must be `Secure; HttpOnly; SameSite=Lax; Domain=.teamschedule.cc; Path=/`. `csrf` must be `Secure; SameSite=Lax; Domain=.teamschedule.cc; Path=/` (not HttpOnly so the client can read it to send `x-csrf-token`).
 	- CORS: `Access-Control-Allow-Origin: https://teamschedule.cc`, `Access-Control-Allow-Credentials: true`
 
 2) Local validation
@@ -56,8 +56,14 @@ Use this checklist to avoid surprises when promoting changes to production.
 
 These are optional; sensible defaults are provided for local use.
 
-- `VITE_SCHEDULE_API_BASE` — Cloud API base for read (default: `https://team-schedule-api.bsteward.workers.dev`). For production writes, your API must implement cookie session auth and CSRF at `/api/schedule`.
+- `VITE_SCHEDULE_API_BASE` — Cloud API base for read (default: `https://api.teamschedule.cc`). For production writes, your API must implement cookie session auth and CSRF at `/api/schedule`.
 - `VITE_DEV_PROXY_BASE` — Dev auth proxy (e.g., `http://localhost:8787`). When set, the app uses cookie auth + CSRF and never sends passwords from the client.
+
+Dev server cookie configuration (for parity while testing over HTTPS/custom domain):
+
+- `COOKIE_DOMAIN` — optional domain attribute for cookies (e.g., `.teamschedule.cc`).
+- `COOKIE_SECURE` — set to `true` when serving over HTTPS so cookies include `Secure`.
+- `COOKIE_SAMESITE` — one of `lax` (default), `strict`, or `none` (if using cross-site iframes, use `none` + `Secure`).
 
 Manage now requires an authenticated session (cookie + CSRF). The legacy client-side password header path has been removed.
 

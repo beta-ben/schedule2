@@ -1,6 +1,6 @@
 import React from 'react'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost, login, logout, getApiBase, isUsingDevProxy } from '../lib/api'
+import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, isUsingDevProxy } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import type { PTO, Shift, Task } from '../types'
@@ -307,8 +307,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     setCurrentDraftId(null)
   }
   async function publishWorkingToLive(){
-    const ok = await cloudPost({ shifts: workingShifts, pto: workingPto, calendarSegs, updatedAt: new Date().toISOString() })
-    if(ok){
+    const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, calendarSegs, updatedAt: new Date().toISOString() })
+    if(res.ok){
       setIsDirty(false)
       try{ localStorage.removeItem(DRAFT_KEY) }catch{}
       alert('Published to live.')
@@ -319,7 +319,18 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       // Update parent state to reflect published PTO immediately
       setPto(()=> workingPto)
     }else{
-      alert('Failed to publish.')
+      if(res.status===404 || res.error==='missing_site_session' || (res.bodyText||'').includes('missing_site_session')){
+        await ensureSiteSession()
+        alert('Publish failed: missing or expired site session. Please sign in to view and then try again.')
+      }else if(res.status===401){
+        alert('Publish failed: not signed in as admin (401).')
+      }else if(res.status===403){
+        alert('Publish failed: CSRF mismatch (403). Try reloading and signing in again.')
+      }else if(res.status===409){
+        alert('Publish failed: conflict (409). Refresh to load latest, then retry.')
+      }else{
+        alert(`Failed to publish. ${res.status?`HTTP ${res.status}`:''} ${res.error?`— ${res.error}`:''}`)
+      }
     }
   }
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
@@ -339,7 +350,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           <p className="text-sm opacity-80">Sign in to your session.</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
             const res = await login(pwInput)
-            if(res.ok){ setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{} } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
+            if(res.ok){
+              try{ await ensureSiteSession(pwInput) }catch{}
+              setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
+            } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
           })() }}>
             <div className="flex gap-2">
               <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />

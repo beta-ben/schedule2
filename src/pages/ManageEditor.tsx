@@ -4,7 +4,7 @@ import DayGrid from '../components/DayGrid'
 import ShiftManagerPanel from '../components/ShiftManagerPanel'
 import { addDays, fmtNice, fmtYMD, parseYMD, toMin, uid, shiftsForDayInTZ, mergeSegments, sha256Hex } from '../lib/utils'
 import type { PTO, Shift, Task, ShiftSegment } from '../types'
-import { cloudGet, cloudPost } from '../lib/api'
+import { cloudGet, cloudPost, cloudPostDetailed, ensureSiteSession } from '../lib/api'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import Legend from '../components/Legend'
 
@@ -111,7 +111,7 @@ export default function ManageEditor({ dark, weekStartDate, shifts, setShifts, p
           <button
             disabled={isDraft}
             title={isDraft ? 'Disabled in Draft mode. Use Publish to update live.' : 'Save to cloud (live).'}
-            onClick={async()=>{ if(isDraft) return; await cloudPost({shifts, pto, calendarSegs, updatedAt:new Date().toISOString()}); }}
+            onClick={async()=>{ if(isDraft) return; const res = await cloudPostDetailed({shifts, pto, calendarSegs, updatedAt:new Date().toISOString()}); if(!res.ok && (res.status===404 || (res.bodyText||'').includes('missing_site_session'))){ await ensureSiteSession(); alert('View session re-established; please click Save again.') } else if(!res.ok){ alert(`Save failed${res.status?` (HTTP ${res.status})`:''}`) } }}
             className={["px-3 py-1.5 rounded-lg border text-sm", isDraft?"opacity-50 cursor-not-allowed":(dark?"border-neutral-600":"border-neutral-300")].join(' ')}
           >Save Cloud</button>
         </div>

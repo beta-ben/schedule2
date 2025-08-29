@@ -38,6 +38,16 @@ const dataFile = path.join(dataDir, `${dataBase}.json`)
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true })
 if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify({ schemaVersion: 1, shifts: [], pto: [], calendarSegs: [], updatedAt: new Date().toISOString() }, null, 2), 'utf8')
 
+// Cookie attributes (configurable for parity with production)
+// Default: dev over HTTP on localhost (secure=false, no domain)
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined // e.g., .teamschedule.cc
+const COOKIE_SECURE = (process.env.COOKIE_SECURE || 'false').toLowerCase() === 'true' // set to true when serving over HTTPS
+const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax')
+function cookieBase(){
+  const base = { path: '/', sameSite: COOKIE_SAMESITE, secure: COOKIE_SECURE }
+  return COOKIE_DOMAIN ? { ...base, domain: COOKIE_DOMAIN } : base
+}
+
 function backupFile(){
   try{
     const raw = fs.readFileSync(dataFile, 'utf8')
@@ -105,14 +115,15 @@ app.post('/api/login-site', authLimiter, (req, res) => {
 
   const sid = nanoid(24)
   siteSessions.set(sid, { expiresAt: Date.now() + sessionTTLms })
-  res.cookie('site_sid', sid, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: sessionTTLms })
+  res.cookie('site_sid', sid, { ...cookieBase(), httpOnly: true, maxAge: sessionTTLms })
   res.status(200).json({ ok: true })
 })
 
 app.post('/api/logout-site', (req, res) => {
   const sid = req.cookies?.site_sid
   if (sid) siteSessions.delete(sid)
-  res.clearCookie('site_sid')
+  // Ensure clear uses matching path/domain
+  res.clearCookie('site_sid', cookieBase())
   res.status(200).json({ ok: true })
 })
 
@@ -125,16 +136,17 @@ app.post('/api/login', authLimiter, (req, res) => {
   const sid = nanoid(24)
   const csrf = nanoid(32)
   adminSessions.set(sid, { csrf, expiresAt: Date.now() + sessionTTLms })
-  res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax', secure: false, maxAge: sessionTTLms })
-  res.cookie('csrf', csrf, { httpOnly: false, sameSite: 'lax', secure: false, maxAge: sessionTTLms })
+  // Session cookie: HttpOnly; CSRF cookie: readable by client
+  res.cookie('sid', sid, { ...cookieBase(), httpOnly: true, maxAge: sessionTTLms })
+  res.cookie('csrf', csrf, { ...cookieBase(), httpOnly: false, maxAge: sessionTTLms })
   res.status(200).json({ ok: true })
 })
 
 app.post('/api/logout', (req, res) => {
   const sid = req.cookies?.sid
   if (sid) adminSessions.delete(sid)
-  res.clearCookie('sid')
-  res.clearCookie('csrf')
+  res.clearCookie('sid', cookieBase())
+  res.clearCookie('csrf', cookieBase())
   res.status(200).json({ ok: true })
 })
 

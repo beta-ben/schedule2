@@ -31,6 +31,10 @@ export async function login(password: string){
       credentials:'include',
       body: JSON.stringify({ password })
     })
+    if(r.ok){
+      // Best-effort: some servers also require a site session for reads/writes
+      try{ await ensureSiteSession(password) }catch{}
+    }
     return { ok: r.ok, status: r.status }
   }catch{
     return { ok: false }
@@ -71,15 +75,17 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendar
   }catch{ return null }
 }
 
-export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt: string}){
-  if(!API_BASE) return false
+export type CloudPostResult = { ok: boolean; status?: number; error?: string; bodyText?: string }
+
+export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt: string}): Promise<CloudPostResult>{
+  if(!API_BASE) return { ok: false, error: 'no_api_base' }
   try{
     // Writes require cookie session + CSRF; legacy password header is removed.
     if(!DEV_PROXY){
       // Expect prod server to implement /api/schedule with cookies+CSRF.
       // If not present, fail fast with a clear warning.
       const csrf = getCsrfFromCookie()
-      if(!csrf){ console.warn('[cloudPost] CSRF cookie missing; writes are disabled without an authenticated session.'); return false }
+      if(!csrf){ console.warn('[cloudPost] CSRF cookie missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
     }
     const url = `${API_BASE}/api/schedule`
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
@@ -91,6 +97,41 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs
       credentials: 'include',
       body: JSON.stringify(data)
     })
-    return r.ok
-  }catch{ return false }
+    if(r.ok) return { ok: true, status: r.status }
+    let err: string | undefined
+    let bodyText: string | undefined
+    try{
+      const ct = r.headers.get('content-type')||''
+      if(ct.includes('application/json')){
+        const j = await r.json()
+        err = (j && (j.error || j.code || j.message)) as any
+        bodyText = JSON.stringify(j)
+      }else{
+        bodyText = await r.text()
+      }
+    }catch{}
+    return { ok: false, status: r.status, error: err, bodyText }
+  }catch{ return { ok: false } }
+}
+
+export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt: string}){
+  const res = await cloudPostDetailed(data)
+  return !!res.ok
+}
+
+// Try to establish a view/site session if the server requires it.
+export async function ensureSiteSession(password?: string){
+  try{
+    // Quick probe: if schedule GET is allowed, nothing to do.
+    const ping = await fetch(`${API_BASE}/api/schedule`, { method:'GET', credentials:'include' })
+    if(ping.ok) return
+  }catch{}
+  try{
+    await fetch(`${API_BASE}/api/login-site`, {
+      method:'POST',
+      headers:{ 'content-type':'application/json' },
+      credentials:'include',
+      body: JSON.stringify({ password: password||'' })
+    })
+  }catch{}
 }
