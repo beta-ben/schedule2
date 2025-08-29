@@ -16,6 +16,8 @@ export default function AgentWeekLinear({
   calendarSegs,
   agents,
   titlePrefix,
+  bandHeight,
+  dayLabelFontPx,
   onDragAll,
   onDragShift,
   draggable = true,
@@ -44,6 +46,9 @@ export default function AgentWeekLinear({
   agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
   // When provided, prefix chip/tooltips with this label (e.g., full name)
   titlePrefix?: string
+  // Optional visual tweaks
+  bandHeight?: number
+  dayLabelFontPx?: number
   onDragAll?: (deltaMinutes:number)=>void
   onDragShift?: (id:string, deltaMinutes:number)=>void
   draggable?: boolean
@@ -151,7 +156,7 @@ export default function AgentWeekLinear({
   const nowOffsetMin = showNow ? (DAYS.indexOf(now.weekdayShort as any)*1440 + now.minutes) : 0
   const nowLeft = (nowOffsetMin/totalMins)*100
 
-  const BAND_H = 28
+  const BAND_H = typeof bandHeight === 'number' ? bandHeight : 28
   const NOW_TAG_F = 10
 
   const containerRef = React.useRef<HTMLDivElement|null>(null)
@@ -306,11 +311,11 @@ export default function AgentWeekLinear({
       {/* Top labels: days across the band */}
       {showDayLabels && (
         <div className="relative h-6">
-          {DAYS.map((d,i)=>{
+      {DAYS.map((d,i)=>{
             const left = (i/7)*100
             const width = (1/7)*100
             return (
-              <div key={d} className={["absolute text-center", textSub].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 11 }}>
+        <div key={d} className={["absolute text-center", textSub].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: (typeof dayLabelFontPx==='number'? dayLabelFontPx : 11) }}>
                 {d}
               </div>
             )
@@ -466,14 +471,14 @@ export default function AgentWeekLinear({
                     {/* Dense mode: no internal labels or chevrons */}
           {allowStartTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
-            ((opts?.forceStartOuter || forceOuterTimeTags) && !framed) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
+            ((opts?.forceStartOuter || forceOuterTimeTags)) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
                         dark?"bg-black/70 text-white":"bg-black/70 text-white"].join(' ')}>
                         {minToHHMM(groupStartMin)}
                       </div>
                     )}
           {allowEndTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
-            ((opts?.forceEndOuter || forceOuterTimeTags) && !framed) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
+            ((opts?.forceEndOuter || forceOuterTimeTags)) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
                         dark?"bg-black/70 text-white":"bg-black/70 text-white"].join(' ')}>
                         {minToHHMM(groupEndMin)}
                       </div>

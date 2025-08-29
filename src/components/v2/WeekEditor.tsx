@@ -19,7 +19,7 @@ function tzFullName(id?: string){
 	}
 }
 
-export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void }){
+export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, selectedIdx: selectedIdxProp, onSelectIdx }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; selectedIdx?: number|null; onSelectIdx?: (idx:number)=>void }){
 	const [firstName, setFirstName] = React.useState('')
 	const [lastName, setLastName] = React.useState('')
 	const [tzId, setTzId] = React.useState(TZ_OPTS[0]?.id || 'UTC')
@@ -73,8 +73,10 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const pending = deleteIdx!=null ? agents[deleteIdx] : null
 	function confirmDelete(){ if(deleteIdx==null) return; onDeleteAgent?.(deleteIdx); setDeleteIdx(null) }
 
-	// Selected agent for right panel
-	const [selectedIdx, setSelectedIdx] = React.useState<number|null>(null) // stores original index into agents
+	// Selected agent for right panel (controlled if provided)
+	const [selectedIdxLocal, setSelectedIdxLocal] = React.useState<number|null>(null)
+	const selectedIdx = (selectedIdxProp!=null ? selectedIdxProp : selectedIdxLocal) as number | null
+	const setSelectedIdx = (idx:number)=>{ onSelectIdx ? onSelectIdx(idx) : setSelectedIdxLocal(idx) }
 	const selectedAgent = selectedIdx!=null ? agents[selectedIdx] : null
 	const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
 
@@ -550,7 +552,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 						<div className="text-sm opacity-70">Select an agent on the left to view and edit their shifts.</div>
 										) : (
 						<div>
-							<div className="text-sm opacity-80 mb-1">{selectedName}</div>
+							<div className="text-2xl font-semibold opacity-90 mb-2">{selectedName}</div>
 								<div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-6 gap-2">
 								<div>Start Day</div>
 								<div>Start Time</div>
@@ -561,22 +563,24 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 							</div>
 												<ul className="max-h-[36vh] overflow-y-auto">
 													{agentShiftsLocal.length===0 ? (
-														<li className={["px-2 py-2 text-sm flex items-center justify-between", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>
-															<span>No shifts.</span>
-															<button
-																onClick={()=>{
-																	if(!selectedName) return
-																	const days: Shift['day'][] = ['Mon','Tue','Wed','Thu','Fri'] as any
-																	const makeId = ()=> (globalThis as any).crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
-																	const base: Omit<Shift,'id'> = { person: selectedName, day: 'Mon' as any, start: '08:00', end: '16:30' }
-																	const created: Shift[] = days.map((d)=> ({ id: makeId(), ...base, day: d, endDay: d })) as any
-																	setAgentShiftsLocal(created)
-																	created.forEach(s=> onAddShift?.(s))
-																}}
-																className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}
-															>
-																Create standard week (Mon–Fri, 8:00–4:30)
-															</button>
+														<li className={["px-2 py-6 text-sm", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>
+															<div className="flex flex-col items-center gap-3">
+																<div>No shifts for this agent.</div>
+																<button
+																	onClick={()=>{
+																		if(!selectedName) return
+																		const days: Shift['day'][] = ['Mon','Tue','Wed','Thu','Fri'] as any
+																		const makeId = ()=> (globalThis as any).crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
+																		const base: Omit<Shift,'id'> = { person: selectedName, day: 'Mon' as any, start: '08:00', end: '16:30' }
+																		const created: Shift[] = days.map((d)=> ({ id: makeId(), ...base, day: d, endDay: d })) as any
+																		setAgentShiftsLocal(created)
+																		created.forEach(s=> onAddShift?.(s))
+																	}}
+																	className={["px-3 py-1.5 rounded-md text-sm font-medium border", dark?"bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800":"bg-blue-600 border-blue-600 text-white hover:opacity-95"].join(' ')}
+																>
+																	Create standard week (Mon–Fri, 8:00–4:30 PST)
+																</button>
+															</div>
 														</li>
 													) : agentShiftsLocal.map(s=> {
 									// If viewer tz differs from agent tz, compute agent-local times for secondary labels
@@ -769,10 +773,12 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 								// Agents tab: always show time labels and place them outside chips
 								showShiftLabels={true}
 								showEdgeTimeTagsForHighlights={true}
-								// Use framed band so outside labels hug edges nicely
+								// Bigger ribbon with larger day labels; force outer time tags
 								framed={true}
 								alwaysShowTimeTags={true}
 								forceOuterTimeTags={true}
+								bandHeight={40}
+								dayLabelFontPx={13}
 							/>
 						</div>
 					)}

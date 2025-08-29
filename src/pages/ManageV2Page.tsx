@@ -297,6 +297,15 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     startedFromLiveRef.current = false
     try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: d.shifts, weekStart: d.weekStart, tzId: d.tzId, draftId: d.id, updatedAt: new Date().toISOString() })) }catch{}
   }
+  // Persist agent selection across tab switches
+  const [selectedAgentIdx, setSelectedAgentIdx] = React.useState<number|null>(null)
+  // If the selected index goes out-of-range after agent edits, fix it up
+  React.useEffect(()=>{
+    if(selectedAgentIdx==null) return
+    if(selectedAgentIdx < 0 || selectedAgentIdx >= localAgents.length){
+      setSelectedAgentIdx(localAgents.length>0 ? 0 : null)
+    }
+  }, [selectedAgentIdx, localAgents])
   function deleteSelectedDraft(){
     if(!selectedDraftId) return
     const next = savedDrafts.filter(x=> x.id!==selectedDraftId)
@@ -667,6 +676,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               setWorkingShifts(prev=> prev.some(x=> x.id===s.id) ? prev : prev.concat([s]))
             }
           }}
+          selectedIdx={selectedAgentIdx}
+          onSelectIdx={(idx)=> setSelectedAgentIdx(idx)}
         />
       ) : subtab==='Shifts' ? (
         <div className={["rounded-xl p-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
