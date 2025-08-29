@@ -19,7 +19,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   React.useEffect(()=>{
   const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
   if(hasCsrf){ setUnlocked(true); return }
-  try{ const hint = localStorage.getItem('schedule_admin_unlocked'); if(hint==='1') setUnlocked(true) }catch{}
   },[])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])

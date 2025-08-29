@@ -269,8 +269,8 @@ export default function App(){
     const id = setInterval(pull, 5 * 60 * 1000)
     // If using dev proxy, also subscribe to SSE for instant updates
     let es: EventSource | null = null
-    const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
-    if(base){
+  const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
+  if(useDevProxy && base){
       try{
         es = new EventSource(`${base}/api/events`, { withCredentials: true } as any)
         es.addEventListener('updated', ()=> pull())

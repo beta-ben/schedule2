@@ -31,11 +31,7 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
   const weekStartDate = parseYMD(weekStart)
   React.useEffect(()=> { (async () => {
     const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
-    if(hasCsrf){ setUnlocked(true); return }
-    try{
-      const hint = localStorage.getItem('schedule_admin_unlocked')
-      if(hint==='1') setUnlocked(true)
-    }catch{}
+  if(hasCsrf){ setUnlocked(true); return }
   })() }, [])
 
   // Auth gates

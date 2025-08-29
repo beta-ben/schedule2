@@ -26,7 +26,7 @@ Use this checklist to avoid surprises when promoting changes to production.
 	- `VITE_SCHEDULE_API_BASE=https://api.teamschedule.cc` (or your API domain)
 - API requirements (Cloudflare Worker or server):
 	- Endpoints: `POST /api/login`, `POST /api/logout`, `GET /api/schedule`, `POST /api/schedule`
-	- Cookies: set `sid` and `csrf` with `Secure; HttpOnly; SameSite=Lax; Domain=.teamschedule.cc`
+	- Cookies: `sid` must be `Secure; HttpOnly; SameSite=Lax; Domain=.teamschedule.cc`. `csrf` must be `Secure; SameSite=Lax; Domain=.teamschedule.cc` (not HttpOnly so the client can read it to send `x-csrf-token`).
 	- CORS: `Access-Control-Allow-Origin: https://teamschedule.cc`, `Access-Control-Allow-Credentials: true`
 
 2) Local validation
