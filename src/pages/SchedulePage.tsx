@@ -45,7 +45,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     // Merge calendar segments into each shift for display
     return filtered.map(s=>{
       const cal = calendarSegs
-        .filter(cs=> cs.person===s.person && cs.day===dayKey)
+        .filter(cs=> cs.day===dayKey && (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
         .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
@@ -66,7 +66,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     const filtered = base.filter(s=> !hiddenNames.has(s.person))
     return filtered.map(s=>{
       const cal = calendarSegs
-        .filter(cs=> cs.person===s.person && cs.day===todayKey)
+        .filter(cs=> cs.day===todayKey && (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
         .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
@@ -206,6 +206,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         editMode={editMode}
         showHeaderTitle={false}
         tasks={tasks as any}
+  agents={agents as any}
         onRemove={(id)=>{
           if (!canEdit) { alert('Enter the password in Manage to enable editing.'); return }
           onRemoveShift(id)

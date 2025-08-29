@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { COLS } from '../constants'
-import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ } from '../lib/utils'
+import { COLS, DAYS, TZ_OPTS } from '../constants'
+import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 
-export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact }:{ 
+export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact, agents }:{ 
   date: Date
   dayKey: string
   people: string[]
@@ -17,6 +17,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   showHeaderTitle?: boolean
   tasks?: Task[]
   compact?: boolean
+  agents?: Array<{ id?: string; firstName?: string; lastName?: string; tzId?: string }>
 }){
   const totalMins=24*60
   const hourMarks = Array.from({length:24},(_,i)=>i)
@@ -114,6 +115,12 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const taskMap = useMemo(()=>{ const m=new Map<string,Task>(); for(const t of (tasks||[])) m.set(t.id,t); return m },[tasks])
   // Hover state for tooltips (track which shift and cursor x within row)
   const [hover, setHover] = useState<{ id: string|null; x: number }>({ id: null, x: 0 })
+  const tzMap = useMemo(()=>{ const m=new Map<string,number>(); for(const o of TZ_OPTS){ m.set(o.id, o.offset) } return m }, [])
+  const agentFor = (fullName: string)=>{
+    const n = (fullName||'').trim().toLowerCase()
+    return (agents||[]).find(a=> `${a.firstName||''} ${a.lastName||''}`.trim().toLowerCase()===n)
+  }
+  const idxOfDay = (d:string)=> DAYS.indexOf(d as any)
 
   return (
     <div className="overflow-x-auto no-scrollbar w-full no-select">
@@ -262,20 +269,43 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: CHIP_RADIUS, zIndex: 5 }}
                     />
 
-                    {/* Center label: agent name */}
+                    {/* Center label: first name only */}
                     <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-500":"text-neutral-500") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
-                      {person}
+                      {(person||'').split(' ')[0] || person}
                     </div>
 
                     {/* Tooltip */}
           {hover.id===s.id && (
                       <div
             className={["absolute z-40 px-2 py-1 rounded-md text-xs shadow-lg border", dark?"bg-neutral-900/95 border-neutral-700 text-neutral-100":"bg-white/95 border-neutral-300 text-neutral-900"].join(' ')}
-            style={{ left: hover.x, transform:'translate(-50%, -6px)', bottom: CHIP_H + 2 }}
+            style={{ left: hover.x, top: 2, transform:'translate(-50%, calc(-100% - 6px))' }}
                         role="tooltip"
                       >
                         <div className="font-semibold mb-1">{person}</div>
                         <div className={dark?"text-neutral-300":"text-neutral-700"}>Shift: {s.start}–{s.end}</div>
+                        {(()=>{
+                          const a = agentFor(person)
+                          if(!a || !a.tzId) return null
+                          const agentOff = tzMap.get(a.tzId) ?? 0
+                          const viewOff = tz.offset
+                          const deltaMin = (agentOff - viewOff) * 60
+                          const sd = idxOfDay(s.day)
+                          const ed = idxOfDay(((s as any).endDay || s.day) as any)
+                          const sAbs = (sd<0?0:sd)*1440 + toMin(s.start)
+                          let eAbs = (ed<0?sd:ed)*1440 + (s.end==='24:00'?1440:toMin(s.end))
+                          if(eAbs <= sAbs) eAbs += 1440
+                          const ns = sAbs + deltaMin
+                          const ne = eAbs + deltaMin
+                          const sDay = DAYS[((Math.floor(ns/1440)%7)+7)%7] as any
+                          const eDay = DAYS[((Math.floor(ne/1440)%7)+7)%7] as any
+                          const sMinLoc = ((ns%1440)+1440)%1440
+                          const eMinLoc = ((ne%1440)+1440)%1440
+                          return (
+                            <div className={dark?"text-neutral-300":"text-neutral-700"}>
+                              Local: {sDay} {minToHHMM(sMinLoc)}–{eDay} {minToHHMM(eMinLoc)} <span className="opacity-70">({tzAbbrev(a.tzId)})</span>
+                            </div>
+                          )
+                        })()}
                         {segs.length>0 && (
                           <div className="mt-1">
                             <ul className="space-y-0.5">
