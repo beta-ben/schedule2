@@ -61,6 +61,14 @@ export default function AllAgentsWeekRibbons({
     }
     return list.sort((a,b)=> (a.key - b.key) || a.name.localeCompare(b.name)).map(x=> x.name)
   }, [agents, shifts, tz.offset, sortMode])
+  const nameToFirst = useMemo(()=>{
+    const m = new Map<string,string>()
+    for(const a of agents){
+      const full = [a.firstName, a.lastName].filter(Boolean).join(' ')
+      m.set(full, a.firstName || '')
+    }
+    return m
+  }, [agents])
 
   return (
   <div className="space-y-0">
@@ -85,8 +93,10 @@ export default function AllAgentsWeekRibbons({
       ) : agentNamesSorted.map(name=> (
         <div key={name} className="py-0">
           <div className="flex items-center gap-1">
-            <div className={[nameColClass, dark?"text-neutral-300":"text-neutral-700"].join(' ')}>{name}</div>
-            <div className="flex-1">
+            <div className={[nameColClass, dark?"text-neutral-300":"text-neutral-700"].join(' ')} title={name}>
+              {nameToFirst.get(name) || (name.split(' ')[0] || name)}
+            </div>
+            <div className="flex-1" title={name}>
               <AgentWeekLinear
                 dark={dark}
                 tz={tz}
@@ -96,6 +106,7 @@ export default function AllAgentsWeekRibbons({
                 pto={pto}
                 tasks={tasks}
                 calendarSegs={calendarSegs}
+                titlePrefix={name}
                 draggable={Boolean(onDragAll || onDragShift)}
                 onDragAll={(d)=> onDragAll?.(name, d)}
                 onDragShift={(id,d)=> onDragShift?.(name, id, d)}

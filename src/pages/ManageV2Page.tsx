@@ -161,6 +161,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     setShiftUndoStack(prev=> prev.concat([undoPatches]))
     setIsDirty(true)
   }, [shiftRedoStack, workingShifts])
+  // When switching into Shifts tab, if there are no local edits pending, refresh from live
+  React.useEffect(()=>{
+    if(subtab!== 'Shifts') return
+    const noLocalEdits = shiftUndoStack.length===0 && shiftRedoStack.length===0 && modifiedIds.size===0
+    if(noLocalEdits){ setWorkingShifts(shifts) }
+  }, [subtab, shifts, shiftUndoStack, shiftRedoStack, modifiedIds])
   // Ctrl/Cmd+Z for Shifts tab
   React.useEffect(()=>{
     const onKey = (e: KeyboardEvent)=>{
@@ -641,9 +647,26 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           pto={pto}
           tasks={tasks}
           calendarSegs={calendarSegs}
-          onUpdateShift={onUpdateShift}
-          onDeleteShift={onDeleteShift}
-          onAddShift={onAddShift}
+          onUpdateShift={(id, patch)=>{
+            onUpdateShift?.(id, patch)
+            // Mirror into Shifts tab when there are no pending local edits
+            const noLocalEdits = shiftUndoStack.length===0 && shiftRedoStack.length===0
+            if(noLocalEdits){
+              setWorkingShifts(prev=> prev.map(s=> s.id===id ? { ...s, ...patch } : s))
+            }
+          }}
+          onDeleteShift={(id)=>{
+            onDeleteShift?.(id)
+            const noLocalEdits = shiftUndoStack.length===0 && shiftRedoStack.length===0
+            if(noLocalEdits){ setWorkingShifts(prev=> prev.filter(s=> s.id!==id)) }
+          }}
+          onAddShift={(s)=>{
+            onAddShift?.(s)
+            const noLocalEdits = shiftUndoStack.length===0 && shiftRedoStack.length===0
+            if(noLocalEdits){
+              setWorkingShifts(prev=> prev.some(x=> x.id===s.id) ? prev : prev.concat([s]))
+            }
+          }}
         />
       ) : subtab==='Shifts' ? (
         <div className={["rounded-xl p-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>

@@ -15,6 +15,7 @@ export default function AgentWeekLinear({
   tasks,
   calendarSegs,
   agents,
+  titlePrefix,
   onDragAll,
   onDragShift,
   draggable = true,
@@ -41,6 +42,8 @@ export default function AgentWeekLinear({
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
   agents?: Array<{ id?: string; firstName?: string; lastName?: string }>
+  // When provided, prefix chip/tooltips with this label (e.g., full name)
+  titlePrefix?: string
   onDragAll?: (deltaMinutes:number)=>void
   onDragShift?: (id:string, deltaMinutes:number)=>void
   draggable?: boolean
@@ -450,7 +453,7 @@ export default function AgentWeekLinear({
                       // No borders for dense look; rely on hover outline only
                       boxShadow: boxShadow || undefined,
                     }}
-                    title={g.title}
+                    title={titlePrefix ? `${titlePrefix} • ${g.title}` : g.title}
                     onMouseDown={draggable ? (e)=>beginSingleDrag(g.id, e) : undefined}
                     onMouseEnter={()=>{ setHoverGroupId(g.id); setHoverBand(false) }}
                     onMouseLeave={()=> { setHoverGroupId(null); setHoverBand(true) }}

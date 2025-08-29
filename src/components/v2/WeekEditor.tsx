@@ -44,15 +44,29 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	// Track last added agent to scroll into view
 	const [lastAddedAgentName, setLastAddedAgentName] = React.useState<string | null>(null)
 	const agentsListRef = React.useRef<HTMLUListElement | null>(null)
+	// Presentational: sort agents by first name, then last name (case-insensitive), but keep original index for actions
+	const sortedAgents = React.useMemo(() => (
+		agents
+			.map((a, i) => ({ a, i }))
+			.sort((x, y) => {
+				const af = (x.a.firstName || '').toLowerCase()
+				const bf = (y.a.firstName || '').toLowerCase()
+				if (af !== bf) return af.localeCompare(bf)
+				const al = (x.a.lastName || '').toLowerCase()
+				const bl = (y.a.lastName || '').toLowerCase()
+				return al.localeCompare(bl)
+			})
+	), [agents])
 	React.useEffect(()=>{
 		if(!lastAddedAgentName) return
-		const idx = agents.findIndex(a=> `${a.firstName} ${a.lastName}`.trim() === lastAddedAgentName)
-		if(idx>=0 && agentsListRef.current){
-			const li = agentsListRef.current.children[idx] as HTMLElement | undefined
+		// Find the display index within the sorted list
+		const sIdx = sortedAgents.findIndex(({a})=> `${a.firstName} ${a.lastName}`.trim() === lastAddedAgentName)
+		if(sIdx>=0 && agentsListRef.current){
+			const li = agentsListRef.current.children[sIdx] as HTMLElement | undefined
 			li?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 		}
 		setLastAddedAgentName(null)
-	}, [agents, lastAddedAgentName])
+	}, [sortedAgents, lastAddedAgentName])
 
 	// Delete confirmation state
 	const [deleteIdx, setDeleteIdx] = React.useState<number|null>(null)
@@ -60,7 +74,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	function confirmDelete(){ if(deleteIdx==null) return; onDeleteAgent?.(deleteIdx); setDeleteIdx(null) }
 
 	// Selected agent for right panel
-	const [selectedIdx, setSelectedIdx] = React.useState<number|null>(null)
+	const [selectedIdx, setSelectedIdx] = React.useState<number|null>(null) // stores original index into agents
 	const selectedAgent = selectedIdx!=null ? agents[selectedIdx] : null
 	const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
 
@@ -364,9 +378,9 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 								<div className="text-right">Actions</div>
 							</div>
 							<ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
-																	{agents.map((a, idx)=> (
-																			<li key={`${a.firstName}-${a.lastName}-${idx}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-4 gap-2 items-center cursor-pointer", selectedIdx===idx ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(idx)}>
-																		{editingIdx===idx ? (
+																	{sortedAgents.map(({ a, i }, sIdx)=> (
+																			<li key={`${a.firstName}-${a.lastName}-${i}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-4 gap-2 items-center cursor-pointer", selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(i)}>
+																		{editingIdx===i ? (
 																			<>
 																				<div>
 																					<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={ef} onChange={e=>setEf(e.target.value)} />
@@ -391,13 +405,13 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																				<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
 																				<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
 																					<div className="inline-flex items-center gap-1">
-																						<button title="Edit" aria-label="Edit agent" onClick={()=>beginEdit(idx)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>
+																							<button title="Edit" aria-label="Edit agent" onClick={()=>beginEdit(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>
 																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
 																								<path d="M12 20h9"/>
 																								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
 																							</svg>
 																						</button>
-																						<button title="Delete" aria-label="Delete agent" onClick={()=>setDeleteIdx(idx)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-red-300 hover:bg-neutral-800":"border-neutral-300 text-red-600 hover:bg-red-50"].join(' ')}>
+																							<button title="Delete" aria-label="Delete agent" onClick={()=>setDeleteIdx(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-red-300 hover:bg-neutral-800":"border-neutral-300 text-red-600 hover:bg-red-50"].join(' ')}>
 																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
 																								<polyline points="3 6 5 6 21 6"/>
 																								<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -411,7 +425,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																			</>
 																		)}
 																	</li>
-												))}
+																	))}
 											</ul>
 							</div>
 						)}
@@ -534,7 +548,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 															</div>
 										{!selectedAgent ? (
 						<div className="text-sm opacity-70">Select an agent on the left to view and edit their shifts.</div>
-					) : (
+										) : (
 						<div>
 							<div className="text-sm opacity-80 mb-1">{selectedName}</div>
 								<div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-6 gap-2">
@@ -545,10 +559,26 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 									<div>Length</div>
 								<div className="text-right">Actions</div>
 							</div>
-							<ul className="max-h-[36vh] overflow-y-auto">
-								{agentShiftsLocal.length===0 ? (
-									<li className={["px-2 py-2 text-sm", dark?"text-neutral-400":"text-neutral-600"].join(' ')}>No shifts.</li>
-								) : agentShiftsLocal.map(s=> {
+												<ul className="max-h-[36vh] overflow-y-auto">
+													{agentShiftsLocal.length===0 ? (
+														<li className={["px-2 py-2 text-sm flex items-center justify-between", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>
+															<span>No shifts.</span>
+															<button
+																onClick={()=>{
+																	if(!selectedName) return
+																	const days: Shift['day'][] = ['Mon','Tue','Wed','Thu','Fri'] as any
+																	const makeId = ()=> (globalThis as any).crypto?.randomUUID?.() || Math.random().toString(36).slice(2)
+																	const base: Omit<Shift,'id'> = { person: selectedName, day: 'Mon' as any, start: '08:00', end: '16:30' }
+																	const created: Shift[] = days.map((d)=> ({ id: makeId(), ...base, day: d, endDay: d })) as any
+																	setAgentShiftsLocal(created)
+																	created.forEach(s=> onAddShift?.(s))
+																}}
+																className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}
+															>
+																Create standard week (Mon–Fri, 8:00–4:30)
+															</button>
+														</li>
+													) : agentShiftsLocal.map(s=> {
 									// If viewer tz differs from agent tz, compute agent-local times for secondary labels
 									const agentTzId = selectedAgent?.tzId || TZ_OPTS[0]?.id || 'UTC'
 									const viewerTzId = tz.id
