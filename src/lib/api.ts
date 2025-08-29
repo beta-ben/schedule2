@@ -21,6 +21,7 @@ function getCsrfFromCookie(): string | null {
   const m = document.cookie.match(/(?:^|; )csrf=([^;]+)/)
   return m ? decodeURIComponent(m[1]) : null
 }
+export function hasCsrfCookie(){ return !!getCsrfFromCookie() }
 
 // Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
 export async function login(password: string){

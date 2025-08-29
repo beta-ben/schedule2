@@ -1,6 +1,6 @@
 import React from 'react'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, isUsingDevProxy } from '../lib/api'
+import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, isUsingDevProxy, hasCsrfCookie } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import type { PTO, Shift, Task } from '../types'
@@ -17,8 +17,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
   React.useEffect(()=>{
-  const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
-  if(hasCsrf){ setUnlocked(true); return }
+    if(hasCsrfCookie()){ setUnlocked(true); setMsg('') }
   },[])
   const apiBase = React.useMemo(()=> getApiBase(), [])
   const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
@@ -352,7 +351,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             const res = await login(pwInput)
             if(res.ok){
               try{ await ensureSiteSession(pwInput) }catch{}
-              setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
+              if(hasCsrfCookie()){
+                setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
+              } else {
+                setUnlocked(false); setMsg('Signed in, but CSRF cookie is missing. Check cookie Domain/Path and SameSite; reload and try again.')
+              }
             } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
           })() }}>
             <div className="flex gap-2">
@@ -365,6 +368,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           <div className="text-xs opacity-60 mt-2">
             <div>API base: <code>{apiBase}</code></div>
             <div>Dev proxy: {usingDevProxy? 'on (local only)':'off'}</div>
+            <div>CSRF cookie detected: {hasCsrfCookie()? 'yes' : 'no'}</div>
           </div>
         </div>
       </section>
