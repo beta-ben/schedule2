@@ -8,8 +8,13 @@ import type { CalendarSegment } from './utils'
 const DEV_PROXY_RAW = import.meta.env.VITE_DEV_PROXY_BASE || '' // e.g., http://localhost:8787
 const IS_LOCALHOST = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
 const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
-const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || 'https://team-schedule-api.bsteward.workers.dev'
+// Default to the production custom domain; CI can override via VITE_SCHEDULE_API_BASE
+const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || 'https://api.teamschedule.cc'
 const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
+
+// Tiny diagnostics helpers (read-only)
+export function getApiBase(){ return API_BASE }
+export function isUsingDevProxy(){ return !!DEV_PROXY }
 
 function getCsrfFromCookie(): string | null {
   if (typeof document === 'undefined') return null
