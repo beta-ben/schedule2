@@ -16,9 +16,9 @@ function fail(msg){ console.error(`\n[smoke] FAIL: ${msg}`); process.exit(1) }
 function ok(msg){ console.log(`[smoke] OK: ${msg}`) }
 
 try{
-  // 1) Typecheck + build
+  // 1) Typecheck + predeploy (build + CNAME + asset mirror)
   run('npm run typecheck')
-  run('npm run build')
+  run('npm run predeploy --if-present')
 
   const dist = join(process.cwd(), 'dist')
   if(!existsSync(dist)) fail('dist not found after build')
@@ -27,7 +27,7 @@ try{
   if(!existsSync(join(dist, 'CNAME'))) fail('CNAME missing in dist (custom domain will 404)')
   ok('CNAME present in dist')
 
-  // 3) schedule2 mirror for cache bridge
+  // 3) schedule2 mirror for cache bridge (created by predeploy)
   const mirror = join(dist, 'schedule2')
   if(!existsSync(mirror)) fail('dist/schedule2 missing')
   if(!existsSync(join(mirror, 'assets'))) fail('dist/schedule2/assets missing')
