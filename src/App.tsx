@@ -231,6 +231,7 @@ export default function App(){
     setAgentsV2(prev=> prev.map(a=> a.id ? a : { ...a, id: crypto.randomUUID?.() || Math.random().toString(36).slice(2) }))
   }, [agentsV2])
   const fullNameOf = (a: AgentRow)=> `${a.firstName||''} ${a.lastName||''}`.trim()
+  const nameKey = (s:string)=> (s||'').trim().toLowerCase()
   const agentIdByFullName = (name: string)=>{
     const n = (name||'').trim().toLowerCase()
     if(!n) return undefined
@@ -391,8 +392,37 @@ export default function App(){
             <ManageV2Page
               dark={dark}
               agents={agentsV2}
-              onAddAgent={(a:{ firstName:string; lastName:string; tzId:string })=> setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string })=> setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: a.firstName, lastName: a.lastName, tzId: a.tzId || r.tzId } : r))}
+              onAddAgent={(a:{ firstName:string; lastName:string; tzId:string })=>{
+                const newFull = `${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim()
+                if(!newFull){ alert('Enter a first and/or last name'); return }
+                const dup = agentsV2.some(row=> nameKey(fullNameOf(row))===nameKey(newFull))
+                if(dup){ alert('An agent with that name already exists.'); return }
+                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId }]))
+              }}
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string })=>{
+                // Compute names and check duplicates (excluding self)
+                const cur = agentsV2[index]
+                if(!cur){ return }
+                const oldFull = fullNameOf(cur)
+                const nextFirst = (a.firstName||'').trim()
+                const nextLast = (a.lastName||'').trim()
+                const newFull = `${nextFirst} ${nextLast}`.trim()
+                if(!newFull){ alert('Enter a first and/or last name'); return }
+                const dup = agentsV2.some((row,i)=> i!==index && nameKey(fullNameOf(row))===nameKey(newFull))
+                if(dup){ alert('An agent with that name already exists.'); return }
+
+                // Propagate rename across current dataset (draft-aware via routed setters)
+                if(nameKey(newFull) !== nameKey(oldFull)){
+                  const id = cur.id
+                  const ensureId = (xId?:string)=> xId || id
+                  setShiftsRouted(prev=> prev.map(s=> s.person===oldFull ? { ...s, person: newFull, agentId: ensureId(s.agentId) } : s))
+                  setPtoRouted(prev=> prev.map(p=> p.person===oldFull ? { ...p, person: newFull, agentId: ensureId((p as any).agentId) } : p))
+                  setCalendarSegsRouted(prev=> prev.map(cs=> cs.person===oldFull ? { ...cs, person: newFull, agentId: ensureId((cs as any).agentId) } : cs))
+                }
+
+                // Finally update the agents list
+                setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: nextFirst, lastName: nextLast, tzId: a.tzId || r.tzId } : r))
+              }}
               onDeleteAgent={(index:number)=> setAgentsV2(prev=> prev.filter((_,i)=> i!==index))}
               weekStart={weekStart}
               tz={tz}
