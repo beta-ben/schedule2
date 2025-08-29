@@ -29,7 +29,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [subtab, setSubtab] = React.useState<Subtab>('Agents')
   // Shifts tab: show time labels for all shifts
   const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
-  const [sortMode, setSortMode] = React.useState<'start'|'name'>('start')
+  const [sortMode, setSortMode] = React.useState<'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'>('start')
+  const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc')
   // Shifts tab: option to include hidden agents (default off)
   const [includeHiddenAgents, setIncludeHiddenAgents] = React.useState(false)
   // Shifts tab: working copy (draft) of shifts
@@ -435,13 +436,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           {/* Right: all controls */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* View: Sort select (iconified) */}
-            <div className="inline-flex items-center gap-1" title="Sort ribbons by earliest shift start or by name">
+            <div className="inline-flex items-center gap-1" title="Sort ribbons">
               <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h14"/><path d="M7 12h10"/><path d="M11 18h6"/></svg>
               <div className="relative">
                 <select
                   className={["border rounded-xl pl-2 pr-7 py-1 w-[9.5rem] sm:w-[11rem] appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
                   value={sortMode}
-                  onChange={(e)=> setSortMode((e.target.value as 'start'|'name'))}
+                  onChange={(e)=> setSortMode((e.target.value as any))}
                   aria-label="Sort ribbons"
                 >
                   <option value="start">Earliest start</option>
@@ -454,6 +455,22 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 </select>
                 <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
+              <button
+                type="button"
+                onClick={()=> setSortDir(d=> d==='asc'?'desc':'asc')}
+                aria-pressed={sortDir==='desc'}
+                title={sortDir==='asc' ? 'Ascending' : 'Descending'}
+                className={[
+                  "ml-1 px-2.5 py-1.5 rounded-xl border font-medium",
+                  dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"
+                ].join(' ')}
+              >
+                {sortDir==='asc' ? (
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                ) : (
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+                )}
+              </button>
             </div>
             {/* Toggle: include hidden agents (icon button) */}
             <button
@@ -711,6 +728,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             calendarSegs={calendarSegs}
             showAllTimeLabels={showAllTimeLabels}
             sortMode={sortMode}
+            sortDir={sortDir}
             highlightIds={modifiedIds}
             selectedIds={selectedShiftIds}
             onToggleSelect={(id)=>{

@@ -20,6 +20,7 @@ export default function AllAgentsWeekRibbons({
   onDragAll,
   onDragShift,
   sortMode = 'start',
+  sortDir = 'asc',
   highlightIds,
   selectedIds,
   onToggleSelect,
@@ -36,6 +37,7 @@ export default function AllAgentsWeekRibbons({
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
   sortMode?: 'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'
+  sortDir?: 'asc'|'desc'
   highlightIds?: Set<string> | string[]
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
@@ -92,22 +94,60 @@ export default function AllAgentsWeekRibbons({
     const rows = names.map(n=>({
       name: n,
       startKey: earliestStartAbs(n),
+      startHas: Number.isFinite(earliestStartAbs(n)),
       endKey: latestEndAbs(n),
+      endHas: Number.isFinite(latestEndAbs(n)),
       totalKey: totalMinutes(n),
       countKey: shiftCount(n),
+      hasShifts: shiftCount(n) > 0,
       tzKey: tzOf(n),
+      tzHas: !!tzOf(n),
       dayKey: firstDayIdx(n),
+      dayHas: Number.isFinite(firstDayIdx(n)),
     }))
     const byName = (a:any,b:any)=> a.name.localeCompare(b.name)
-    if(sortMode==='name') return rows.sort(byName).map(x=> x.name)
-    if(sortMode==='end') return rows.sort((a,b)=> (a.endKey - b.endKey) || byName(a,b)).map(x=> x.name)
-    if(sortMode==='count') return rows.sort((a,b)=> (b.countKey - a.countKey) || byName(a,b)).map(x=> x.name)
-    if(sortMode==='total') return rows.sort((a,b)=> (b.totalKey - a.totalKey) || byName(a,b)).map(x=> x.name)
-    if(sortMode==='tz') return rows.sort((a,b)=> (a.tzKey.localeCompare(b.tzKey)) || byName(a,b)).map(x=> x.name)
-    if(sortMode==='firstDay') return rows.sort((a,b)=> (a.dayKey - b.dayKey) || byName(a,b)).map(x=> x.name)
+    const sign = sortDir==='asc' ? 1 : -1
+    if(sortMode==='name') return rows.sort((a,b)=> sign * byName(a,b)).map(x=> x.name)
+    if(sortMode==='tz') return rows.sort((a,b)=>{
+      if(a.tzHas && !b.tzHas) return -1
+      if(!a.tzHas && b.tzHas) return 1
+      const cmp = a.tzKey.localeCompare(b.tzKey) * sign
+      return cmp!==0 ? cmp : byName(a,b)
+    }).map(x=> x.name)
+    if(sortMode==='end') return rows.sort((a,b)=>{
+      if(a.endHas && !b.endHas) return -1
+      if(!a.endHas && b.endHas) return 1
+      const cmp = (a.endKey - b.endKey) * sign
+      return cmp!==0 ? cmp : byName(a,b)
+    }).map(x=> x.name)
+    if(sortMode==='firstDay') return rows.sort((a,b)=>{
+      if(a.dayHas && !b.dayHas) return -1
+      if(!a.dayHas && b.dayHas) return 1
+      const cmp = (a.dayKey - b.dayKey) * sign
+      return cmp!==0 ? cmp : byName(a,b)
+    }).map(x=> x.name)
+    if(sortMode==='count') return rows.sort((a,b)=>{
+      const aHas = a.hasShifts, bHas = b.hasShifts
+      if(aHas && !bHas) return -1
+      if(!aHas && bHas) return 1
+      const cmp = (a.countKey - b.countKey) * sign
+      return cmp!==0 ? cmp : byName(a,b)
+    }).map(x=> x.name)
+    if(sortMode==='total') return rows.sort((a,b)=>{
+      const aHas = a.hasShifts, bHas = b.hasShifts
+      if(aHas && !bHas) return -1
+      if(!aHas && bHas) return 1
+      const cmp = (a.totalKey - b.totalKey) * sign
+      return cmp!==0 ? cmp : byName(a,b)
+    }).map(x=> x.name)
     // default: earliest start
-    return rows.sort((a,b)=> (a.startKey - b.startKey) || byName(a,b)).map(x=> x.name)
-  }, [agents, shifts, tz.offset, sortMode])
+    return rows.sort((a,b)=>{
+      if(a.startHas && !b.startHas) return -1
+      if(!a.startHas && b.startHas) return 1
+      const cmp = (a.startKey - b.startKey) * sign
+      return cmp!==0 ? cmp : byName(a,b)
+    }).map(x=> x.name)
+  }, [agents, shifts, tz.offset, sortMode, sortDir])
   const nameToShort = useMemo(()=>{
     // Count first name occurrences (case-insensitive)
     const firstCounts = new Map<string, number>()
