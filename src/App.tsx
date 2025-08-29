@@ -58,6 +58,15 @@ export default function App(){
     catch{ return false }
   })
   useEffect(()=>{ try{ localStorage.setItem('schedule_slimline', slimline ? '1' : '0') }catch{} }, [slimline])
+  // Listen for SchedulePage's local pane toggle (scoped to schedule view)
+  useEffect(()=>{
+    const handler = (e: Event)=>{
+      const anyE = e as CustomEvent
+      if(anyE && typeof anyE.detail?.value === 'boolean') setSlimline(anyE.detail.value)
+    }
+    window.addEventListener('schedule:set-slimline', handler as any)
+    return ()=> window.removeEventListener('schedule:set-slimline', handler as any)
+  },[])
   // v2: dedicated agents list (temporary local persistence)
   type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
@@ -372,8 +381,6 @@ export default function App(){
           canEdit={canEdit}
           editMode={editMode}
           setEditMode={setEditMode}
-          slimline={slimline}
-          setSlimline={setSlimline}
           />
 
           {view==='schedule' ? (
