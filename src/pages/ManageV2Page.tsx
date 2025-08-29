@@ -1,30 +1,26 @@
 import React from 'react'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost } from '../lib/api'
+import { cloudPost, login, logout } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
-import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName } from '../lib/utils'
+import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD } from '../lib/utils'
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string }
 
-export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void }){
-  // Admin auth gate (dev proxy only); no local password fallback.
+export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void }){
+  // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
   const [unlocked, setUnlocked] = React.useState(false)
   const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
-  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
-  React.useEffect(()=> { (async () => {
-    if(useDevProxy){
-      const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
-      setUnlocked(!!hasCsrf)
-    } else {
-      setUnlocked(false)
-    }
-  })() }, [useDevProxy])
+  React.useEffect(()=>{
+  const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
+  if(hasCsrf){ setUnlocked(true); return }
+  try{ const hint = localStorage.getItem('schedule_admin_unlocked'); if(hint==='1') setUnlocked(true) }catch{}
+  },[])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
   const tabs = ['Agents','Shifts','Postures','PTO'] as const
@@ -35,7 +31,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [sortMode, setSortMode] = React.useState<'start'|'name'>('start')
   // Shifts tab: working copy (draft) of shifts
   const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
+  // PTO tab: working copy (draft) of PTO entries
+  const [workingPto, setWorkingPto] = React.useState<PTO[]>(pto)
   const [isDirty, setIsDirty] = React.useState(false)
+  // Import panel state
+  const [showImport, setShowImport] = React.useState(false)
+  const [importUrl, setImportUrl] = React.useState<string>('https://team-schedule-api.bsteward.workers.dev/v1/schedule')
+  const [importText, setImportText] = React.useState<string>('')
+  const [importMsg, setImportMsg] = React.useState<string>('')
   // Track whether current draft session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
   const DRAFT_KEY = React.useMemo(()=> `schedule2.v2.draft.${weekStart}.${tz.id}`,[weekStart,tz.id])
@@ -44,13 +47,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [currentDraftId, setCurrentDraftId] = React.useState<string | null>(null)
   // Keep working copy synced to live only when not dirty
   React.useEffect(()=>{ if(!isDirty) setWorkingShifts(shifts) },[shifts,isDirty])
+  React.useEffect(()=>{ if(!isDirty) setWorkingPto(pto) },[pto,isDirty])
   // Load existing draft if present for this week/tz
   React.useEffect(()=>{
     try{
       const raw = localStorage.getItem(DRAFT_KEY)
       if(raw){
         const parsed = JSON.parse(raw)
-        if(Array.isArray(parsed?.shifts)){
+  if(Array.isArray(parsed?.shifts)){
           setWorkingShifts(parsed.shifts as Shift[])
           setIsDirty(true)
           if(parsed?.draftId && typeof parsed.draftId === 'string') setCurrentDraftId(parsed.draftId)
@@ -186,8 +190,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     for(const s of shifts){ if(s.person) set.add(s.person) }
     // And any names that already exist in assigned calendar segments
     for(const cs of calendarSegs){ if(cs.person) set.add(cs.person) }
+    // Include any names present on PTO records
+    for(const p of pto){ if(p.person) set.add(p.person) }
     return Array.from(set).sort()
-  }, [localAgents, shifts, calendarSegs])
+  }, [localAgents, shifts, calendarSegs, pto])
   const activeTasks = React.useMemo(()=> tasks.filter(t=>!t.archived), [tasks])
   const [assignee, setAssignee] = React.useState<string>('')
   const [assignDay, setAssignDay] = React.useState<typeof DAYS[number]>('Mon' as any)
@@ -205,6 +211,20 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // const [filterTaskId, setFilterTaskId] = React.useState('') // not used currently
   // Calendar filter (posture) — empty means show all
   const [calendarFilterTaskId, setCalendarFilterTaskId] = React.useState('')
+
+  // PTO tab state
+  const [pt_agent, setPtAgent] = React.useState('')
+  const [pt_start, setPtStart] = React.useState('')
+  const [pt_end, setPtEnd] = React.useState('')
+  const [pt_notes, setPtNotes] = React.useState('')
+  const [pt_filter, setPtFilter] = React.useState('')
+  const [ptoEditing, setPtoEditing] = React.useState<PTO | null>(null)
+  const [pt_e_person, setPtEPerson] = React.useState('')
+  const [pt_e_start, setPtEStart] = React.useState('')
+  const [pt_e_end, setPtEEnd] = React.useState('')
+  const [pt_e_notes, setPtENotes] = React.useState('')
+  const startPtoEdit = (r: PTO)=>{ setPtoEditing(r); setPtEPerson(r.person); setPtEStart(r.startDate); setPtEEnd(r.endDate); setPtENotes(r.notes||'') }
+  const clearPtoEdit = ()=>{ setPtoEditing(null); setPtEPerson(''); setPtEStart(''); setPtEEnd(''); setPtENotes('') }
 
   // Draft versions (saved snapshots)
   type DraftSnapshot = { id:string; name:string; createdAt:string; weekStart:string; tzId:string; shifts: Shift[] }
@@ -286,7 +306,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     setCurrentDraftId(null)
   }
   async function publishWorkingToLive(){
-    const ok = await cloudPost({ shifts: workingShifts, pto, calendarSegs, updatedAt: new Date().toISOString() })
+    const ok = await cloudPost({ shifts: workingShifts, pto: workingPto, calendarSegs, updatedAt: new Date().toISOString() })
     if(ok){
       setIsDirty(false)
       try{ localStorage.removeItem(DRAFT_KEY) }catch{}
@@ -295,6 +315,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setCurrentDraftId(null)
   // Clear modified markers so shift ribbons no longer show edited tags
   setModifiedIds(new Set())
+      // Update parent state to reflect published PTO immediately
+      setPto(()=> workingPto)
     }else{
       alert('Failed to publish.')
     }
@@ -308,16 +330,15 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const handleDelete = React.useCallback((index:number)=>{
     onDeleteAgent?.(index); setLocalAgents(prev=> prev.filter((_,i)=> i!==index))
   },[onDeleteAgent])
-  if (useDevProxy && !unlocked) {
+  if (!unlocked) {
     return (
       <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
         <div className="max-w-md mx-auto space-y-3">
           <div className="text-lg font-semibold">Protected — Manage Data</div>
-          <p className="text-sm opacity-80">Sign in to your local dev session.</p>
+          <p className="text-sm opacity-80">Sign in to your session.</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-            const { devLogin } = await import('../lib/api')
-            const ok = await devLogin(pwInput)
-            if(ok){ setUnlocked(true); setMsg('') } else { setMsg('Login failed') }
+            const res = await login(pwInput)
+            if(res.ok){ setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{} } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
           })() }}>
             <div className="flex gap-2">
               <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />
@@ -325,17 +346,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             </div>
           </form>
           {msg && (<div className={["text-sm", dark ? "text-red-300" : "text-red-600"].join(' ')}>{msg}</div>)}
-          <div className="text-xs opacity-70">Run the dev auth proxy and set VITE_DEV_PROXY_BASE to use it.</div>
-        </div>
-      </section>
-    )
-  }
-  if (!useDevProxy) {
-    return (
-      <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
-        <div className="max-w-md mx-auto space-y-2">
-          <div className="text-lg font-semibold">Read-only mode</div>
-          <p className="text-sm opacity-80">Editing requires an authenticated server session. For local development, run the dev proxy (VITE_DEV_PROXY_BASE) which provides cookie sessions and CSRF.</p>
+          <div className="text-xs opacity-70">Your API should set a session cookie and CSRF token on success.</div>
         </div>
       </section>
     )
@@ -485,6 +496,19 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               </button>
             </div>
 
+            {/* Import legacy */}
+            <button
+              type="button"
+              onClick={()=>{ setShowImport(v=>!v); setImportMsg('') }}
+              className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+              title="Import shifts/PTO/postures from a legacy JSON URL or paste"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><polyline points="8 17 12 21 16 17"></polyline></svg>
+                <span className="hidden sm:inline">Import</span>
+              </span>
+            </button>
+
             {/* Publish area: discard then publish at far right */}
             <button
               disabled={!isDirty}
@@ -507,6 +531,74 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 <span className="hidden sm:inline">Publish</span>
               </span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {showImport && (
+        <div className={["mt-2 rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
+          <div className="text-sm font-semibold mb-2">Import legacy data</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <label className="text-sm flex flex-col md:col-span-2">
+              <span className="mb-1">From URL</span>
+              <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={importUrl} onChange={(e)=>setImportUrl(e.target.value)} placeholder="https://…/schedule.json" />
+            </label>
+            <div className="flex gap-2">
+              <button
+                className={["h-10 rounded-xl px-4 border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-blue-600 border-blue-600 text-white"].join(' ')}
+                onClick={async()=>{
+                  setImportMsg('')
+                  try{
+                    const r = await fetch(importUrl, { credentials: 'omit' })
+                    if(!r.ok){ setImportMsg(`Fetch failed: ${r.status}`); return }
+                    const j = await r.json()
+                    if(!Array.isArray(j.shifts)) { setImportMsg('Invalid JSON: missing shifts[]'); return }
+                    const importedShifts = (j.shifts as any[]).map((s,i)=> ({ id: s.id || `imp-${i}-${Math.random().toString(36).slice(2)}`, person: s.person, day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay }))
+                    setWorkingShifts(importedShifts as Shift[])
+                    // Merge PTO
+                    if(Array.isArray(j.pto)){
+                      setWorkingPto(j.pto as PTO[])
+                    }
+                    // Merge calendar segments into parent list via setter
+                    if(Array.isArray(j.calendarSegs)){
+                      setCalendarSegs(prev=> j.calendarSegs as any)
+                    }
+                    setIsDirty(true)
+                    setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
+                  }catch(e:any){ setImportMsg(e?.message || 'Import failed') }
+                }}>Fetch</button>
+              <button
+                className={["h-10 rounded-xl px-4 border font-medium", dark?"border-neutral-700":"border-neutral-300"].join(' ')}
+                onClick={()=>{ setImportText(t=> t.trim() ? t : '{\n  "shifts": [],\n  "pto": [],\n  "calendarSegs": []\n}') }}
+              >Paste JSON…</button>
+            </div>
+            <div className="md:col-span-3">
+              {importText!=='' && (
+                <div className="space-y-2">
+                  <textarea className={["w-full h-40 border rounded-xl p-2 font-mono text-xs", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={importText} onChange={(e)=>setImportText(e.target.value)} />
+                  <div className="flex gap-2">
+                    <button className={["h-9 rounded-xl px-4 border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-blue-600 border-blue-600 text-white"].join(' ')} onClick={()=>{
+                      setImportMsg('')
+                      try{
+                        const j = JSON.parse(importText)
+                        if(!Array.isArray(j.shifts)) { setImportMsg('Invalid JSON: missing shifts[]'); return }
+                        const importedShifts = (j.shifts as any[]).map((s,i)=> ({ id: s.id || `imp-${i}-${Math.random().toString(36).slice(2)}`, person: s.person, day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay }))
+                        setWorkingShifts(importedShifts as Shift[])
+                        if(Array.isArray(j.calendarSegs)) setCalendarSegs(j.calendarSegs as any)
+                        if(Array.isArray(j.pto)) setWorkingPto(j.pto as PTO[])
+                        setIsDirty(true)
+                        setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
+                      }catch(e:any){ setImportMsg(e?.message || 'Invalid JSON') }
+                    }}>Load</button>
+                    <button className={["h-9 rounded-xl px-4 border font-medium", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={()=> setImportText('')}>Clear</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {importMsg && (
+              <div className={["md:col-span-3 text-sm", importMsg.startsWith('Imported') ? (dark?"text-green-300":"text-green-700") : (dark?"text-red-300":"text-red-700")].join(' ')}>{importMsg}</div>
+            )}
+            <div className="md:col-span-3 text-xs opacity-70">Note: After import, click Publish to write the data to live. Agents list will update automatically from shift names.</div>
           </div>
         </div>
       )}
@@ -898,10 +990,185 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             </div>
           </div>
         ) : (
-          <div className={["rounded-xl p-4 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
-            <div className="text-sm font-semibold mb-1">PTO</div>
-            <div className="text-sm opacity-80">Coming soon.</div>
+          <>
+          <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end mb-3">
+              <label className="text-sm flex flex-col">
+                <span className="mb-1">Agent</span>
+                <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_agent} onChange={(e)=> setPtAgent(e.target.value)}>
+                  <option value="">—</option>
+                  {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
+              <label className="text-sm flex flex-col">
+                <span className="mb-1">Start date</span>
+                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_start} onChange={(e)=> setPtStart(e.target.value)} />
+              </label>
+              <label className="text-sm flex flex-col">
+                <span className="mb-1">End date</span>
+                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_end} onChange={(e)=> setPtEnd(e.target.value)} />
+              </label>
+              <label className="text-sm flex flex-col md:col-span-2">
+                <span className="mb-1">Notes</span>
+                <input type="text" placeholder="Optional" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_notes} onChange={(e)=> setPtNotes(e.target.value)} />
+              </label>
+              <div className="md:col-span-5 flex gap-2">
+                <button className={["h-10 rounded-xl px-4 border font-medium", dark?"bg-neutral-900 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')} onClick={()=>{
+                  if(!pt_agent) return alert('Choose an agent')
+                  if(!pt_start || !pt_end) return alert('Choose start and end dates')
+                  if(pt_end < pt_start) return alert('End date must be on/after start date')
+                  const newItem: PTO = { id: uid(), person: pt_agent, agentId: agentIdByName(localAgents as any, pt_agent), startDate: pt_start, endDate: pt_end, notes: pt_notes || undefined }
+                  setWorkingPto(prev=> prev.concat([newItem] as any))
+                  setPtAgent(''); setPtStart(''); setPtEnd(''); setPtNotes('')
+                  setIsDirty(true)
+                }}>Add PTO</button>
+                <div className="ml-auto inline-flex items-center gap-2">
+                  <span className={dark?"text-neutral-300":"text-neutral-700"}>Filter</span>
+                  <select className={["border rounded-xl px-2 py-1", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300"].join(' ')} value={pt_filter} onChange={(e)=> setPtFilter(e.target.value)}>
+                    <option value="">All</option>
+                    {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {(()=>{
+              // component state
+              return null
+            })()}
+
+            {(()=>{
+              // Render grouped PTO list (collapsible per agent)
+              const entries = workingPto
+                .filter(x=> !pt_filter || x.person===pt_filter)
+                .slice()
+                .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
+              if(entries.length===0) return <div className="text-sm opacity-70">No PTO entries.</div>
+              const byPerson = new Map<string, PTO[]>()
+              for(const p of entries){ const arr = byPerson.get(p.person)||[]; arr.push(p); byPerson.set(p.person, arr) }
+              const people = Array.from(byPerson.keys()).sort()
+              return (
+                <div className="space-y-3">
+                  {people.map(person=>{
+                    const rows = byPerson.get(person)!.slice().sort((a,b)=> a.startDate.localeCompare(b.startDate))
+                    return (
+                      <details key={person} className={["rounded-xl border overflow-hidden", dark?"border-neutral-800":"border-neutral-200"].join(' ')} open>
+                        <summary className={["px-3 py-2 cursor-pointer select-none flex items-center justify-between", dark?"bg-neutral-900":"bg-white"].join(' ')}>
+                          <span className="text-sm font-medium">{agentDisplayName(localAgents as any, rows[0]?.agentId, person)}</span>
+                          <span className="text-xs opacity-70">{rows.length} item{rows.length===1?'':'s'}</span>
+                        </summary>
+                        <div className={"divide-y "+(dark?"divide-neutral-800":"divide-neutral-200")}>
+                          {rows.map((r)=> (
+                            <div key={r.id} className="px-3 py-2 flex items-center justify-between gap-2 text-sm">
+                              <div className="flex items-center gap-3">
+                                <span className="tabular-nums">{r.startDate} → {r.endDate}</span>
+                                {r.notes && <span className={"opacity-70 max-w-[40ch] truncate"}>{r.notes}</span>}
+                              </div>
+                              <div className="shrink-0 inline-flex gap-1.5">
+                                <button className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={()=> startPtoEdit(r)}>Edit</button>
+                                <button className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')} onClick={()=>{ if(confirm('Delete PTO?')) setWorkingPto(prev=> prev.filter(x=> x.id!==r.id)) }}>Delete</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+
+            {ptoEditing && (
+              <div className={["mt-3 rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
+                <div className="text-sm font-medium mb-2">Edit PTO</div>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                  <label className="text-sm flex flex-col">
+                    <span className="mb-1">Agent</span>
+                    <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_person} onChange={(e)=> setPtEPerson(e.target.value)}>
+                      {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm flex flex-col">
+                    <span className="mb-1">Start</span>
+                    <input type="date" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_start} onChange={(e)=> setPtEStart(e.target.value)} />
+                  </label>
+                  <label className="text-sm flex flex-col">
+                    <span className="mb-1">End</span>
+                    <input type="date" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_end} onChange={(e)=> setPtEEnd(e.target.value)} />
+                  </label>
+                  <label className="text-sm flex flex-col md:col-span-2">
+                    <span className="mb-1">Notes</span>
+                    <input type="text" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_notes} onChange={(e)=> setPtENotes(e.target.value)} />
+                  </label>
+                  <div className="md:col-span-5 flex gap-2">
+                    <button className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')} onClick={()=>{
+                      if(!ptoEditing) return
+                      if(!pt_e_person.trim()) return alert('Choose an agent')
+                      if(!pt_e_start || !pt_e_end) return alert('Choose start/end')
+                      if(pt_e_end < pt_e_start) return alert('End date must be on/after start date')
+                      setWorkingPto(prev=> prev.map(x=> x.id===ptoEditing.id ? { ...x, person: pt_e_person.trim(), agentId: agentIdByName(localAgents as any, pt_e_person.trim()), startDate: pt_e_start, endDate: pt_e_end, notes: pt_e_notes || undefined } : x))
+                      clearPtoEdit()
+                      setIsDirty(true)
+                    }}>Save</button>
+                    <button className={["px-3 py-1.5 rounded border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={clearPtoEdit}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+          {/* Weekly PTO calendar */}
+          <div className={["mt-3 rounded-xl p-3", dark?"bg-neutral-900":"bg-white"].join(' ')}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium">Weekly PTO calendar</div>
+              <div className="text-xs opacity-70">Full-day entries by person</div>
+            </div>
+            {(()=>{
+              const H_PX = 220
+              const dayHeight = 22
+              const week0 = parseYMD(weekStart)
+              const ymds = DAYS.map((_,i)=> fmtYMD(addDays(week0, i)))
+              // Precompute per-day grouped pto entries
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
+                  {DAYS.map((day, di)=>{
+                    const ymd = ymds[di]
+                    const dayItems = workingPto
+                      .filter(p=> (!pt_filter || p.person===pt_filter) && p.startDate <= ymd && p.endDate >= ymd)
+                      .slice()
+                      .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
+                    // Assign lanes per person for the day to avoid overlap
+                    const laneByPerson = new Map<string, number>()
+                    let nextLane = 0
+                    const placed = dayItems.map(p=>{
+                      let lane = laneByPerson.get(p.person)
+                      if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
+                      return { p, lane }
+                    })
+                    const laneCount = Math.max(placed.length, 1)
+                    const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
+                    return (
+                      <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
+                        <div className="font-medium mb-1">{day}</div>
+                        <div className="absolute left-2 right-2 bottom-2 top-7">
+                          {placed.map(({p, lane})=>{
+                            const top = lane * (dayHeight + 6)
+                            const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
+                            return (
+                              <div key={`${p.id}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}`}>
+                                <span className="truncate">{disp}</span>
+                                {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+          </>
         )
       )}
     </section>

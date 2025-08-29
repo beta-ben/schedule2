@@ -405,6 +405,7 @@ export default function App(){
               onAddShift={(s)=> setShiftsRouted(prev=> prev.concat([{ ...s, agentId: s.agentId || agentIdByFullName(s.person) }]))}
               setTasks={setTasks}
               setCalendarSegs={setCalendarSegsRouted}
+              setPto={setPtoRouted}
             />
           )}
         </div>

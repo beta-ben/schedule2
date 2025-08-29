@@ -17,21 +17,23 @@ function getCsrfFromCookie(): string | null {
   return m ? decodeURIComponent(m[1]) : null
 }
 
-// Login for dev proxy only (no-op for remote API)
-export async function devLogin(password: string){
-  if(!DEV_PROXY) return true
-  const r = await fetch(`${API_BASE}/api/login`,{
-    method:'POST',
-    headers:{ 'content-type':'application/json' },
-    credentials:'include',
-    body: JSON.stringify({ password })
-  })
-  return r.ok
+// Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
+export async function login(password: string){
+  try{
+    const r = await fetch(`${API_BASE}/api/login`,{
+      method:'POST',
+      headers:{ 'content-type':'application/json' },
+      credentials:'include',
+      body: JSON.stringify({ password })
+    })
+    return { ok: r.ok, status: r.status }
+  }catch{
+    return { ok: false }
+  }
 }
 
-export async function devLogout(){
-  if(!DEV_PROXY) return
-  await fetch(`${API_BASE}/api/logout`,{ method:'POST', credentials:'include' })
+export async function logout(){
+  try{ await fetch(`${API_BASE}/api/logout`,{ method:'POST', credentials:'include' }) }catch{}
 }
 
 // Site-level gate for dev proxy

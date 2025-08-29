@@ -1,12 +1,5 @@
 # Schedule 2
 
-React + TypeScript + Vite + Tailwind. Manage area (dev proxy sign-in or local gate), cloud sync, timezone-aware daily grid, and helpful "On deck"/"Up next" side panels.
-
-## Features
-
-- Sunday-first week layout and week start selector.
-- Timezone-aware rendering: shifts authored in PT, viewed in selected TZ. "Now" line and panels use IANA tz for accuracy.
-- Day grid with hour labels, red "now" line (today only), and colored shift chips.
 - PTO support: days on PTO gray out a person’s shift chips in the grid.
 - Overnight shifts supported (end next day) and split correctly at local midnight.
 - On deck: who’s on right now. Up next: who starts in the next 2 hours.
@@ -23,6 +16,41 @@ npm run dev
 ```
 
 Open the printed local URL (Vite), then use the Manage tab to edit data.
+
+## Dev → Prod Playbook
+
+Use this checklist to avoid surprises when promoting changes to production.
+
+1) Environment
+- .env.production must define:
+	- `VITE_SCHEDULE_API_BASE=https://api.teamschedule.cc` (or your API domain)
+- API requirements (Cloudflare Worker or server):
+	- Endpoints: `POST /api/login`, `POST /api/logout`, `GET /api/schedule`, `POST /api/schedule`
+	- Cookies: set `sid` and `csrf` with `Secure; HttpOnly; SameSite=Lax; Domain=.teamschedule.cc`
+	- CORS: `Access-Control-Allow-Origin: https://teamschedule.cc`, `Access-Control-Allow-Credentials: true`
+
+2) Local validation
+- Login in dev via proxy: `npm run dev:all` and use the Manage tab
+- Typecheck/build: `npm run typecheck && npm run build`
+- Smoke test: `npm run smoke`
+- Validate prod config: `npm run validate:prod`
+
+3) Deploy
+- Manual: `npm run deploy` (predeploy copies CNAME and mirrors assets under `dist/schedule2` for cache safety)
+- CI: push to `main` runs `.github/workflows/deploy.yml` to build and publish automatically
+
+4) Verify
+- Open https://teamschedule.cc and hard refresh
+- Confirm header date range is correct and CSS/JS load (no 404s)
+- Manage: sign in once; navigating back should not re-prompt constantly
+- Publish: create a tiny change and publish; confirm API accepts write (CSRF header is sent)
+
+5) Troubleshooting
+- Custom domain shows 404/CSP: ensure `public/CNAME` exists and lands in `dist/CNAME`
+- Login loops: check API cookie attributes and CORS; browser devtools → Application → Cookies
+- Data mismatch: if drafts are active locally, publish or discard so Schedule reflects live
+- Cache: avoid caching HTML at CDN; allow assets to cache, JSON minimal TTLs
+
 
 ## Environment
 

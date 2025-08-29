@@ -1,5 +1,4 @@
 {
-  "schemaVersion": 2,
   "shifts": [
     {
       "id": "205d5c9d-c1a8-424e-9668-ba759259885e",
@@ -588,6 +587,5 @@
       "taskId": "support"
     }
   ],
-  "updatedAt": "2025-08-29T01:14:14.024Z",
-  "agentsIndex": {}
+  "updatedAt": "2025-08-28T23:43:53.390Z"
 }

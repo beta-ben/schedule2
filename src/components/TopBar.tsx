@@ -1,5 +1,5 @@
 import React from 'react'
-import { addDays, fmtDateRange, parseYMD, tzAbbrev } from '../lib/utils'
+import { addDays, fmtDateRange, parseYMD, tzAbbrev, fmtYMD, startOfWeek } from '../lib/utils'
 import { TZ_OPTS } from '../constants'
 
 export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
@@ -15,8 +15,10 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   editMode: boolean
   setEditMode: React.Dispatch<React.SetStateAction<boolean>>
 }){
-  const weekStartDate = parseYMD(weekStart)
-  const weekEndDate = addDays(weekStartDate, 6)
+  const isoLike = /^\d{4}-\d{2}-\d{2}$/
+  const wsValid = isoLike.test(weekStart) && !Number.isNaN(parseYMD(weekStart).getTime())
+  const safeWeekStartDate = wsValid ? parseYMD(weekStart) : startOfWeek(new Date())
+  const weekEndDate = addDays(safeWeekStartDate, 6)
   return (
     <header className="mb-1">
   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1 pb-2">
@@ -61,7 +63,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
         {/* Center: page title above date range */}
   <div className="text-center whitespace-nowrap overflow-visible">
     <div className={dark?"text-neutral-400":"text-neutral-600"} style={{ fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.05 }}>Customer Care Team Schedule</div>
-  <div className="font-medium tabular-nums" style={{ letterSpacing: '0.005em', fontSize: '1.35rem', lineHeight: 1.12 }}>{fmtDateRange(weekStartDate, weekEndDate)}</div>
+  <div className="font-medium tabular-nums" style={{ letterSpacing: '0.005em', fontSize: '1.35rem', lineHeight: 1.12 }}>{fmtDateRange(safeWeekStartDate, weekEndDate)}</div>
   </div>
 
   {/* Right: selectors + dark toggle */}
@@ -90,8 +92,12 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
               title="Week start (Sun)"
         className={["border rounded-lg pl-3 pr-2 h-10 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
               type="date"
-              value={weekStart}
-              onChange={e=>setWeekStart(e.target.value)}
+              value={wsValid ? weekStart : fmtYMD(safeWeekStartDate)}
+              onChange={e=>{
+                const v = e.target.value
+                if(/^\d{4}-\d{2}-\d{2}$/.test(v)) setWeekStart(v)
+                else setWeekStart(fmtYMD(startOfWeek(new Date())))
+              }}
         style={{ colorScheme: dark ? 'dark' : 'light' }}
             />
           </div>

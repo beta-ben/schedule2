@@ -1,0 +1,26 @@
+name: Lighthouse CI
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  lhci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Pages deploy
+        uses: jakejarvis/wait-action@master
+        with:
+          time: '20s'
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Lighthouse CI
+        run: npm i -g @lhci/cli@0.13.0
+      - name: Run Lighthouse on production
+        env:
+          LHCI_COLLECT__URL: https://teamschedule.cc/
+        run: |
+          lhci collect --url https://teamschedule.cc/
+          lhci assert --assert.preset=lighthouse:recommended || true
