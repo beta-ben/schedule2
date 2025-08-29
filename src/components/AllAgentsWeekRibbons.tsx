@@ -42,7 +42,25 @@ export default function AllAgentsWeekRibbons({
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
 }){
-  const nameColClass = "w-24 shrink-0 text-left pl-1 text-sm truncate"
+  // Dynamic name column width to fit full names without excessive truncation
+  const [nameColPx, setNameColPx] = React.useState<number>(160)
+  React.useEffect(()=>{
+    try{
+      if(!agents || agents.length===0){ setNameColPx(120); return }
+      const names = agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' ').trim()).filter(Boolean)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if(!ctx){ setNameColPx(160); return }
+      // Roughly match Tailwind text-sm medium
+      ctx.font = `500 13px ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif`
+      let max = 0
+      for(const n of names){ const w = ctx.measureText(n).width; if(w>max) max=w }
+      const padding = 28 // px for left padding and truncation breathing room
+      const MIN = 120, MAX = 260
+      setNameColPx(Math.max(MIN, Math.min(MAX, Math.ceil(max + padding))))
+    }catch{ setNameColPx(160) }
+  }, [agents])
+  const nameColClass = "shrink-0 text-left pl-1 text-sm truncate"
   const agentNamesSorted = useMemo(()=>{
     const names = agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' '))
     const tzShifts = convertShiftsToTZ(shifts, tz.offset)
@@ -148,32 +166,13 @@ export default function AllAgentsWeekRibbons({
       return cmp!==0 ? cmp : byName(a,b)
     }).map(x=> x.name)
   }, [agents, shifts, tz.offset, sortMode, sortDir])
-  const nameToShort = useMemo(()=>{
-    // Count first name occurrences (case-insensitive)
-    const firstCounts = new Map<string, number>()
-    for(const a of agents){
-      const f = (a.firstName || '').trim().toLowerCase()
-      if(!f) continue
-      firstCounts.set(f, (firstCounts.get(f)||0) + 1)
-    }
-    const m = new Map<string,string>()
-    for(const a of agents){
-      const first = (a.firstName || '').trim()
-      const last = (a.lastName || '').trim()
-      const full = [first, last].filter(Boolean).join(' ')
-      const cnt = first ? (firstCounts.get(first.toLowerCase()) || 0) : 0
-      const lastInitial = last ? `${last[0].toUpperCase()}.` : ''
-      const short = cnt > 1 ? `${first}${lastInitial?` ${lastInitial}`:''}` : first
-      m.set(full, short || full)
-    }
-    return m
-  }, [agents])
+  // Full names are shown; we still compute titles for hover via name itself
 
   return (
   <div className="space-y-0">
       {/* Top day labels aligned to ribbons */}
       <div className="flex items-center gap-1">
-        <div className={nameColClass + ' opacity-0 select-none'}>label</div>
+        <div className={nameColClass + ' opacity-0 select-none'} style={{ width: nameColPx }}>label</div>
     <div className="flex-1 relative h-7">
           {DAYS.map((d,i)=>{
             const left = (i/7)*100
@@ -192,8 +191,8 @@ export default function AllAgentsWeekRibbons({
       ) : agentNamesSorted.map(name=> (
         <div key={name} className="py-0">
           <div className="flex items-center gap-1">
-            <div className={[nameColClass, dark?"text-neutral-300":"text-neutral-700"].join(' ')} title={name}>
-              {nameToShort.get(name) || (name.split(' ')[0] || name)}
+            <div className={[nameColClass, dark?"text-neutral-300":"text-neutral-700"].join(' ')} title={name} style={{ width: nameColPx }}>
+              {name}
             </div>
             <div className="flex-1" title={name}>
               <AgentWeekLinear

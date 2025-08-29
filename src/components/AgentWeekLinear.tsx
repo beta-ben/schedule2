@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { DAYS } from '../constants'
-import { convertShiftsToTZ, nowInTZ, parseYMD, toMin, minToHHMM, fmtYMD, addDays } from '../lib/utils'
+import { convertShiftsToTZ, nowInTZ, parseYMD, toMin, minToHHMM, fmtYMD, addDays, mergeSegments } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 
@@ -76,7 +76,7 @@ export default function AgentWeekLinear({
 
   const tzShifts = useMemo(()=> convertShiftsToTZ(shifts, tz.offset).filter(s=> s.person===agent), [shifts, tz.offset, agent])
 
-  type Seg = { id:string; startAbs:number; endAbs:number; title:string; key:string }
+  type Seg = { id:string; startAbs:number; endAbs:number; title:string; key:string; sub?: { taskId:string; stOff:number; enOff:number }[]; dayKey:string }
   type Group = { id:string; key:string; segments: Seg[]; earliest:number; latest:number; title:string; startMin:number; endMin:number }
   const groups: Group[] = useMemo(()=>{
     const byId = new Map<string, { id:string; key:string; segs: Seg[]; earliest:number; latest:number; title:string; startMin?:number; endMin?:number }>()
@@ -104,7 +104,24 @@ export default function AgentWeekLinear({
       const title = `${s.day} ${s.start} – ${(s as any).endDay || s.day} ${s.end}`
       const rawStartMin = toMin(s.start)
       const rawEndMin = s.end === '24:00' ? 0 : toMin(s.end)
-      const seg: Seg = { id: s.id, startAbs: st, endAbs: en, title, key: `${s.person}-${s.id}-${s.day}-${s.start}-${s.end}` }
+      // Precompute merged posture segments for this local-day piece (manual beats calendar)
+      let sub: { taskId:string; stOff:number; enOff:number }[] | undefined
+      try{
+        const durLoc = Math.max(0, (eAbs - sAbs))
+        const calForDay = (calendarSegs||[])
+          .filter(cs=> cs.person===agent && cs.day===s.day)
+          .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
+        // Use original piece (local day) to merge segments
+        const merged = mergeSegments({ ...s }, calForDay) || []
+        if(merged && merged.length){
+          sub = merged.map((m: NonNullable<ReturnType<typeof mergeSegments>>[number])=>{
+            const st = Math.max(0, Math.min(durLoc, m.startOffsetMin))
+            const en = Math.max(0, Math.min(durLoc, m.startOffsetMin + m.durationMin))
+            return { taskId: m.taskId, stOff: st, enOff: en }
+          }).filter((x:{taskId:string; stOff:number; enOff:number})=> x.enOff > x.stOff)
+        }
+      }catch{}
+      const seg: Seg = { id: s.id, startAbs: st, endAbs: en, title, key: `${s.person}-${s.id}-${s.day}-${s.start}-${s.end}` , sub, dayKey: s.day as any }
       const g = byId.get(s.id) || { id: s.id, key: `${s.person}-${s.id}`, segs: [], earliest: Infinity, latest: -Infinity, title }
       g.segs.push(seg)
       g.earliest = Math.min(g.earliest, st)
@@ -447,6 +464,17 @@ export default function AgentWeekLinear({
                     }
                   }
                 }
+                // Build posture tooltip lines for this piece from its sub-segments
+                const tooltipLines: string[] = []
+                if(seg.sub && tasks){
+                  for(const sub of seg.sub){
+                    const t = (tasks||[]).find(t=>t.id===sub.taskId)
+                    // Convert sub offsets to absolute minutes within week post-delta
+                    const absStart = newStart + sub.stOff
+                    const absEnd = newStart + sub.enOff
+                    tooltipLines.push(`${t?.name || 'Task'}: ${minToHHMM(absStart % 1440)}–${minToHHMM(absEnd % 1440)}`)
+                  }
+                }
                 return (
                   <div
                     key={partKey}
@@ -458,7 +486,7 @@ export default function AgentWeekLinear({
                       // No borders for dense look; rely on hover outline only
                       boxShadow: boxShadow || undefined,
                     }}
-                    title={titlePrefix ? `${titlePrefix} • ${g.title}` : g.title}
+                    title={(titlePrefix ? `${titlePrefix} • ${g.title}` : g.title) + (tooltipLines.length? `\n\nPostures:\n${tooltipLines.join('\n')}`:'')}
                     onMouseDown={draggable ? (e)=>beginSingleDrag(g.id, e) : undefined}
                     onMouseEnter={()=>{ setHoverGroupId(g.id); setHoverBand(false) }}
                     onMouseLeave={()=> { setHoverGroupId(null); setHoverBand(true) }}
@@ -468,7 +496,29 @@ export default function AgentWeekLinear({
                       onToggleSelect?.(g.id)
                     }}
                   >
-                    {/* Dense mode: no internal labels or chevrons */}
+                    {/* Posture overlays: solid fills in posture color, no labels */}
+                    {seg.sub && tasks && seg.sub.map((sub, idx)=>{
+                      // Absolute (week) minutes after drag
+                      const a0 = newStart + sub.stOff
+                      const b0 = newStart + sub.enOff
+                      // Clamp to current part window [pLeft, pRight]
+                      const a = Math.max(pLeft, Math.min(pRight, a0))
+                      const b = Math.max(pLeft, Math.min(pRight, b0))
+                      if(b <= a) return null
+                      const leftInPart = ((a - pLeft) / (pRight - pLeft)) * 100
+                      const widthInPart = ((b - a) / (pRight - pLeft)) * 100
+                      const t = (tasks||[]).find(t=>t.id===sub.taskId)
+                      const color = t?.color || (dark? 'rgba(59,130,246,0.85)':'rgba(59,130,246,0.85)')
+                      return (
+                        <div
+                          key={`${partKey}-seg-${idx}`}
+                          className="absolute inset-y-0 pointer-events-none"
+                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: color, opacity: 0.9 }}
+                          aria-hidden
+                        />
+                      )
+                    })}
+                    {/* Dense mode: no internal posture text labels; only time tags at edges */}
           {allowStartTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
             ((opts?.forceStartOuter || forceOuterTimeTags)) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),

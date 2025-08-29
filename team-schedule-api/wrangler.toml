@@ -1,0 +1,23 @@
+name = "team-schedule-api"
+main = "worker-schedule-agents.ts"
+compatibility_date = "2025-08-28"
+
+# If you want to test via `npm run dev`, Wrangler will use these bindings locally.
+# Put secrets in `.dev.vars` (not committed) or set via `wrangler secret put`.
+
+[[kv_namespaces]]
+binding = "SCHEDULE_KV"
+# Replace with your real KV id before deploy (from Cloudflare dashboard)
+# e.g., id = "abcdef1234567890abcdef1234567890"
+# id = "REPLACE_WITH_PROD_KV_ID"
+
+[vars]
+# These can be overridden in Cloudflare dashboard (Settings > Variables).
+# ADMIN_PASSWORD = ""
+# SITE_PASSWORD = ""
+# ALLOWED_ORIGINS = "https://teamschedule.cc,https://schedule.your-dev-domain"
+# COOKIE_DOMAIN = ".teamschedule.cc"
+# COOKIE_SECURE = "true"
+# COOKIE_SAMESITE = "Lax"
+# REQUIRE_SITE_SESSION = "true"
+# DATA_KEY = "schedule.json"
