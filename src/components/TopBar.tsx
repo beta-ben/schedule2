@@ -2,7 +2,7 @@ import React from 'react'
 import { addDays, fmtDateRange, parseYMD, tzAbbrev, fmtYMD, startOfWeek } from '../lib/utils'
 import { TZ_OPTS } from '../constants'
 
-export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
+export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode, slimline, setSlimline }:{ 
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
   view: 'schedule'|'manage'|'manageV2'
@@ -14,12 +14,16 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   canEdit: boolean
   editMode: boolean
   setEditMode: React.Dispatch<React.SetStateAction<boolean>>
+  slimline: boolean
+  setSlimline: React.Dispatch<React.SetStateAction<boolean>>
 }){
   const isoLike = /^\d{4}-\d{2}-\d{2}$/
   const wsValid = isoLike.test(weekStart) && !Number.isNaN(parseYMD(weekStart).getTime())
   const safeWeekStartDate = wsValid ? parseYMD(weekStart) : startOfWeek(new Date())
   const weekEndDate = addDays(safeWeekStartDate, 6)
+  const [showSettings, setShowSettings] = React.useState(false)
   return (
+    <>
     <header className="mb-1">
   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1 pb-2">
         {/* Left: view buttons */}
@@ -86,6 +90,18 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
               {TZ_OPTS.map(o=>(<option key={o.id} value={o.id}>{tzAbbrev(o.id)}</option>))}
             </select>
           </div>
+          {/* Gear settings button */}
+          <button
+            aria-label="View settings"
+            title="View settings"
+            onClick={()=> setShowSettings(true)}
+            className={["inline-flex items-center justify-center h-10 w-10 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 9 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 20.91 11H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+            </svg>
+          </button>
       {/* Date picker (use native calendar icon) */}
       <div className="relative">
             <input
@@ -140,5 +156,20 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
         </div>
       </div>
     </header>
+    {showSettings && (
+      <div role="dialog" aria-modal="true" className={["fixed inset-0 z-50 flex items-center justify-center", dark?"bg-black/60":"bg-black/40"].join(' ')}>
+        <div className={["w-[92%] max-w-sm rounded-xl p-4 border", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
+          <div className="text-base font-semibold mb-3">View options</div>
+          <label className="flex items-center gap-2 text-sm mb-3">
+            <input type="checkbox" checked={slimline} onChange={e=> setSlimline(e.target.checked)} />
+            <span>Slimline (hide PTO and stale chips)</span>
+          </label>
+          <div className="flex justify-end gap-2">
+            <button onClick={()=> setShowSettings(false)} className={["px-3 py-1.5 rounded-md text-sm border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Close</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

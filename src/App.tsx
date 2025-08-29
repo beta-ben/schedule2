@@ -53,6 +53,11 @@ export default function App(){
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
+  const [slimline, setSlimline] = useState<boolean>(()=>{
+    try{ const v = localStorage.getItem('schedule_slimline'); if(v===null) return false; return v==='1' }
+    catch{ return false }
+  })
+  useEffect(()=>{ try{ localStorage.setItem('schedule_slimline', slimline ? '1' : '0') }catch{} }, [slimline])
   // v2: dedicated agents list (temporary local persistence)
   type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
@@ -367,6 +372,8 @@ export default function App(){
           canEdit={canEdit}
           editMode={editMode}
           setEditMode={setEditMode}
+          slimline={slimline}
+          setSlimline={setSlimline}
           />
 
           {view==='schedule' ? (
@@ -384,6 +391,7 @@ export default function App(){
               editMode={editMode}
               onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
               agents={agentsV2}
+              slimline={slimline}
             />
           ) : view==='manage' ? (
             <ManagePage

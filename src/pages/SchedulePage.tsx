@@ -11,7 +11,7 @@ import AgentWeek from '../components/AgentWeek'
 import AgentWeekGrid from '../components/AgentWeekGrid'
 // Legend removed from Schedule page
 
-export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents }:{ 
+export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents, slimline }:{ 
   dark: boolean
   weekStart: string
   dayIndex: number
@@ -26,6 +26,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   onRemoveShift: (id:string)=>void
   // Optional: agent roster for id->name mapping in week grid
   agents?: Array<{ id?: string; firstName?: string; lastName?: string; hidden?: boolean }>
+  slimline?: boolean
 }){
   const today = new Date()
   const weekStartDate = parseYMD(weekStart)
@@ -40,7 +41,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     return set
   }, [agents])
   const dayShifts = useMemo(()=>{
-    const base = shiftsForDayInTZ(shifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+    const baseAll = shiftsForDayInTZ(shifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+    const base = baseAll
     const filtered = base.filter(s=> !hiddenNames.has(s.person))
     // Merge calendar segments into each shift for display
     return filtered.map(s=>{
@@ -62,8 +64,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   const nowTz = nowInTZ(tz.id)
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
   const todayShifts = useMemo(()=>{
-    const base = shiftsForDayInTZ(shifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
-    const filtered = base.filter(s=> !hiddenNames.has(s.person))
+    const baseAll = shiftsForDayInTZ(shifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+    const filtered = baseAll.filter(s=> !hiddenNames.has(s.person))
     return filtered.map(s=>{
       const cal = calendarSegs
         .filter(cs=> cs.day===todayKey && (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
@@ -194,12 +196,37 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   {!agentView && (
   <>
   <div className="pl-1">
-  <DayGrid
+  {(()=>{
+    // Prepare filtered inputs for DayGrid depending on slimline
+    const forToday = fmtNice(selectedDate) === fmtNice(parseYMD(nowInTZ(tz.id).ymd))
+  const filteredShifts = (!slimline || !forToday) ? dayShifts : (()=>{
+      const now = nowInTZ(tz.id)
+      const nowAbs = (DAYS.indexOf(dayKey as any))*1440 + now.minutes
+      return dayShifts.filter(s=>{
+        // Hide PTO chips entirely
+        const hasPto = pto.some(p=> p.person===s.person && selectedDate>=parseYMD(p.startDate) && selectedDate<=parseYMD(p.endDate))
+        if(hasPto) return false
+    // Keep only active and on-deck (within next 2 hours), and hide chips >30m past end
+        const sd = DAYS.indexOf(s.day as any)
+        const ed = DAYS.indexOf(((s as any).endDay || s.day) as any)
+    const sAbs = (sd<0?0:sd)*1440 + toMin(s.start)
+        let eAbs = (ed<0?sd:ed)*1440 + (s.end==='24:00'?1440:toMin(s.end))
+        if(eAbs <= sAbs) eAbs += 1440
+    const isActive = nowAbs >= sAbs && nowAbs < eAbs
+    const isOnDeck = sAbs > nowAbs && sAbs <= (nowAbs + 120)
+    if(!(isActive || isOnDeck)) return false
+    // Also, if already ended more than 30 minutes ago, hide
+    return nowAbs <= (eAbs + 30)
+      })
+    })()
+    const filteredPeople = Array.from(new Set(filteredShifts.map(s=> s.person)))
+    return (
+      <DayGrid
         date={selectedDate}
         dayKey={dayKey}
-        people={people}
-        shifts={dayShifts}
-        pto={pto}
+        people={(!slimline || !forToday) ? people : filteredPeople}
+        shifts={filteredShifts}
+        pto={(slimline && forToday) ? [] : pto}
         dark={dark}
         tz={tz}
         canEdit={canEdit}
@@ -212,6 +239,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
           onRemoveShift(id)
         }}
       />
+    )
+  })()}
   </div>
   <div className="pl-1 mt-2">
   {/* Legend removed */}
@@ -223,10 +252,10 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   {!agentView ? (
     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
       <div>
-        <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+  <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} pto={pto} />
       </div>
       <div className="flex flex-col gap-3">
-        <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} />
+  <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} pto={pto} />
         <PostureToday dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} tasks={tasks} />
       </div>
     </div>

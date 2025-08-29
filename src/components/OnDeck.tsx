@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import type { Shift } from '../types'
+import type { Shift, PTO } from '../types'
 import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
 
-export default function OnDeck({ dark, tz, dayKey, shifts }:{
+export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
   dayKey: string
   shifts: Shift[]
+  pto: PTO[]
 }){
   // Compute now in selected timezone
   const [nowTick, setNowTick] = useState(Date.now())
@@ -27,6 +28,14 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
   },[])
   const nowTz = nowInTZ(tz.id)
   const nowMin = nowTz.minutes
+  const ymd = nowTz.ymd
+  const ptoToday = useMemo(()=>{
+    const names = new Set<string>()
+    for(const p of (pto||[])){
+      if(p.startDate <= ymd && ymd <= p.endDate){ names.add(p.person) }
+    }
+    return names
+  }, [pto, ymd])
 
   // Match DayGrid coloring by assigning a hue per person based on earliest start
   const orderedPeople = useMemo(()=>{
@@ -48,6 +57,7 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
   const active = useMemo(()=>{
     // Compute active shifts for the current minute
     const recs = shifts.filter(s=>{
+      if(ptoToday.has(s.person)) return false
       const sMin = toMin(s.start)
       const eMinRaw = toMin(s.end)
       const eMin = eMinRaw > sMin ? eMinRaw : 1440
@@ -55,7 +65,7 @@ export default function OnDeck({ dark, tz, dayKey, shifts }:{
     })
     // Collapse to unique person → pick the nearest ending shift window
     const byPerson = new Map<string,{ start:number; end:number; label:string }>()
-    for(const s of recs){
+  for(const s of recs){
       const sMin = toMin(s.start)
       const eMinRaw = toMin(s.end)
       const eMin = eMinRaw > sMin ? eMinRaw : 1440

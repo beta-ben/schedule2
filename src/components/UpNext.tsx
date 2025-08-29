@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import type { Shift } from '../types'
+import type { Shift, PTO } from '../types'
 import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
 
-export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
+export default function UpNext({ dark, tz, dayKey, shifts, pto, windowMin=120 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
   dayKey: string
   shifts: Shift[]
+  pto: PTO[]
   windowMin?: number
 }){
   const [nowTick, setNowTick] = useState(Date.now())
@@ -28,6 +29,14 @@ export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
   const nowTz = nowInTZ(tz.id)
   const nowMin = nowTz.minutes
   const cutoff = nowMin + windowMin
+  const ymd = nowTz.ymd
+  const ptoToday = useMemo(()=>{
+    const names = new Set<string>()
+    for(const p of (pto||[])){
+      if(p.startDate <= ymd && ymd <= p.endDate){ names.add(p.person) }
+    }
+    return names
+  }, [pto, ymd])
 
   // Match DayGrid/OnDeck coloring by assigning a hue per person based on earliest start
   const orderedPeople = useMemo(()=>{
@@ -49,6 +58,7 @@ export default function UpNext({ dark, tz, dayKey, shifts, windowMin=120 }:{
   const upcoming = useMemo(()=>{
     // Consider shifts that start after now and within the window
     const candidates = shifts.filter(s=>{
+      if(ptoToday.has(s.person)) return false
       const sMin = toMin(s.start)
       return sMin > nowMin && sMin <= cutoff
     })
