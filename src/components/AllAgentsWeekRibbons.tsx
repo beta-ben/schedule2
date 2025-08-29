@@ -35,7 +35,7 @@ export default function AllAgentsWeekRibbons({
   showAllTimeLabels?: boolean
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
-  sortMode?: 'start'|'name'
+  sortMode?: 'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'
   highlightIds?: Set<string> | string[]
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
@@ -44,22 +44,69 @@ export default function AllAgentsWeekRibbons({
   const agentNamesSorted = useMemo(()=>{
     const names = agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' '))
     const tzShifts = convertShiftsToTZ(shifts, tz.offset)
-    function earliestStartAbs(name: string){
+    const dayIndex = new Map(DAYS.map((d,i)=>[d,i]))
+    const earliestStartAbs = (name: string)=>{
       let minAbs = Infinity
       for(const s of tzShifts){
         if(s.person !== name) continue
-        const di = DAYS.indexOf(s.day as any)
+        const di = dayIndex.get(s.day as any) ?? -1
         if(di < 0) continue
         const abs = di*1440 + toMin(s.start)
         if(abs < minAbs) minAbs = abs
       }
       return minAbs
     }
-    const list = names.map(n=>({ name: n, key: earliestStartAbs(n) }))
-    if(sortMode==='name'){
-      return list.sort((a,b)=> a.name.localeCompare(b.name)).map(x=>x.name)
+    const latestEndAbs = (name: string)=>{
+      let maxAbs = -Infinity
+      for(const s of tzShifts){
+        if(s.person !== name) continue
+        const sd = dayIndex.get(s.day as any) ?? 0
+        const ed = dayIndex.get(((s as any).endDay || s.day) as any) ?? sd
+        const sAbs = sd*1440 + toMin(s.start)
+        let eAbs = ed*1440 + toMin(s.end)
+        if(eAbs <= sAbs) eAbs += 1440
+        if(eAbs > maxAbs) maxAbs = eAbs
+      }
+      return maxAbs
     }
-    return list.sort((a,b)=> (a.key - b.key) || a.name.localeCompare(b.name)).map(x=> x.name)
+    const totalMinutes = (name: string)=>{
+      let total = 0
+      for(const s of tzShifts){
+        if(s.person !== name) continue
+        const sd = dayIndex.get(s.day as any) ?? 0
+        const ed = dayIndex.get(((s as any).endDay || s.day) as any) ?? sd
+        const sAbs = sd*1440 + toMin(s.start)
+        let eAbs = ed*1440 + toMin(s.end)
+        if(eAbs <= sAbs) eAbs += 1440
+        total += Math.max(0, eAbs - sAbs)
+      }
+      return total
+    }
+    const shiftCount = (name: string)=> tzShifts.filter(s=> s.person===name).length
+    const tzOf = (name: string)=> (agents.find(a=> [a.firstName,a.lastName].filter(Boolean).join(' ')===name)?.tzId) || ''
+    const firstDayIdx = (name: string)=>{
+      let min = Infinity
+      for(const s of tzShifts){ if(s.person===name){ const di = dayIndex.get(s.day as any) ?? Infinity; if(di < min) min = di } }
+      return min
+    }
+    const rows = names.map(n=>({
+      name: n,
+      startKey: earliestStartAbs(n),
+      endKey: latestEndAbs(n),
+      totalKey: totalMinutes(n),
+      countKey: shiftCount(n),
+      tzKey: tzOf(n),
+      dayKey: firstDayIdx(n),
+    }))
+    const byName = (a:any,b:any)=> a.name.localeCompare(b.name)
+    if(sortMode==='name') return rows.sort(byName).map(x=> x.name)
+    if(sortMode==='end') return rows.sort((a,b)=> (a.endKey - b.endKey) || byName(a,b)).map(x=> x.name)
+    if(sortMode==='count') return rows.sort((a,b)=> (b.countKey - a.countKey) || byName(a,b)).map(x=> x.name)
+    if(sortMode==='total') return rows.sort((a,b)=> (b.totalKey - a.totalKey) || byName(a,b)).map(x=> x.name)
+    if(sortMode==='tz') return rows.sort((a,b)=> (a.tzKey.localeCompare(b.tzKey)) || byName(a,b)).map(x=> x.name)
+    if(sortMode==='firstDay') return rows.sort((a,b)=> (a.dayKey - b.dayKey) || byName(a,b)).map(x=> x.name)
+    // default: earliest start
+    return rows.sort((a,b)=> (a.startKey - b.startKey) || byName(a,b)).map(x=> x.name)
   }, [agents, shifts, tz.offset, sortMode])
   const nameToShort = useMemo(()=>{
     // Count first name occurrences (case-insensitive)
@@ -87,12 +134,12 @@ export default function AllAgentsWeekRibbons({
       {/* Top day labels aligned to ribbons */}
       <div className="flex items-center gap-1">
         <div className={nameColClass + ' opacity-0 select-none'}>label</div>
-        <div className="flex-1 relative h-6">
+    <div className="flex-1 relative h-7">
           {DAYS.map((d,i)=>{
             const left = (i/7)*100
             const width = (1/7)*100
             return (
-              <div key={d} className={["absolute text-center", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 11 }}>
+      <div key={d} className={["absolute text-center", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 13, lineHeight: 1.5 }}>
                 {d}
               </div>
             )

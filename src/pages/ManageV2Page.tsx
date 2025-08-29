@@ -434,40 +434,69 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
 
           {/* Right: all controls */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* View: Sort + time labels */}
-            <label className="inline-flex items-center gap-1 select-none" title="Sort ribbons by earliest shift start or by name">
-              <span className={dark?"text-neutral-300":"text-neutral-700"}>Sort</span>
-              <select
-                className={["border rounded-xl px-2 py-1 w-[9.5rem] sm:w-[11rem]", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                value={sortMode}
-                onChange={(e)=> setSortMode((e.target.value as 'start'|'name'))}
-              >
-                <option value="start">Start time</option>
-                <option value="name">Name</option>
-              </select>
-            </label>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Include agents hidden from the schedule on this Shifts view">
-              <input
-                type="checkbox"
-                className="accent-blue-600 w-4 h-4"
-                checked={includeHiddenAgents}
-                onChange={(e)=> setIncludeHiddenAgents(e.target.checked)}
-              />
-              <span className={dark?"text-neutral-300":"text-neutral-700"}>Show hidden</span>
-            </label>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Show start/end labels for all shifts">
-              <input
-                type="checkbox"
-                className="accent-blue-600 w-4 h-4"
-                checked={showAllTimeLabels}
-                onChange={(e)=> setShowAllTimeLabels(e.target.checked)}
-              />
+            {/* View: Sort select (iconified) */}
+            <div className="inline-flex items-center gap-1" title="Sort ribbons by earliest shift start or by name">
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h14"/><path d="M7 12h10"/><path d="M11 18h6"/></svg>
+              <div className="relative">
+                <select
+                  className={["border rounded-xl pl-2 pr-7 py-1 w-[9.5rem] sm:w-[11rem] appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                  value={sortMode}
+                  onChange={(e)=> setSortMode((e.target.value as 'start'|'name'))}
+                  aria-label="Sort ribbons"
+                >
+                  <option value="start">Earliest start</option>
+                  <option value="end">Latest end</option>
+                  <option value="count">Shift count</option>
+                  <option value="total">Total minutes</option>
+                  <option value="firstDay">First day</option>
+                  <option value="tz">Timezone</option>
+                  <option value="name">Name (A–Z)</option>
+                </select>
+                <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+            {/* Toggle: include hidden agents (icon button) */}
+            <button
+              type="button"
+              onClick={()=> setIncludeHiddenAgents(v=>!v)}
+              aria-pressed={includeHiddenAgents}
+              title={includeHiddenAgents?"Hide hidden agents":"Show hidden agents"}
+              className={[
+                "px-2.5 py-1.5 rounded-xl border font-medium",
+                includeHiddenAgents ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
+              ].join(' ')}
+            >
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {includeHiddenAgents ? (
+                  <>
+                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </>
+                ) : (
+                  <>
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/>
+                    <path d="M1 1l22 22"/>
+                    <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/>
+                  </>
+                )}
+              </svg>
+            </button>
+            {/* Toggle: show all time labels (icon button) */}
+            <button
+              type="button"
+              onClick={()=> setShowAllTimeLabels(v=>!v)}
+              aria-pressed={showAllTimeLabels}
+              title="Toggle time labels"
+              className={[
+                "px-2.5 py-1.5 rounded-xl border font-medium",
+                showAllTimeLabels ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
+              ].join(' ')}
+            >
               <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              <span className="sr-only">Toggle time labels</span>
-            </label>
+            </button>
 
             {/* Edit: Undo/Redo */}
-            <div className="inline-flex items-center gap-1">
+            <div className="inline-flex items-center gap-1" title="Undo / Redo">
               <button
                 type="button"
                 disabled={!canUndoShifts}
@@ -478,10 +507,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 ].join(' ')}
                 title="Undo (Ctrl/Cmd+Z)"
               >
-                <span className="inline-flex items-center gap-1.5">
-                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20a8 8 0 0 0-7-12H4"></path></svg>
-                  <span className="hidden sm:inline">Undo</span>
-                </span>
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20a8 8 0 0 0-7-12H4"></path></svg>
               </button>
               <button
                 type="button"
@@ -493,57 +519,45 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 ].join(' ')}
                 title="Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
               >
-                <span className="inline-flex items-center gap-1.5">
-                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20a8 8 0 0 1 7-12h9"></path></svg>
-                  <span className="hidden sm:inline">Redo</span>
-                </span>
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20a8 8 0 0 1 7-12h9"></path></svg>
               </button>
             </div>
 
             {/* Draft: Save / Save new */}
-            <div className="inline-flex items-center gap-1">
+      <div className="inline-flex items-center gap-1" title="Save / Save new">
               <button
                 onClick={saveDraft}
                 disabled={!currentDraftId}
                 className={["px-2.5 py-1.5 rounded-xl border font-medium", currentDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')}
                 title="Save current draft (Ctrl/Cmd+S)"
               >
-                <span className="inline-flex items-center gap-1.5">
-                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                  <span className="hidden sm:inline">Save</span>
-                </span>
+        <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
               </button>
               <button
                 onClick={saveNewDraft}
                 className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
                 title="Save new draft (Ctrl/Cmd+Shift+S)"
               >
-                <span className="inline-flex items-center gap-1.5">
-                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-                  <span className="hidden sm:inline">Save new</span>
-                </span>
+        <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
               </button>
             </div>
 
             {/* Drafts: picker + load/delete */}
             <div className="inline-flex items-center gap-1 min-w-0">
-              <select className={["border rounded-xl px-2 py-1 max-w-[28ch] sm:max-w-[36ch] truncate", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={selectedDraftId} onChange={(e)=> setSelectedDraftId(e.target.value)} title="Select a saved draft">
+              <div className="relative">
+                <select className={["border rounded-xl pl-2 pr-7 py-1 max-w-[28ch] sm:max-w-[36ch] truncate appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={selectedDraftId} onChange={(e)=> setSelectedDraftId(e.target.value)} title="Select a saved draft" aria-label="Select draft">
                 <option value="">Drafts…</option>
                 {savedDrafts.slice().reverse().map(d=> (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
-              </select>
-              <button disabled={!selectedDraftId} onClick={loadSelectedDraft} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Load selected draft">
-                <span className="inline-flex items-center gap-1.5">
-                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                  <span className="hidden sm:inline">Load</span>
-                </span>
+                </select>
+                <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+              <button disabled={!selectedDraftId} onClick={loadSelectedDraft} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Load selected draft" aria-label="Load draft">
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
               </button>
-              <button disabled={!selectedDraftId} onClick={()=>{ if(confirm('Delete selected draft?')) deleteSelectedDraft() }} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Delete selected draft">
-                <span className="inline-flex items-center gap-1.5">
-                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                  <span className="hidden sm:inline">Delete</span>
-                </span>
+              <button disabled={!selectedDraftId} onClick={()=>{ if(confirm('Delete selected draft?')) deleteSelectedDraft() }} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Delete selected draft" aria-label="Delete draft">
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
 
@@ -553,11 +567,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               onClick={()=>{ setShowImport(v=>!v); setImportMsg('') }}
               className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
               title="Import shifts/PTO/postures from a legacy JSON URL or paste"
+              aria-label="Import"
             >
-              <span className="inline-flex items-center gap-1.5">
-                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><polyline points="8 17 12 21 16 17"></polyline></svg>
-                <span className="hidden sm:inline">Import</span>
-              </span>
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><polyline points="8 17 12 21 16 17"></polyline></svg>
             </button>
 
             {/* Publish area: discard then publish at far right */}
@@ -566,21 +578,17 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               onClick={discardWorkingDraft}
               className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", isDirty ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')}
               title="Discard working changes"
+              aria-label="Discard"
             >
-              <span className="inline-flex items-center gap-1.5">
-                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
-                <span className="hidden sm:inline">Discard</span>
-              </span>
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
             </button>
             <button
               onClick={publishWorkingToLive}
               className="px-3 py-1.5 rounded-xl border font-semibold bg-blue-600 border-blue-600 text-white hover:bg-blue-500 shrink-0"
               title="Publish working changes to live"
+              aria-label="Publish"
             >
-              <span className="inline-flex items-center gap-1.5">
-                <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="M16 5h2a2 2 0 0 1 2 2v2"></path></svg>
-                <span className="hidden sm:inline">Publish</span>
-              </span>
+              <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="M16 5h2a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </div>
         </div>

@@ -373,16 +373,15 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 						</div>
 					) : (
 						<div className={["rounded-md", dark?"":""].join(' ')}>
-														<div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-5 gap-2">
+										    <div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-4 gap-2">
 								<div>First</div>
 								<div>Last</div>
 								<div>Timezone</div>
-																<div>Hidden</div>
 								<div className="text-right">Actions</div>
 							</div>
-														<ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
-																																		{sortedAgents.map(({ a, i }, sIdx)=> (
-																																						<li key={`${a.firstName}-${a.lastName}-${i}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-5 gap-2 items-center cursor-pointer", selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(i)}>
+										    <ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
+															    {sortedAgents.map(({ a, i }, sIdx)=> (
+																    <li key={`${a.firstName}-${a.lastName}-${i}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-4 gap-2 items-center cursor-pointer", selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(i)}>
 																		{editingIdx===i ? (
 																			<>
 																				<div>
@@ -396,9 +395,6 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																						{TZ_OPTS.map(o=> <option key={o.id} value={o.id}>{tzFullName(o.id)}</option>)}
 																					</select>
 																				</div>
-																																								<div>
-																																									<span className={"text-xs opacity-70"}>{agents[i]?.hidden? 'Yes':'No'}</span>
-																																								</div>
 																				<div className="text-right space-x-1">
 																					<button onClick={saveEdit} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
 																					<button onClick={cancelEdit} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700"].join(' ')}>Cancel</button>
@@ -409,11 +405,12 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																				<div className={dark?"text-neutral-200":"text-neutral-800"}>{a.firstName || '—'}</div>
 																				<div className={dark?"text-neutral-200":"text-neutral-800"}>{a.lastName || '—'}</div>
 																				<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
-																																								<div className={"text-center"} onClick={(e)=> e.stopPropagation()}>
-																																									<input type="checkbox" className="accent-blue-600 w-4 h-4" checked={!!a.hidden} onChange={(e)=> onUpdateAgent?.(i, { ...a, hidden: e.target.checked })} />
-																																								</div>
-																				<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
+																																																												<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
 																					<div className="inline-flex items-center gap-1">
+																																																																		<label className="inline-flex items-center gap-1 text-xs mr-1 select-none" title="Hide from schedule">
+																																																																			<input type="checkbox" className="accent-neutral-500 w-4 h-4" checked={!!a.hidden} onChange={(e)=> onUpdateAgent?.(i, { ...a, hidden: e.target.checked })} />
+																																																																			<span className={dark?"text-neutral-300":"text-neutral-700"}>Hide</span>
+																																																																		</label>
 																							<button title="Edit" aria-label="Edit agent" onClick={()=>beginEdit(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>
 																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
 																								<path d="M12 20h9"/>
