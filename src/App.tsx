@@ -15,7 +15,7 @@ const SAMPLE = generateSample()
 
 export default function App(){
   // Site-wide gate when using dev proxy
-  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
+  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
   const [siteUnlocked, setSiteUnlocked] = useState<boolean>(!useDevProxy)
   const [sitePw, setSitePw] = useState('')
   const [siteMsg, setSiteMsg] = useState('')

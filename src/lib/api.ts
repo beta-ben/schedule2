@@ -4,7 +4,10 @@ import type { CalendarSegment } from './utils'
 // Auth model: cookie session + CSRF only.
 // - Dev: VITE_DEV_PROXY_BASE provides /api/login, /api/logout, /api/schedule with cookies and x-csrf-token.
 // - Prod: expect a server with the same contract. Legacy password header is removed.
-const DEV_PROXY = import.meta.env.VITE_DEV_PROXY_BASE || '' // e.g., http://localhost:8787
+// Safety: even if VITE_DEV_PROXY_BASE leaks into a prod build, only use it on localhost.
+const DEV_PROXY_RAW = import.meta.env.VITE_DEV_PROXY_BASE || '' // e.g., http://localhost:8787
+const IS_LOCALHOST = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
+const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
 const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || 'https://team-schedule-api.bsteward.workers.dev'
 const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
 

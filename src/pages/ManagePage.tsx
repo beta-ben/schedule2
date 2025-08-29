@@ -28,7 +28,7 @@ export default function ManagePage({ dark, weekStart, shifts, setShifts, pto, se
   const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
   const weekStartDate = parseYMD(weekStart)
-  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE
+  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
 
   React.useEffect(()=> { (async () => {
     if(useDevProxy){
