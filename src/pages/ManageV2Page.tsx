@@ -1,6 +1,6 @@
 import React from 'react'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, isUsingDevProxy, hasCsrfCookie } from '../lib/api'
+import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import type { PTO, Shift, Task } from '../types'
@@ -20,6 +20,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     if(hasCsrfCookie()){ setUnlocked(true); setMsg('') }
   },[])
   const apiBase = React.useMemo(()=> getApiBase(), [])
+  const apiPrefix = React.useMemo(()=> getApiPrefix(), [])
   const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
@@ -367,6 +368,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           <div className="text-xs opacity-70">Your API should set a session cookie and CSRF token on success.</div>
           <div className="text-xs opacity-60 mt-2">
             <div>API base: <code>{apiBase}</code></div>
+            <div>API path: <code>{apiPrefix}</code></div>
             <div>Dev proxy: {usingDevProxy? 'on (local only)':'off'}</div>
             <div>CSRF cookie detected: {hasCsrfCookie()? 'yes' : 'no'}</div>
           </div>

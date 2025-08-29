@@ -56,7 +56,8 @@ Use this checklist to avoid surprises when promoting changes to production.
 
 These are optional; sensible defaults are provided for local use.
 
-- `VITE_SCHEDULE_API_BASE` — Cloud API base for read (default: `https://api.teamschedule.cc`). For production writes, your API must implement cookie session auth and CSRF at `/api/schedule`.
+- `VITE_SCHEDULE_API_BASE` — Cloud API base (default: `https://api.teamschedule.cc`). You can also point to your same-origin site, e.g., `https://teamschedule.cc`.
+- `VITE_SCHEDULE_API_PREFIX` — Path prefix for API routes (default: `/api`). Set to empty string (`''`) if your API lives at the root, or to another mount path if you proxy (e.g., `/backend`).
 - `VITE_DEV_PROXY_BASE` — Dev auth proxy (e.g., `http://localhost:8787`). When set, the app uses cookie auth + CSRF and never sends passwords from the client.
 
 Dev server cookie configuration (for parity while testing over HTTPS/custom domain):

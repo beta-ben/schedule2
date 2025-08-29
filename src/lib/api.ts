@@ -11,10 +11,12 @@ const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
 // Default to the production custom domain; CI can override via VITE_SCHEDULE_API_BASE
 const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || 'https://api.teamschedule.cc'
 const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
+const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
 
 // Tiny diagnostics helpers (read-only)
 export function getApiBase(){ return API_BASE }
 export function isUsingDevProxy(){ return !!DEV_PROXY }
+export function getApiPrefix(){ return API_PREFIX }
 
 function getCsrfFromCookie(): string | null {
   if (typeof document === 'undefined') return null
@@ -26,7 +28,7 @@ export function hasCsrfCookie(){ return !!getCsrfFromCookie() }
 // Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
 export async function login(password: string){
   try{
-    const r = await fetch(`${API_BASE}/api/login`,{
+  const r = await fetch(`${API_BASE}${API_PREFIX}/login`,{
       method:'POST',
       headers:{ 'content-type':'application/json' },
       credentials:'include',
@@ -43,14 +45,14 @@ export async function login(password: string){
 }
 
 export async function logout(){
-  try{ await fetch(`${API_BASE}/api/logout`,{ method:'POST', credentials:'include' }) }catch{}
+  try{ await fetch(`${API_BASE}${API_PREFIX}/logout`,{ method:'POST', credentials:'include' }) }catch{}
 }
 
 // Site-level gate for dev proxy
 export async function devSiteLogin(password: string): Promise<{ ok: boolean; status?: number }>{
   if(!DEV_PROXY) return { ok: true }
   try{
-    const r = await fetch(`${API_BASE}/api/login-site`,{
+    const r = await fetch(`${API_BASE}${API_PREFIX}/login-site`,{
       method:'POST', headers:{ 'content-type':'application/json' }, credentials:'include', body: JSON.stringify({ password })
     })
     return { ok: r.ok, status: r.status }
@@ -60,7 +62,7 @@ export async function devSiteLogin(password: string): Promise<{ ok: boolean; sta
 }
 export async function devSiteLogout(){
   if(!DEV_PROXY) return
-  await fetch(`${API_BASE}/api/logout-site`,{ method:'POST', credentials:'include' })
+  await fetch(`${API_BASE}${API_PREFIX}/logout-site`,{ method:'POST', credentials:'include' })
 }
 
 export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]} | null>{
@@ -68,7 +70,7 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendar
   try{
     // Dev/prod servers should expose /api/schedule (cookie session aware).
     // Fallback to legacy public GET endpoint only for read without credentials.
-    const url = `${API_BASE}/api/schedule`
+  const url = `${API_BASE}${API_PREFIX}/schedule`
     const init: RequestInit = { credentials: 'include' }
     const r = await fetch(url, init)
     if(!r.ok) return null
@@ -88,7 +90,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; cale
       const csrf = getCsrfFromCookie()
       if(!csrf){ console.warn('[cloudPost] CSRF cookie missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
     }
-    const url = `${API_BASE}/api/schedule`
+  const url = `${API_BASE}${API_PREFIX}/schedule`
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     const csrf = getCsrfFromCookie()
     if(csrf) headers['x-csrf-token'] = csrf
@@ -124,11 +126,11 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs
 export async function ensureSiteSession(password?: string){
   try{
     // Quick probe: if schedule GET is allowed, nothing to do.
-    const ping = await fetch(`${API_BASE}/api/schedule`, { method:'GET', credentials:'include' })
+  const ping = await fetch(`${API_BASE}${API_PREFIX}/schedule`, { method:'GET', credentials:'include' })
     if(ping.ok) return
   }catch{}
   try{
-    await fetch(`${API_BASE}/api/login-site`, {
+  await fetch(`${API_BASE}${API_PREFIX}/login-site`, {
       method:'POST',
       headers:{ 'content-type':'application/json' },
       credentials:'include',
