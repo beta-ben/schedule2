@@ -24,10 +24,14 @@ jobs:
         run: npm ci
       - name: Validate production env
         run: npm run validate:prod
+        env:
+          VITE_SCHEDULE_API_BASE: https://api.teamschedule.cc
       - name: Smoke test
         run: npm run smoke
       - name: Build
         run: npm run build
+        env:
+          VITE_SCHEDULE_API_BASE: https://api.teamschedule.cc
       - name: Predeploy (CNAME + mirror)
         run: npm run predeploy --if-present
       - name: Deploy to gh-pages
