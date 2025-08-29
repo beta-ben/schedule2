@@ -36,7 +36,7 @@ const dataset = process.env.DATASET || 'data' // data | demo | snapshot
 const dataBase = dataset.endsWith('.json') ? dataset.replace(/\.json$/,'') : dataset
 const dataFile = path.join(dataDir, `${dataBase}.json`)
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true })
-if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify({ schemaVersion: 1, shifts: [], pto: [], calendarSegs: [], updatedAt: new Date().toISOString() }, null, 2), 'utf8')
+if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify({ schemaVersion: 2, agents: [], shifts: [], pto: [], calendarSegs: [], updatedAt: new Date().toISOString() }, null, 2), 'utf8')
 
 // Cookie attributes (configurable for parity with production)
 // Default: dev over HTTP on localhost (secure=false, no domain)
@@ -261,7 +261,7 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
     // Validate legacy document shape using Zod
     const HHMM = /^\d{2}:\d{2}$/
     const DayZ = z.enum(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'])
-    const ShiftZ = z.object({
+  const ShiftZ = z.object({
       id: z.string(),
       person: z.string().min(1),
       agentId: z.string().min(1).optional(),
@@ -293,8 +293,10 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
       // allow end < start (wrap) for posture segments, but disallow equal times
       if(val.start === val.end) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'segment start and end cannot be equal', path: ['start'] })
     })
+    const AgentZ = z.object({ id: z.string(), firstName: z.string().default(''), lastName: z.string().default(''), tzId: z.string().optional(), hidden: z.boolean().optional() })
     const DocZ = z.object({
-      schemaVersion: z.number().int().min(1).default(1),
+      schemaVersion: z.number().int().min(1).default(2),
+      agents: z.array(AgentZ).default([]).optional(),
       shifts: z.array(ShiftZ),
       pto: z.array(PTOZ),
       calendarSegs: z.array(CalSegZ).default([]).optional(),
@@ -303,16 +305,17 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
     const parsed = DocZ.safeParse(body)
     if (!parsed.success) return res.status(400).json({ error: 'invalid_body', details: parsed.error.flatten() })
     // Concurrency check: updatedAt must be >= stored updatedAt if present
+    let prevDoc = null
     try {
       const prevRaw = fs.readFileSync(dataFile, 'utf8')
-      const prev = JSON.parse(prevRaw)
-      if (prev?.updatedAt && body?.updatedAt && new Date(body.updatedAt) < new Date(prev.updatedAt)) {
-        return res.status(409).json({ error: 'conflict', prevUpdatedAt: prev.updatedAt })
+        prevDoc = JSON.parse(prevRaw)
+        if (prevDoc?.updatedAt && body?.updatedAt && new Date(body.updatedAt) < new Date(prevDoc.updatedAt)) {
+  return res.status(409).json({ error: 'conflict', prevUpdatedAt: prevDoc.updatedAt })
       }
       // Build previous name->id mapping to help backfill
       var prevNameToId = new Map()
-      const take = (arr)=>{ try{ for(const r of (arr||[])){ if(r && r.person && r.agentId){ const key=(r.person||'').trim().toLowerCase(); if(!prevNameToId.has(key)) prevNameToId.set(key, r.agentId) } } }catch{} }
-      take(prev?.shifts); take(prev?.pto); take(prev?.calendarSegs)
+        const take = (arr)=>{ try{ for(const r of (arr||[])){ if(r && r.person && r.agentId){ const key=(r.person||'').trim().toLowerCase(); if(!prevNameToId.has(key)) prevNameToId.set(key, r.agentId) } } }catch{} }
+        take(prevDoc?.shifts); take(prevDoc?.pto); take(prevDoc?.calendarSegs)
     } catch {}
 
     // Referential integrity within payload: enforce consistent mapping between person and agentId
@@ -328,7 +331,7 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
       if(existingName && existingName !== key){ throw { type:'id_conflict', id, a: existingName, b: key, where } }
       idToName.set(id, key)
     }
-    const doc = parsed.data
+  const doc = parsed.data
     try{
       for(const s of doc.shifts){ if(s.agentId) addPair(s.person, s.agentId, { kind:'shift', id:s.id }) }
       for(const p of doc.pto){ if(p.agentId) addPair(p.person, p.agentId, { kind:'pto', id:p.id }) }
@@ -366,7 +369,7 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
     // Persist an agentsIndex (name->id) for future backfills and bump schemaVersion
     const agentsIndex = {}
     for(const [k,v] of nameToId){ agentsIndex[k]=v }
-    const toWrite = { ...doc, schemaVersion: Math.max(2, doc.schemaVersion||1), agentsIndex }
+  const toWrite = { ...doc, schemaVersion: Math.max(2, doc.schemaVersion||2), agents: Array.isArray(doc.agents) ? doc.agents : (Array.isArray(prevDoc?.agents)? prevDoc.agents : []), agentsIndex }
 
     backupFile()
     fs.writeFileSync(dataFile, JSON.stringify(toWrite, null, 2))

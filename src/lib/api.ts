@@ -65,7 +65,7 @@ export async function devSiteLogout(){
   await fetch(`${API_BASE}${API_PREFIX}/logout-site`,{ method:'POST', credentials:'include' })
 }
 
-export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]} | null>{
+export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; schemaVersion?: number} | null>{
   if(!API_BASE) return null
   try{
     // Dev/prod servers should expose /api/schedule (cookie session aware).
@@ -80,7 +80,7 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendar
 
 export type CloudPostResult = { ok: boolean; status?: number; error?: string; bodyText?: string }
 
-export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt: string}): Promise<CloudPostResult>{
+export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; updatedAt: string}): Promise<CloudPostResult>{
   if(!API_BASE) return { ok: false, error: 'no_api_base' }
   try{
     // Writes require cookie session + CSRF; legacy password header is removed.
@@ -117,7 +117,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; cale
   }catch{ return { ok: false } }
 }
 
-export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt: string}){
+export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; updatedAt: string}){
   const res = await cloudPostDetailed(data)
   return !!res.ok
 }

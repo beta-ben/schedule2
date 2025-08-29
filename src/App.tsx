@@ -131,7 +131,8 @@ export default function App(){
     const now = new Date().toISOString()
     const shiftsWithIds = draft.data.shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
     const ptoWithIds = draft.data.pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-    const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs: draft.data.calendarSegs, updatedAt: now })
+  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+  const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs: draft.data.calendarSegs, agents: agentsPayload, updatedAt: now })
     if(ok){
       setShifts(shiftsWithIds)
       setPto(ptoWithIds)
@@ -189,7 +190,19 @@ export default function App(){
 
   useEffect(()=>{ (async()=>{
     if(useDevProxy && !siteUnlocked) return
-    const data=await cloudGet(); if(data){ setShifts(data.shifts); setPto(data.pto); if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any) } setLoadedFromCloud(true)
+    const data=await cloudGet();
+    if(data){
+      setShifts(data.shifts);
+      setPto(data.pto);
+      if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any)
+      // Prefer cloud-backed agents if present
+      if(Array.isArray((data as any).agents)){
+        const arr = (data as any).agents as any[]
+        setAgentsV2(arr as any)
+        try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(arr)) }catch{}
+      }
+    }
+    setLoadedFromCloud(true)
   })() },[useDevProxy, siteUnlocked])
   // Keep view in sync with URL hash and vice versa
   useEffect(()=>{
@@ -244,14 +257,15 @@ export default function App(){
     const t=setTimeout(()=>{ 
       const shiftsWithIds = shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
       const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-      cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, updatedAt:new Date().toISOString()}) 
+      const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+      cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()}) 
     },600); 
     return ()=>clearTimeout(t) 
-  },[shifts,pto,calendarSegs,loadedFromCloud,canEdit,draftActive])
+  },[shifts,pto,calendarSegs,agentsV2,loadedFromCloud,canEdit,draftActive])
 
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   // Use refs to avoid creating a render loop when setting state inside this effect.
-  const lastJsonRef = React.useRef<{ shifts: string; pto: string; cal: string }>({ shifts: '', pto: '', cal: '' })
+  const lastJsonRef = React.useRef<{ shifts: string; pto: string; cal: string; agents: string }>({ shifts: '', pto: '', cal: '', agents: '' })
   useEffect(()=>{
     if(view!== 'schedule') return
     if(useDevProxy && !siteUnlocked) return
@@ -262,9 +276,15 @@ export default function App(){
       const s = JSON.stringify(data.shifts||[])
       const p = JSON.stringify(data.pto||[])
       const c = JSON.stringify(Array.isArray(data.calendarSegs)? data.calendarSegs : [])
+      const a = JSON.stringify(Array.isArray((data as any).agents)? (data as any).agents : [])
       if(s !== lastJsonRef.current.shifts){ setShifts(data.shifts); lastJsonRef.current.shifts = s }
       if(p !== lastJsonRef.current.pto){ setPto(data.pto); lastJsonRef.current.pto = p }
       if(c !== lastJsonRef.current.cal){ setCalendarSegs((data.calendarSegs as any) || []); lastJsonRef.current.cal = c }
+      if(a !== lastJsonRef.current.agents && Array.isArray((data as any).agents)){
+        setAgentsV2((data as any).agents as any)
+        lastJsonRef.current.agents = a
+        try{ localStorage.setItem('schedule_agents_v2_v1', a) }catch{}
+      }
     }
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)

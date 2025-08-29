@@ -50,20 +50,21 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             title="Manage v2"
             className={["inline-flex items-center justify-center h-10 px-3 rounded-lg text-sm font-medium border", view==='manageV2' ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}
           >
-            {/* Wand icon */}
+            {/* Power/Zap icon */}
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <path d="M15 4l-3 3"/>
-              <path d="M19 8l-3 3"/>
-              <path d="M5 14l-3 3"/>
-              <path d="M7 2l2 2M2 7l2 2M17 12l2 2M12 17l2 2"/>
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
           </button>
         </div>
 
-        {/* Center: page title above date range */}
+        {/* Center: page title above date range (or portal header in manage) */}
   <div className="text-center whitespace-nowrap overflow-visible">
     <div className={dark?"text-neutral-400":"text-neutral-600"} style={{ fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.05 }}>Customer Care Team Schedule</div>
-  <div className="font-medium tabular-nums" style={{ letterSpacing: '0.005em', fontSize: '1.35rem', lineHeight: 1.12 }}>{fmtDateRange(safeWeekStartDate, weekEndDate)}</div>
+  {view==='manage' || view==='manageV2' ? (
+    <div className={["font-bold tracking-wide", dark?"text-red-300":"text-red-600"].join(' ')} style={{ letterSpacing: '0.02em', fontSize: '1.35rem', lineHeight: 1.12 }}>PORTAL OF POWER</div>
+  ) : (
+    <div className="font-medium tabular-nums" style={{ letterSpacing: '0.005em', fontSize: '1.35rem', lineHeight: 1.12 }}>{fmtDateRange(safeWeekStartDate, weekEndDate)}</div>
+  )}
   </div>
 
   {/* Right: selectors + dark toggle */}
