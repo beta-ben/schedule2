@@ -126,6 +126,20 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs
   return !!res.ok
 }
 
+// Agents-only write to avoid schedule conflicts when toggling hidden or renaming agents
+export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>): Promise<boolean>{
+  try{
+    const csrf = (typeof document!=='undefined' ? (document.cookie.match(/(?:^|; )csrf=([^;]+)/)?.[1] && decodeURIComponent(document.cookie.match(/(?:^|; )csrf=([^;]+)/)![1])) : null) || null
+    const headers: Record<string,string> = { 'Content-Type':'application/json' }
+    if(CSRF_TOKEN_MEM) headers['x-csrf-token'] = CSRF_TOKEN_MEM
+    else if(csrf) headers['x-csrf-token'] = csrf
+    const r = await fetch(`${API_BASE}${API_PREFIX}/agents`,{
+      method:'POST', credentials:'include', headers, body: JSON.stringify({ agents })
+    })
+    return r.ok
+  }catch{ return false }
+}
+
 // Try to establish a view/site session if the server requires it.
 export async function ensureSiteSession(password?: string){
   try{

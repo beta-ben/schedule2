@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { fmtYMD, startOfWeek } from './lib/utils'
-import { cloudGet, cloudPost, hasCsrfCookie } from './lib/api'
+import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents } from './lib/api'
 import type { PTO, Shift, Task } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
@@ -342,14 +342,10 @@ export default function App(){
   useEffect(()=>{
     if(!loadedFromCloud || !canEdit) return
     const t = setTimeout(()=>{
-      // Post only agents alongside the current live schedule snapshot to avoid modifying live draft data.
-      cloudPost({
-        shifts,
-        pto,
-        calendarSegs,
-        agents: agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden })),
-        updatedAt: new Date().toISOString()
-      })
+      // Prefer agents-only endpoint to avoid schedule conflicts
+      cloudPostAgents(
+        agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+      )
     }, 600)
     return ()=> clearTimeout(t)
   }, [agentsV2, loadedFromCloud, canEdit])

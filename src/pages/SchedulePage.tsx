@@ -138,14 +138,11 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
-        {/* Left: large date (if not today) + live clock + tz */}
+        {/* Left: date (always) + live clock + tz */}
   <div className="flex items-end gap-3 pl-2 order-1">
-          {/* Show date only when a non-today day is selected */}
-          {fmtNice(selectedDate) !== fmtNice(parseYMD(nowInTZ(tz.id).ymd)) && (
-            <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
-              {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
-            </div>
-          )}
+          <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+            {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
+          </div>
           <div className={["font-bold tabular-nums", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
             {nowClock.hhmm}
           </div>
@@ -225,7 +222,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                   <div className="text-sm font-semibold mb-2">Schedule settings</div>
                   {/* Slimline switch */}
                   <div className="flex items-center justify-between gap-3 text-sm py-1">
-                    <span className="flex-1">Slimline: only active and on-deck; hide PTO and stale chips</span>
+                    <span className="flex-1">Hide off agents</span>
                     <button
                       role="switch"
                       aria-checked={!!slimline}

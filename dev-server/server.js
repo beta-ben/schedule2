@@ -228,7 +228,9 @@ app.get('/api/_info', (req, res) => {
       'POST /api/login',
       'POST /api/logout',
       'GET  /api/schedule',
+  'GET  /api/agents',
       'POST /api/schedule',
+  'POST /api/agents',
       'GET  /api/events',
       'POST /api/admin/seed?dataset=demo|data|snapshot',
       'GET  /api/admin/export',
@@ -249,6 +251,17 @@ app.get('/api/schedule', requireSite, (req, res) => {
     const raw = fs.readFileSync(dataFile, 'utf8')
     res.type('application/json').send(raw)
   } catch {
+    res.status(500).json({ error: 'read_failed' })
+  }
+})
+
+// Agents-only read
+app.get('/api/agents', requireSite, (req, res) => {
+  try{
+    const raw = fs.readFileSync(dataFile, 'utf8')
+    const doc = JSON.parse(raw)
+    res.json({ agents: Array.isArray(doc.agents) ? doc.agents : [] })
+  }catch{
     res.status(500).json({ error: 'read_failed' })
   }
 })
@@ -382,6 +395,43 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
   }
 })
 
+// Agents-only write: upsert agents metadata independent of schedule arrays
+app.post('/api/agents', requireAdmin, (req, res) => {
+  try{
+    const body = req.body
+    if(typeof body !== 'object' || body===null) return res.status(400).json({ error:'invalid_body' })
+    const AgentZ = z.object({ id: z.string(), firstName: z.string().default(''), lastName: z.string().default(''), tzId: z.string().optional(), hidden: z.boolean().optional() })
+    const InputZ = z.object({ agents: z.array(AgentZ).default([]) })
+    const parsed = InputZ.safeParse(body)
+    if(!parsed.success) return res.status(400).json({ error:'invalid_body', details: parsed.error.flatten() })
+    const incoming = parsed.data.agents
+    // Load current doc
+    let prevDoc = { schemaVersion: 2, agents: [], shifts: [], pto: [], calendarSegs: [], updatedAt: new Date().toISOString(), agentsIndex: {} }
+    try{ const raw = fs.readFileSync(dataFile,'utf8'); prevDoc = JSON.parse(raw) }catch{}
+    const oldAgents = Array.isArray(prevDoc.agents) ? prevDoc.agents : []
+    const byId = new Map(oldAgents.map(a=> [a.id, a]))
+    // Upsert merge
+    for(const a of incoming){
+      const cur = byId.get(a.id)
+      if(cur){ byId.set(a.id, { ...cur, ...a }) }
+      else { byId.set(a.id, { id: a.id, firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }) }
+    }
+    const agents = Array.from(byId.values())
+    // Rebuild agentsIndex from known name->id pairs in schedule/PT0/calendarSegs
+    const agentsIndex = {}
+    function take(arr){ try{ for(const r of (arr||[])){ if(r && r.person && r.agentId){ const key=(r.person||'').trim().toLowerCase(); if(!agentsIndex[key]) agentsIndex[key]=r.agentId } } }catch{} }
+    take(prevDoc.shifts); take(prevDoc.pto); take(prevDoc.calendarSegs)
+    const toWrite = { ...prevDoc, schemaVersion: Math.max(2, prevDoc.schemaVersion||2), agents, agentsIndex }
+    backupFile()
+    fs.writeFileSync(dataFile, JSON.stringify(toWrite, null, 2), 'utf8')
+    const ts = new Date().toISOString()
+    setImmediate(()=> sseBroadcast('updated', { ts }))
+    res.json({ ok:true, updatedAt: ts })
+  }catch{
+    res.status(500).json({ error:'write_failed' })
+  }
+})
+
 // Admin: seed from a fixture (demo/data/snapshot)
 app.post('/api/admin/seed', requireAdmin, (req, res) => {
   try{
@@ -468,7 +518,9 @@ app.listen(PORT, () => {
   console.log('  POST /api/login       (sets sid + csrf)')
   console.log('  POST /api/logout      (clears sid + csrf)')
   console.log('  GET  /api/schedule    (requires site session)')
+  console.log('  GET  /api/agents      (requires site session)')
   console.log('  POST /api/schedule    (requires admin session + CSRF)')
+  console.log('  POST /api/agents      (requires admin session + CSRF)')
   console.log('  GET  /api/events      (SSE; requires site session)')
   console.log('  POST /api/admin/seed  (requires admin; dataset=demo|data|snapshot)')
   console.log('  GET  /api/admin/export(requires admin)')

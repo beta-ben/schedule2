@@ -80,8 +80,11 @@ export default {
       if (req.method === 'POST' && path === '/api/login-site') return loginSite(req, env, cors)
       if (req.method === 'POST' && path === '/api/logout-site') return logoutSite(req, env, cors)
 
-      if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
-      if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
+  if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
+  if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
+  // Agents-only endpoints to persist metadata (like hidden) without schedule conflicts
+  if (req.method === 'GET' && path === '/api/agents') return getAgents(req, env, cors)
+  if (req.method === 'POST' && path === '/api/agents') return postAgents(req, env, cors)
 
       return json({ error: 'not_found' }, 404, cors)
     } catch (e: any) {
@@ -228,8 +231,12 @@ async function postSchedule(req: Request, env: Env, cors: Headers){
 
   // Load previous doc for concurrency + mapping backfill
   const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
+  // Strict conflict only when shift/pto/calendar data is older; allow agents-only updates elsewhere
   if(prev.updatedAt && incoming.updatedAt && new Date(incoming.updatedAt) < new Date(prev.updatedAt)){
-    return json({ error:'conflict', prevUpdatedAt: prev.updatedAt }, 409, cors)
+    const hasSchedChanges = Array.isArray(incoming.shifts) || Array.isArray(incoming.pto) || Array.isArray(incoming.calendarSegs)
+    if(hasSchedChanges){
+      return json({ error:'conflict', prevUpdatedAt: prev.updatedAt }, 409, cors)
+    }
   }
 
   // Validate and normalize
@@ -313,4 +320,49 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
   // Final shape
   doc.schemaVersion = Math.max(2, doc.schemaVersion||2)
   return { ok:true, doc }
+}
+
+// -------- Agents-only endpoints
+async function getAgents(req: Request, env: Env, cors: Headers){
+  const gate = await requireSite(req, env)
+  if(!gate.ok) return json(gate.body, gate.status, cors)
+  const doc = await readDoc(env)
+  return json({ agents: (doc?.agents||[]), updatedAt: doc?.updatedAt }, 200, cors)
+}
+
+async function postAgents(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  const body = await safeJson(req)
+  const incomingAgents = Array.isArray(body?.agents) ? (body.agents as Agent[]) : null
+  if(!incomingAgents) return json({ error:'invalid_body', details:'agents array required' }, 400, cors)
+
+  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
+  const merged = upsertAgents(prev.agents||[], incomingAgents)
+  const idx: Record<string,string> = {}
+  for(const a of merged){ const full=`${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim().toLowerCase(); if(full) idx[full] = a.id }
+  const next: ScheduleDoc = { ...prev, agents: merged, agentsIndex: idx, updatedAt: nowIso() }
+  await writeDoc(env, next)
+  return json({ ok:true, updatedAt: next.updatedAt, count: merged.length }, 200, cors)
+}
+
+function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
+  const byId = new Map<string, Agent>()
+  for(const a of prev){ if(a && a.id){ byId.set(a.id, { ...a }) } }
+  for(const a of inc){
+    if(!a) continue
+    let id = a.id
+    if(!id || typeof id !== 'string' || !id.trim()) id = nanoid(16)
+    const firstName = (a.firstName||'').trim()
+    const lastName = (a.lastName||'').trim()
+    const tzId = a.tzId && typeof a.tzId==='string' ? a.tzId : undefined
+    const hidden = !!a.hidden
+    const existing = byId.get(id)
+    if(existing){
+      byId.set(id, { ...existing, firstName, lastName, tzId, hidden })
+    }else{
+      byId.set(id, { id, firstName, lastName, tzId, hidden })
+    }
+  }
+  return Array.from(byId.values())
 }
