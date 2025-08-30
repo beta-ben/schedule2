@@ -69,6 +69,15 @@ export default function AgentWeekLinear({
   // When true, suppress outer time tags that would overlap neighboring tags
   avoidLabelOverlap?: boolean
 }){
+  // Simple string hash to 0..359 for per-chip hue variance
+  function hashStr(s: string) { 
+    let h = 0; 
+    for (let i = 0; i < s.length; i++) { 
+      h = ((h << 5) - h) + s.charCodeAt(i); 
+      h |= 0; 
+    } 
+    return ((h % 360) + 360) % 360; 
+  }
   const totalMins = 7 * 24 * 60 // 10080
   const weekStartDate = parseYMD(weekStart)
   const dayIdx = (d: string)=> DAYS.indexOf(d as any)
@@ -484,14 +493,17 @@ export default function AgentWeekLinear({
                     tooltipLines.push(`${t?.name || 'Task'}: ${minToHHMM(absStart % 1440)}–${minToHHMM(absEnd % 1440)}`)
                   }
                 }
-                return (
+        return (
                   <div
                     key={partKey}
-                    className={"absolute inset-y-0"}
+          className={"absolute inset-y-0 chip-unicorn-h"}
                     style={{
                       left: `${leftPct}%`,
                       width: `${widthPct}%`,
-          background: chipBg,
+      // Per-chip hue shifts for Unicorn theme; fallback to computed bg otherwise
+      background: chipBg,
+      // Provide a deterministic hue per group id for wild rainbow variety
+      ['--h' as any]: String(Math.abs(hashStr(g.id)) % 360),
                       // No borders for dense look; rely on hover outline only
                       boxShadow: boxShadow || undefined,
                     }}

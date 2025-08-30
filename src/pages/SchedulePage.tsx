@@ -199,7 +199,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                   : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")
                 const todayCls = isToday ? (dark?"text-red-400":"text-red-600") : ""
                 return (
-                  <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls, 'unicorn-anim-bg'].filter(Boolean).join(' ')}>{d}</button>
+                  <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls, 'unicorn-anim-bg', 'unicorn-pill'].filter(Boolean).join(' ')}>{d}</button>
                 )
               })}
               </div>
