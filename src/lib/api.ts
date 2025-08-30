@@ -18,12 +18,18 @@ export function getApiBase(){ return API_BASE }
 export function isUsingDevProxy(){ return !!DEV_PROXY }
 export function getApiPrefix(){ return API_PREFIX }
 
-function getCsrfFromCookie(): string | null {
+// In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
+// We keep a memory copy captured from the login response body (when available).
+let CSRF_TOKEN_MEM: string | null = null
+function getCsrfFromCookieOnly(): string | null {
   if (typeof document === 'undefined') return null
   const m = document.cookie.match(/(?:^|; )csrf=([^;]+)/)
   return m ? decodeURIComponent(m[1]) : null
 }
-export function hasCsrfCookie(){ return !!getCsrfFromCookie() }
+function getCsrfToken(): string | null {
+  return CSRF_TOKEN_MEM || getCsrfFromCookieOnly()
+}
+export function hasCsrfCookie(){ return !!getCsrfToken() }
 
 // Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
 export async function login(password: string){
@@ -35,6 +41,7 @@ export async function login(password: string){
       body: JSON.stringify({ password })
     })
     if(r.ok){
+      try{ const j = await r.clone().json(); if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf } }catch{}
       // Best-effort: some servers also require a site session for reads/writes
       try{ await ensureSiteSession(password) }catch{}
     }
@@ -84,16 +91,13 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; cale
   if(!API_BASE) return { ok: false, error: 'no_api_base' }
   try{
     // Writes require cookie session + CSRF; legacy password header is removed.
-    if(!DEV_PROXY){
-      // Expect prod server to implement /api/schedule with cookies+CSRF.
-      // If not present, fail fast with a clear warning.
-      const csrf = getCsrfFromCookie()
-      if(!csrf){ console.warn('[cloudPost] CSRF cookie missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
-    }
+  // Expect prod server to implement /api/schedule with cookies+CSRF.
+  // If cookie isn't readable due to HttpOnly or subdomain scope, we also accept a token captured from login response.
+  const csrf = getCsrfToken()
+  if(!csrf && !DEV_PROXY){ console.warn('[cloudPost] CSRF token missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
   const url = `${API_BASE}${API_PREFIX}/schedule`
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
-    const csrf = getCsrfFromCookie()
-    if(csrf) headers['x-csrf-token'] = csrf
+  if(csrf) headers['x-csrf-token'] = csrf
     const r = await fetch(url,{
       method:'POST',
       headers,

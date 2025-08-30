@@ -148,7 +148,8 @@ async function loginAdmin(req: Request, env: Env, cors: Headers){
   const headers = new Headers(cors)
   headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
   headers.append('Set-Cookie', setCookie('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
-  return json({ ok:true }, 200, headers)
+  // Also include csrf in body so clients can store it when cookie is HttpOnly
+  return json({ ok:true, csrf }, 200, headers)
 }
 async function logoutAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)

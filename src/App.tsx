@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { fmtYMD, startOfWeek } from './lib/utils'
-import { cloudGet, cloudPost } from './lib/api'
+import { cloudGet, cloudPost, hasCsrfCookie } from './lib/api'
 import type { PTO, Shift, Task } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
@@ -248,8 +248,7 @@ export default function App(){
 
   useEffect(()=>{ (async()=>{
     // Editing is allowed only when an authenticated session exists (cookie+CSRF).
-    const hasCsrf = typeof document!=='undefined' && /(?:^|; )csrf=/.test(document.cookie)
-    setCanEdit(!!hasCsrf)
+  setCanEdit(hasCsrfCookie())
   })() }, [view])
 
   useEffect(()=>{ (async()=>{
