@@ -20,6 +20,14 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   agents?: Array<{ id?: string; firstName?: string; lastName?: string; tzId?: string }>
 }){
   const totalMins=24*60
+  const contentRef = React.useRef<HTMLDivElement|null>(null)
+  const [contentW, setContentW] = useState<number>(0)
+  useEffect(()=>{
+    const upd = ()=>{ if(contentRef.current){ setContentW(contentRef.current.clientWidth) } }
+    upd()
+    window.addEventListener('resize', upd)
+    return ()=> window.removeEventListener('resize', upd)
+  },[])
   const hourMarks = Array.from({length:24},(_,i)=>i)
   // Subtler label color
   const textSub = dark?"text-neutral-500":"text-neutral-400"
@@ -152,7 +160,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       )}
 
       {/* Body */}
-      <div className="relative px-2">
+  <div className="relative px-2" ref={contentRef}>
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
             <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
@@ -269,10 +277,18 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: CHIP_RADIUS, zIndex: 5 }}
                     />
 
-                    {/* Center label: first name only */}
-                    <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-500":"text-neutral-500") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
-                      {(person||'').split(' ')[0] || person}
-                    </div>
+                    {/* Center label: first name only; hide if chip too narrow */}
+                    {(()=>{
+                      const pxPerMin = contentW>0 ? (contentW/totalMins) : 0
+                      const chipPx = dur * pxPerMin
+                      const SHOW_MIN_PX = 60
+                      const show = chipPx >= SHOW_MIN_PX
+                      return (
+                        <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-500":"text-neutral-500") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
+                          {show ? ((person||'').split(' ')[0] || person) : ''}
+                        </div>
+                      )
+                    })()}
 
                     {/* Tooltip */}
           {hover.id===s.id && (

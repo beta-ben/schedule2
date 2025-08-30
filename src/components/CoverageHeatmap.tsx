@@ -46,14 +46,20 @@ export default function CoverageHeatmap({
   const colorFor = (v:number)=>{
     if(maxCount<=0) return dark? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
     const t = v / maxCount
-    // Blue scale in light; violet in dark
-    const base = dark? [99,102,241] : [59,130,246]
-    const bg = dark? [10,10,10] : [255,255,255]
-    const r = Math.round(base[0]*t + bg[0]*(1-t))
-    const g = Math.round(base[1]*t + bg[1]*(1-t))
-    const b = Math.round(base[2]*t + bg[2]*(1-t))
-    const alpha = 0.85
-    return `rgba(${r},${g},${b},${alpha})`
+    // Use higher contrast: green->yellow->red ramp
+    const ramp = [
+      [34,197,94],   // green-500
+      [250,204,21],  // yellow-400
+      [239,68,68],   // red-500
+    ]
+    const seg = t<=0.5 ? 0 : 1
+    const lt = t<=0.5 ? (t/0.5) : ((t-0.5)/0.5)
+    const a = ramp[seg]
+    const b = ramp[seg+1] || ramp[seg]
+    const r = Math.round(a[0]*(1-lt) + b[0]*lt)
+    const g = Math.round(a[1]*(1-lt) + b[1]*lt)
+    const bch = Math.round(a[2]*(1-lt) + b[2]*lt)
+    return `rgba(${r},${g},${bch},${dark?0.9:0.95})`
   }
 
   // Horizontal scaling to align with ribbons
@@ -69,13 +75,13 @@ export default function CoverageHeatmap({
     el.scrollTo({ left: target, behavior: 'smooth' })
   }, [scrollChunk, daysVisible])
 
-  const CELL_H = 6 // px
+  const CELL_H = 7 // px (slightly taller for visibility)
   const GAP_Y = 1
-  const HEADER_H = 20
+  const HEADER_H = 18
 
   return (
     <div className={["sticky bottom-0 z-30", dark?"bg-neutral-950/92":"bg-white/95","backdrop-blur","border-t", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
-      <div className="px-2 py-2">
+      <div className="px-2 py-1.5">
         <div className="flex items-center justify-between mb-1">
           <div className={["text-xs font-medium", dark?"text-neutral-200":"text-neutral-700"].join(' ')}>Coverage heatmap</div>
           <div className="text-[10px] opacity-70">max {maxCount || 0}</div>
@@ -116,9 +122,8 @@ export default function CoverageHeatmap({
                       {Array.from({length:24},(_,h)=>h).map(h=>{
                         const top = h*(CELL_H+GAP_Y)
                         const v = counts[di][h]
-                        return (
-                          <div key={h} className="w-full" style={{ position:'absolute', top, height: CELL_H, backgroundColor: colorFor(v), borderRadius: 2 }} title={`${d} ${h}:00 — ${h+1}:00 • ${v} on-duty`} />
-                        )
+                        const title = `${d} — ${String(h).padStart(2,'0')}:00 to ${String(h+1).padStart(2,'0')}:00 • ${v} on-duty`
+                        return <div key={h} className="w-full" style={{ position:'absolute', top, height: CELL_H, backgroundColor: colorFor(v), borderRadius: 2 }} title={title} />
                       })}
                     </div>
                   )
