@@ -69,6 +69,16 @@ export default function AgentWeekLinear({
   // When true, suppress outer time tags that would overlap neighboring tags
   avoidLabelOverlap?: boolean
 }){
+  // Detect theme from root [data-theme] for Night/Noir adjustments
+  const theme: 'system'|'light'|'dark'|'night'|'noir' = (()=>{
+    try{
+      const el = document.querySelector('[data-theme]') as HTMLElement | null
+      const v = (el?.getAttribute('data-theme') as any) || 'system'
+      return v
+    }catch{ return 'system' as const }
+  })()
+  const isNight = theme==='night'
+  const isNoir = theme==='noir'
   // Simple string hash to 0..359 for per-chip hue variance
   function hashStr(s: string) { 
     let h = 0; 
@@ -425,7 +435,8 @@ export default function AgentWeekLinear({
                     ? highlightIds.has(g.id)
                     : (highlightIds as string[]).includes(g.id)
                 )
-  const chipBg = isHi ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)') : bg
+  // Night/Noir: force chips to black
+  const chipBg = (isNight || isNoir) ? '#000' : (isHi ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)') : bg)
                 const isSel = !!selectedIds && (
                   selectedIds instanceof Set
                     ? selectedIds.has(g.id)

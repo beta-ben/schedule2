@@ -224,10 +224,12 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 let baseColor = hasPtoForDay ? grayBg : (dark?darkbg:light)
                 let baseBorder = hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`)
                 if(isNight){
-                  baseColor = hasPtoForDay ? 'rgba(64,0,0,0.6)' : 'rgba(127,0,0,0.7)'
+                  // Night theme: chips go fully black; keep the red border for contrast
+                  baseColor = '#000'
                   baseBorder = 'rgba(239,68,68,0.9)'
                 } else if(isNoir){
-                  baseColor = hasPtoForDay ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.15)'
+                  // Noir theme: chips go fully black; keep white border for contrast
+                  baseColor = '#000'
                   baseBorder = 'rgba(255,255,255,0.7)'
                 }
                 const segs = (Array.isArray(s.segments)? s.segments: []).slice().sort((a,b)=>a.startOffsetMin-b.startOffsetMin)
