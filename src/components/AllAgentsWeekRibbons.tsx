@@ -17,6 +17,7 @@ export default function AllAgentsWeekRibbons({
   tasks,
   calendarSegs,
   visibleDays = 7,
+  scrollChunk,
   showAllTimeLabels = false,
   onDragAll,
   onDragShift,
@@ -35,6 +36,7 @@ export default function AllAgentsWeekRibbons({
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
   visibleDays?: number
+  scrollChunk?: number
   showAllTimeLabels?: boolean
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
@@ -174,6 +176,18 @@ export default function AllAgentsWeekRibbons({
   const daysVisible = Math.min(7, Math.max(1, visibleDays || 7))
   const scaleWidthPct = (7 / daysVisible) * 100
   const BAND_H = 28 // keep in sync with AgentWeekLinear default unless overridden
+  const scrollerRef = React.useRef<HTMLDivElement|null>(null)
+
+  // Programmatic chunk scroll when visibleDays < 7
+  React.useEffect(()=>{
+    const el = scrollerRef.current
+    if(!el) return
+    const chunks = Math.max(1, Math.ceil(7 / daysVisible))
+    const idx = Math.min(chunks-1, Math.max(0, scrollChunk || 0))
+    // One chunk width equals the visible viewport width
+    const target = Math.min(el.scrollWidth - el.clientWidth, Math.round(idx * el.clientWidth))
+    el.scrollTo({ left: target, behavior: 'smooth' })
+  }, [scrollChunk, daysVisible])
 
   return (
     <div className="space-y-1">
@@ -190,7 +204,7 @@ export default function AllAgentsWeekRibbons({
           ))}
         </div>
         {/* Right column: single synchronized horizontal scroller containing header labels and ribbons */}
-        <div className="flex-1 overflow-x-auto no-scrollbar">
+  <div ref={scrollerRef} className="flex-1 overflow-x-auto no-scrollbar">
           <div style={{ width: `${scaleWidthPct}%` }}>
             {/* Top day labels aligned to ribbons */}
             <div className="relative h-7">

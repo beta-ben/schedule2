@@ -1,119 +1,128 @@
-# Schedule 2
+# Schedule Management Guide
 
-- PTO support: days on PTO gray out a person’s shift chips in the grid.
-- Overnight shifts supported (end next day) and split correctly at local midnight.
-- On deck: who’s on right now. Up next: who starts in the next 2 hours.
-- Manage area:
-	- Unified Shift Manager panel (quick add, inline edit, filter, select, bulk delete).
-	- PTO add, filter, select, bulk delete, and per-row delete.
-	- Export JSON to clipboard; Load/Save with a Cloudflare Worker API.
+This document explains how to use the Management interface to add agents, manage shifts, assign postures, handle PTO, and publish changes.
 
-## Quickstart
+Tip: The Management interface lives under the “Manage” section of the app. You’ll be prompted to sign in; a valid session is required to save.
 
-```bash
-npm i
-npm run dev
-```
+## Sign in and layout
 
-Open the printed local URL (Vite), then use the Manage tab to edit data.
+- Sign in once when prompted. The app uses a session cookie and CSRF token.
+- Tabs inside Manage:
+	- Agents: create/edit agents and their timezones; per‑agent shift editing.
+	- Shifts: weekly ribbons for all agents with fast drag/keyboard moves and sorting.
+	- Postures: configure tasks and assign posture windows by day/time (supports across midnight).
+	- PTO: add and manage paid‑time‑off ranges.
 
-## Dev → Prod Playbook
+Top‑right tools (Shifts tab):
+- Sort ribbons (by earliest start, latest end, shift count, total minutes, first day, timezone, or name) and toggle direction.
+- Include hidden agents toggle.
+- Toggle all time labels on ribbons.
+- Visible days selector (1–7). When <7, the ribbons and day labels become horizontally scrollable to view the rest of the week.
+- Undo/Redo recent edits in the Shifts tab.
+- Drafts: Save, Save new, Load, Delete; Discard working changes; Publish to live.
+- Import panel to load legacy JSON.
 
-Use this checklist to avoid surprises when promoting changes to production.
+Publishing model
+- You edit a working draft locally. Click Publish to write changes to live.
+- You can save named drafts, re‑load them later, or discard to revert to live.
 
-1) Environment
-- .env.production must define:
-	- `VITE_SCHEDULE_API_BASE=https://api.teamschedule.cc` (or your API domain)
-- API requirements (Cloudflare Worker or server):
-	- Endpoints: `POST /api/login`, `POST /api/logout`, `GET /api/schedule`, `POST /api/schedule`
-	- Cookies: `sid` must be `Secure; HttpOnly; SameSite=Lax; Domain=.teamschedule.cc; Path=/`. `csrf` must be `Secure; SameSite=Lax; Domain=.teamschedule.cc; Path=/` (not HttpOnly so the client can read it to send `x-csrf-token`).
-	- CORS: `Access-Control-Allow-Origin: https://teamschedule.cc`, `Access-Control-Allow-Credentials: true`
+## Agents tab
 
-2) Local validation
-- Login in dev via proxy: `npm run dev:all` and use the Manage tab
-- Typecheck/build: `npm run typecheck && npm run build`
-- Smoke test: `npm run smoke`
-- Validate prod config: `npm run validate:prod`
+What you can do
+- Add agents with first/last name and a timezone.
+- Edit an agent inline (names, timezone).
+- Hide/Show an agent from the schedule (preserves their data).
+- Delete an agent (requires confirmation).
 
-3) Deploy
-- Manual: `npm run deploy` (predeploy copies CNAME and mirrors assets under `dist/schedule2` for cache safety)
-- CI: push to `main` runs `.github/workflows/deploy.yml` to build and publish automatically
+Per‑agent shift editor
+- Select an agent to open the right‑side editor.
+- Add shifts (defaults to a sensible day/time and avoids overlap by nudging).
+- Edit shift day/time; set End Day for overnight shifts (across midnight).
+- Drag a shift left/right to move it; keyboard nudges are supported (15 min).
+- The editor prevents overlapping shifts for the same agent.
+- Undo the most recent per‑agent change (Ctrl/Cmd+Z).
 
-4) Verify
-- Open https://teamschedule.cc and hard refresh
-- Confirm header date range is correct and CSS/JS load (no 404s)
-- Manage: sign in once; navigating back should not re-prompt constantly
-- Publish: create a tiny change and publish; confirm API accepts write (CSRF header is sent)
+Tips
+- Timezone per agent controls how their shifts display and how “now” is calculated in views.
+- Overnight shifts show with an End Day (e.g., Sat → Sun) and split at local midnight in weekly views.
 
-5) Troubleshooting
-- Custom domain shows 404/CSP: ensure `public/CNAME` exists and lands in `dist/CNAME`
-- Login loops: check API cookie attributes and CORS; browser devtools → Application → Cookies
-- Data mismatch: if drafts are active locally, publish or discard so Schedule reflects live
-- Cache: avoid caching HTML at CDN; allow assets to cache, JSON minimal TTLs
+## Shifts tab (all‑agents ribbons)
 
+Purpose
+- Quickly review and adjust all agents’ shifts in one weekly band per agent.
 
-## Environment
+Key actions
+- Drag entire rows (agent’s whole week) or a single shift to move by minutes.
+- Keyboard: when hovering over the band or a chip, Arrow Left/Right nudges by 15 min.
+- Multi‑select shifts (click chips) and drag any selected chip to move the group.
+- Sorting: switch between multiple sort modes and asc/desc to organize rows.
+- Visible days: choose 1–7 days. When fewer than 7 are visible, scroll horizontally to see all days; labels and ribbons remain aligned.
+- Include hidden agents: show/hide agents marked hidden on the Agents tab.
+- Show all time labels: always display start/end tags at chip edges.
+- Undo/Redo: step through your recent Shifts‑tab edits.
 
-These are optional; sensible defaults are provided for local use.
+Drafts and publishing
+- Save/Save new: persist your current working draft locally with a name.
+- Load/Delete: bring back a saved draft or remove it from the list.
+- Discard: abandon working changes and return to the live schedule.
+- Publish: write current working data to live.
 
-- `VITE_SCHEDULE_API_BASE` — Cloud API base (default: `https://api.teamschedule.cc`). You can also point to your same-origin site, e.g., `https://teamschedule.cc`.
-- `VITE_SCHEDULE_API_PREFIX` — Path prefix for API routes (default: `/api`). Set to empty string (`''`) if your API lives at the root, or to another mount path if you proxy (e.g., `/backend`).
-- `VITE_DEV_PROXY_BASE` — Dev auth proxy (e.g., `http://localhost:8787`). When set, the app uses cookie auth + CSRF and never sends passwords from the client.
+## Postures tab (Tasks & calendar assignments)
 
-Dev server cookie configuration (for parity while testing over HTTPS/custom domain):
+Tasks (postures)
+- Create tasks with names and colors. Archiving hides them from new assignments.
 
-- `COOKIE_DOMAIN` — optional domain attribute for cookies (e.g., `.teamschedule.cc`).
-- `COOKIE_SECURE` — set to `true` when serving over HTTPS so cookies include `Secure`.
-- `COOKIE_SAMESITE` — one of `lax` (default), `strict`, or `none` (if using cross-site iframes, use `none` + `Secure`).
+Assign postures to agents
+- Choose an Agent, Day, Start and End time, and (optional) End Day.
+- End Day lets you assign posture windows that cross midnight (e.g., 22:00 → 02:00, Mon → Tue).
+- The assignment will display when it overlaps a shift for that agent.
+- Edit or delete assignments inline from the list.
 
-Manage now requires an authenticated session (cookie + CSRF). The legacy client-side password header path has been removed.
+Visual calendar
+- A compact weekly calendar preview shows how posture windows overlay each day (cross‑midnight postures are split per day).
 
-### Dev auth proxy
+## PTO tab
 
-A minimal dev-only server sits in `dev-server/` to avoid client-embedded secrets:
+- Add PTO date ranges per person. PTO days subtly tint in weekly/day views and gray out that person’s shift chips.
+- Edit or delete PTO entries from the list.
+- People on PTO are excluded from On Deck / Up Next counts.
 
-```
-cd dev-server
-cp .env.example .env # set DEV_ADMIN_PASSWORD
-npm i && npm start
-```
+## Tools and utilities
 
-Set `VITE_DEV_PROXY_BASE=http://localhost:8787` in your frontend `.env.local`. The Manage page will prompt for sign-in and then use cookies + CSRF for GET/POST of schedule data. Without a proxy (or a production API that sets session cookies), the app runs in read-only mode.
+- Import legacy: paste or fetch a JSON payload with shifts, PTO, and postures to seed the editor; review then Publish.
+- Cloud save: the Publish button saves to the live API once you’re signed in.
+- Drafts: keep multiple offline drafts, load one to continue, or discard.
+- Time labels: toggle labels to reduce noise or increase detail in Shifts.
+- Visible days: pick 1–7 to zoom the weekly ribbons and scroll when needed.
 
-## Using Manage
+## How things work (reference)
 
-- Go to the Manage tab and enter the password.
-- Shifts: use the Shift Manager to add/edit/remove. Overnight is supported.
-- PTO: add ranges, filter, select, bulk delete.
-- Export/Load/Save: copy JSON to clipboard or sync with the cloud API.
+- Timezones: Shifts are authored in PT and displayed in the selected view TZ. “Now” and labels use the selected TZ.
+- Overnight: A shift that ends the next day sets an End Day and splits at local midnight in weekly views.
+- Postures: Calendar posture segments are merged into shifts; manual shift segments (if any) take precedence when overlaps occur.
+- No overlap rule: The app prevents overlapping shifts for the same agent.
 
-## Timezones
+## FAQ (predicted)
 
-- Shifts are authored relative to PT and converted to the viewer’s TZ.
-- "Now" calculations and labeling are done in the selected TZ.
-- Cross-midnight shifts split into segments at local midnight.
-- PTO days gray out shift chips instead of adding a row overlay.
+- Why won’t my posture show up on the schedule?
+	- Posture windows display only when they overlap a shift for that agent on that local day.
+- How do I make an overnight shift?
+	- Set an End Day that is the next day (e.g., Sat → Sun), or end time earlier than start and pick the next End Day. The app splits at midnight.
+- How do I move shifts across the week without breaking order?
+	- Drag a whole row in the Shifts tab to move that agent’s entire week together; internal gaps are preserved and overlap is prevented.
+- Why are some chips gray or tinted?
+	- PTO days tint the background and gray out shift chips for that agent.
+- I can’t publish; it says session/CSRF missing.
+	- Sign in again on the Manage page, then retry Publish. If it persists, reload the page.
+- What’s the difference between Live and Draft?
+	- Draft is your local working copy. Publish writes the current draft to live. You can save multiple named drafts and load them later.
+- How do I reduce visual clutter on ribbons?
+	- Use the time label toggle, choose fewer visible days, and sort by start or name.
+- How do I hide an agent without deleting them?
+	- On the Agents tab, toggle the eye icon to hide/show in schedule views.
+- Can I show first names only on schedule chips?
+	- Chips show first names in Schedule; tooltips include full names and hours.
 
-## Deploy to GitHub Pages
+—
 
-This project is configured for a custom domain (Vite `base` = `/`). A `CNAME` file is included for `teamschedule.cc`.
-
-```bash
-npm run build
-npm run deploy
-```
-
-Then in GitHub → Settings → Pages:
-- Source: `gh-pages` branch
-- Custom domain: `teamschedule.cc`
-- Enable “Enforce HTTPS”
-
-DNS (at your registrar):
-- CNAME `www` → `<username>.github.io`
-- Apex `@` → ALIAS/ANAME to `www` or A records to GitHub Pages IPs
-
-If you need to deploy under a subpath instead, set `GHPAGES_BASE` (e.g., `/schedule2/`) before building.
-
-## Tasks & Shift Segments
-
-Optionally configure Tasks (name, color, posture) under Manage → Tasks & Postures. Shifts can include segments (minutes from shift start) that render as colored sub-bars inside each shift chip. This lets you allocate parts of a shift to different work types without changing the base shift times.
+For developers: build/deploy and environment details are in STAGING.md and comments in the source. If you need the old README content, check the Git history.

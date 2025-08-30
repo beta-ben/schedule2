@@ -39,6 +39,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     try{ const v = localStorage.getItem(DAYS_VISIBLE_KEY); const n = v? parseInt(v,10): 7; return Number.isFinite(n) && n>=1 && n<=7 ? n : 7 }catch{ return 7 }
   })
   React.useEffect(()=>{ try{ localStorage.setItem(DAYS_VISIBLE_KEY, String(visibleDays)) }catch{} }, [visibleDays, DAYS_VISIBLE_KEY])
+  // Shifts tab: scrollable chunk index when visibleDays < 7
+  const [dayChunkIdx, setDayChunkIdx] = React.useState(0)
+  React.useEffect(()=>{ setDayChunkIdx(0) }, [visibleDays, weekStart])
   // Shifts tab: working copy (draft) of shifts
   const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
   // PTO tab: working copy (draft) of PTO entries
@@ -522,6 +525,31 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 </select>
                 <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
+              {/* Chunk arrows shown only when fewer than 7 days visible */}
+              {visibleDays < 7 && (
+                <div className="inline-flex items-center gap-1 ml-1" role="group" aria-label="Scroll days">
+                  <button
+                    type="button"
+                    onClick={()=> setDayChunkIdx(i=> Math.max(0, i-1))}
+                    className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
+                    title="Earlier days"
+                    aria-label="Earlier days"
+                    disabled={dayChunkIdx<=0}
+                  >
+                    <svg aria-hidden className={dayChunkIdx<=0 ? (dark?"text-neutral-600":"text-neutral-400") : (dark?"text-neutral-300":"text-neutral-700")} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={()=> setDayChunkIdx(i=> Math.min(Math.max(1, Math.ceil(7/visibleDays))-1, i+1))}
+                    className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
+                    title="Later days"
+                    aria-label="Later days"
+                    disabled={dayChunkIdx>=Math.max(1, Math.ceil(7/visibleDays))-1}
+                  >
+                    <svg aria-hidden className={dayChunkIdx>=Math.max(1, Math.ceil(7/visibleDays))-1 ? (dark?"text-neutral-600":"text-neutral-400") : (dark?"text-neutral-300":"text-neutral-700")} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+              )}
             </div>
             {/* Toggle: show all time labels (icon button) */}
             <button
@@ -752,6 +780,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             tasks={tasks}
             calendarSegs={calendarSegs}
             visibleDays={visibleDays}
+            scrollChunk={dayChunkIdx}
             showAllTimeLabels={showAllTimeLabels}
             sortMode={sortMode}
             sortDir={sortDir}
