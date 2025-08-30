@@ -60,16 +60,18 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   },[shifts, hiddenNames])
   const [agentView, setAgentView] = useState<string>('')
   const [showViewOpts, setShowViewOpts] = useState(false)
-  // Close the small pane on outside click
-  const paneRef = React.useRef<HTMLDivElement|null>(null)
+  // Close the small pane on outside click / Escape
+  const viewOptsRef = React.useRef<HTMLDivElement|null>(null)
   useEffect(()=>{
     if(!showViewOpts) return
     const onDocClick = (e: MouseEvent)=>{
       const t = e.target as Node
-      if(paneRef.current && !paneRef.current.contains(t)) setShowViewOpts(false)
+      if(viewOptsRef.current && !viewOptsRef.current.contains(t)) setShowViewOpts(false)
     }
+    const onKey = (e: KeyboardEvent)=>{ if(e.key === 'Escape') setShowViewOpts(false) }
     document.addEventListener('mousedown', onDocClick)
-    return ()=> document.removeEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return ()=> { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey) }
   },[showViewOpts])
   // Close when switching agent/day
   useEffect(()=>{ setShowViewOpts(false) }, [agentView, dayIndex])
@@ -167,7 +169,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   <div className="flex items-center gap-2">
           {/* Agent weekly view selector (icon inside field, no text label) */}
           <div className="flex items-center gap-2">
-            <div className="relative" ref={paneRef}>
+            <div className="relative">
               <svg aria-hidden className={["pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5", dark?"text-neutral-300":"text-neutral-600"].join(' ')} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
@@ -190,42 +192,6 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
             )}
           </div>
 
-          {/* Schedule-only view options toggle (small pane under button) */}
-          {!agentView && (
-            <div className="relative">
-              <button
-                aria-label="View options"
-                title="View options"
-                onClick={()=> setShowViewOpts(v=>!v)}
-                className={["inline-flex items-center justify-center h-8 sm:h-9 w-9 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 9 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 20.91 11H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
-                </svg>
-              </button>
-              {showViewOpts && (
-                <div className={["absolute right-0 mt-2 w-64 sm:w-72 rounded-xl p-3 border shadow-lg", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
-                  <div className="text-sm font-semibold mb-2">Schedule view</div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={!!slimline}
-                      onChange={e=>{
-                        const val = e.target.checked
-                        try{ localStorage.setItem('schedule_slimline',''+(val?'1':'0')) }catch{}
-                        // We don't own the top-level state; this prop is read-only here.
-                        // Emit a custom event that App can listen for to update if desired.
-                        window.dispatchEvent(new CustomEvent('schedule:set-slimline', { detail: { value: val } }))
-                      }}
-                    />
-                    <span>Slimline: only active and on-deck; hide PTO and stale chips</span>
-                  </label>
-                </div>
-              )}
-            </div>
-          )}
-
           {!agentView && (
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
               {DAYS.map((d,i)=> {
@@ -239,6 +205,40 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                   <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls].filter(Boolean).join(' ')}>{d}</button>
                 )
               })}
+            </div>
+          )}
+
+          {/* Schedule-only view options toggle (small pane under button) — moved to the right of day selectors */}
+          {!agentView && (
+            <div className="relative" ref={viewOptsRef}>
+              <button
+                aria-label="View options"
+                title="View options"
+                onClick={()=> setShowViewOpts(v=>!v)}
+                className={["inline-flex items-center justify-center h-8 sm:h-9 w-9 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 9 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 20.91 11H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+                </svg>
+              </button>
+              {showViewOpts && (
+                <div className={["absolute right-0 mt-2 w-64 sm:w-72 rounded-xl p-3 border shadow-lg z-50", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
+                  <div className="text-sm font-semibold mb-2">Schedule view</div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!slimline}
+                      onChange={e=>{
+                        const val = e.target.checked
+                        try{ localStorage.setItem('schedule_slimline',''+(val?'1':'0')) }catch{}
+                        window.dispatchEvent(new CustomEvent('schedule:set-slimline', { detail: { value: val } }))
+                      }}
+                    />
+                    <span>Slimline: only active and on-deck; hide PTO and stale chips</span>
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </div>
