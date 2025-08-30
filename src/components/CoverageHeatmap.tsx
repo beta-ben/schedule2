@@ -20,6 +20,11 @@ export default function CoverageHeatmap({
   visibleDays?: number
   scrollChunk?: number
 }){
+  // Collapsed state (persisted)
+  const [collapsed, setCollapsed] = React.useState<boolean>(()=>{
+    try{ return localStorage.getItem('coverage_heatmap_collapsed') === '1' }catch{ return false }
+  })
+  React.useEffect(()=>{ try{ localStorage.setItem('coverage_heatmap_collapsed', collapsed ? '1' : '0') }catch{} }, [collapsed])
   // Filter to visible agents
   const visibleSet = React.useMemo(()=> new Set(visibleAgentNames), [visibleAgentNames])
   const tzShifts = React.useMemo(()=> convertShiftsToTZ(shifts, tz.offset).filter(s=> visibleSet.has(s.person)), [shifts, tz.offset, visibleSet])
@@ -82,11 +87,31 @@ export default function CoverageHeatmap({
   return (
     <div className={["sticky bottom-0 z-30", dark?"bg-neutral-950/92":"bg-white/95","backdrop-blur","border-t", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
       <div className="px-2 py-1.5">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between">
           <div className={["text-xs font-medium", dark?"text-neutral-200":"text-neutral-700"].join(' ')}>Coverage heatmap</div>
-          <div className="text-[10px] opacity-70">max {maxCount || 0}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] opacity-70">max {maxCount || 0}</div>
+            <button
+              onClick={()=> setCollapsed(v=>!v)}
+              aria-expanded={!collapsed}
+              className={["inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-200 hover:bg-neutral-800":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+              title={collapsed? 'Expand coverage heatmap' : 'Collapse coverage heatmap'}
+            >
+              <span>{collapsed? 'Expand' : 'Collapse'}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {collapsed ? (
+                  // chevron-up
+                  <polyline points="18 15 12 9 6 15"></polyline>
+                ) : (
+                  // chevron-down
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="flex items-stretch gap-1">
+        {!collapsed && (
+        <div className="flex items-stretch gap-1 mt-1">
           {/* Left spacer with mini-hour scale */}
           <div className="shrink-0" style={{ width: 44 }}>
             <div className="h-[20px]" />
@@ -132,6 +157,7 @@ export default function CoverageHeatmap({
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   )
