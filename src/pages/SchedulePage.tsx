@@ -135,7 +135,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   }
 
   return (
-    <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
+    <section className={["rounded-2xl p-2 prism-surface-1", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
         {/* Left: date (always) + live clock + tz */}
@@ -247,7 +247,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                       className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-900"].join(' ')}
                       defaultValue={(()=>{ try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : (v || 'system') }catch{ return 'system' }})()}
                       onChange={(e)=>{
-                        const val = e.target.value as 'light'|'dark'|'system'
+                        const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir'|'prism'
                         try{ localStorage.setItem('schedule_theme', val) }catch{}
                         window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
                       }}
@@ -257,6 +257,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                       <option value="dark">Dark</option>
                       <option value="night">Night</option>
                       <option value="noir">Noir</option>
+                      <option value="prism">Prism</option>
                     </select>
                   </label>
                 </div>

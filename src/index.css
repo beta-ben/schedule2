@@ -233,3 +233,122 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	background-size: 400% 100%;
 	animation: unicornShift 24s linear infinite;
 }
+
+	/* Prism: neon gradient-heavy theme on a dark canvas */
+	[data-theme='prism'] {
+		/* Global dark canvas with animated neon gradient (slightly brighter) */
+		background-color: #0B0F1F !important;
+		background-image: radial-gradient(1200px 800px at 10% 10%, rgba(168,85,247,0.35), transparent 60%),
+									radial-gradient(1000px 700px at 90% 20%, rgba(34,211,238,0.28), transparent 65%),
+									linear-gradient(135deg, #0e1222 0%, #121a2f 100%);
+		background-size: 140% 140%, 160% 160%, 100% 100%;
+		animation: prismBgPan 60s ease-in-out infinite;
+		color: #E6EAF2 !important;
+	}
+	[data-theme='prism'] body { background: transparent !important; }
+	[data-theme='prism'] input, [data-theme='prism'] select, [data-theme='prism'] button { color: inherit }
+	/* Global subtle text shadow for readability across the theme */
+	[data-theme='prism'] :where(h1,h2,h3,h4,h5,h6,p,span,small,button,label,a,li,div,th,td) {
+		text-shadow: 0 1px 2px rgba(0,0,0,0.65);
+	}
+	[data-theme='prism'] .bg-white,
+	[data-theme='prism'] .bg-neutral-50,
+	[data-theme='prism'] .bg-neutral-100,
+	[data-theme='prism'] .bg-neutral-200,
+	[data-theme='prism'] .bg-neutral-800,
+	[data-theme='prism'] .bg-neutral-900 {
+		/* Rich rainbow gradient with slow pan */
+		background-image: linear-gradient(135deg,
+			rgba(255,0,128,0.88) 0%,      /* magenta */
+			rgba(255,140,0,0.9) 12%,      /* orange */
+			rgba(255,211,0,0.9) 24%,      /* yellow */
+			rgba(72,199,116,0.9) 36%,     /* green */
+			rgba(34,211,238,0.9) 48%,     /* cyan */
+			rgba(59,130,246,0.92) 60%,    /* blue */
+			rgba(127,0,255,0.92) 72%,     /* violet */
+			rgba(255,0,128,0.9) 84%,
+			rgba(255,140,0,0.88) 100%
+		) !important;
+		background-size: 200% 200%;
+		/* Allow direction/duration overrides via CSS variables for variety */
+		animation-name: var(--prism-pan, prismPan);
+		animation-duration: var(--prism-duration, 24s);
+		animation-timing-function: ease-in-out;
+		animation-iteration-count: infinite;
+		animation-delay: var(--prism-delay, 0s);
+	}
+	[data-theme='prism'] .border,
+	[data-theme='prism'] .border-neutral-200,
+	[data-theme='prism'] .border-neutral-300,
+	[data-theme='prism'] .border-neutral-600,
+	[data-theme='prism'] .border-neutral-700,
+	[data-theme='prism'] .border-neutral-800,
+	[data-theme='prism'] .border-white { border-color: rgba(173,216,230,0.45) !important; }
+	[data-theme='prism'] .text-neutral-900,
+	[data-theme='prism'] .text-neutral-800,
+	[data-theme='prism'] .text-neutral-700,
+	[data-theme='prism'] .text-neutral-600,
+	[data-theme='prism'] .text-neutral-100,
+	[data-theme='prism'] .text-white { color: #E6EAF2 !important; }
+	[data-theme='prism'] .hover\:bg-neutral-100:hover,
+	[data-theme='prism'] .hover\:bg-neutral-800:hover { background-color: rgba(255,255,255,0.06) !important; }
+	@keyframes prismPan {
+		0% { background-position: 0% 50%; }
+		50% { background-position: 100% 50%; }
+		100% { background-position: 0% 50%; }
+	}
+	/* Alternate pan directions to diversify motion across elements */
+	@keyframes prismPanX {
+		0% { background-position: 0% 50%; }
+		50% { background-position: 100% 50%; }
+		100% { background-position: 0% 50%; }
+	}
+	@keyframes prismPanY {
+		0% { background-position: 50% 0%; }
+		50% { background-position: 50% 100%; }
+		100% { background-position: 50% 0%; }
+	}
+	@keyframes prismPanDiagRev {
+		0% { background-position: 100% 0%; }
+		50% { background-position: 0% 100%; }
+		100% { background-position: 100% 0%; }
+	}
+	@keyframes prismBgPan {
+		0% { background-position: 0% 0%, 100% 0%, 0 0; }
+		50% { background-position: 100% 50%, 0% 50%, 0 0; }
+		100% { background-position: 0% 0%, 100% 0%, 0 0; }
+	}
+	/* Stagger helpers for surfaces + distinct motion directions/durations */
+	.prism-surface-1 { --prism-delay: 0s;  --prism-pan: prismPanX;       --prism-duration: 26s; }
+	.prism-surface-2 { --prism-delay: 4s;  --prism-pan: prismPanY;       --prism-duration: 30s; }
+	.prism-surface-3 { --prism-delay: 8s;  --prism-pan: prismPanDiagRev; --prism-duration: 22s; }
+	.prism-surface-4 { --prism-delay: 12s; --prism-pan: prismPan;        --prism-duration: 28s; }
+	/* Inputs: tint native date icon neon-cyan */
+	[data-theme='prism'] input[type="date"]::-webkit-calendar-picker-indicator{
+		filter: invert(71%) sepia(97%) saturate(415%) hue-rotate(161deg) brightness(104%) contrast(97%);
+	}
+	/* Accent outlines for focus and active elements */
+	[data-theme='prism'] :focus { outline-color: rgba(99,102,241,0.65) }
+	[data-theme='prism'] .ring-1, [data-theme='prism'] .ring-2 { --tw-ring-color: rgba(99,102,241,0.55) }
+	/* Day selector current pill pop */
+	[data-theme='prism'] .bg-blue-600 {
+		background-image: linear-gradient(90deg, #a855f7, #3b82f6) !important;
+		border-color: transparent !important;
+		background-size: 200% 200%;
+		animation: prismPan 18s linear infinite;
+		animation-delay: var(--prism-btn-delay, 0s);
+	}
+	[data-theme='prism'] .text-red-600 { color: #22d3ee !important; }
+
+	/* Offset each button so adjacent ones desync their color phases */
+	[data-theme='prism'] * > button:nth-of-type(3n+1) { --prism-btn-delay: 0s }
+	[data-theme='prism'] * > button:nth-of-type(3n+2) { --prism-btn-delay: .8s }
+	[data-theme='prism'] * > button:nth-of-type(3n)   { --prism-btn-delay: 1.6s }
+
+	/* Prism chip animation (per-shift) */
+	@keyframes prismChip {
+		0% { background-position: 0% 50%; }
+		50% { background-position: 100% 50%; }
+		100% { background-position: 0% 50%; }
+	}
+

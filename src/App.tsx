@@ -49,7 +49,7 @@ export default function App(){
   const [view,setView] = useState<'schedule'|'manage'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
-  const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir">(()=>{
+  const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir"|"prism">(()=>{
     try{ return (localStorage.getItem('schedule_theme') as any) || 'system' }catch{ return 'system' }
   })
   const [dark,setDark] = useState(()=>{
@@ -65,11 +65,11 @@ export default function App(){
   useEffect(()=>{
     const handler = (e: Event)=>{
       const any = e as CustomEvent
-      const v = any?.detail?.value as 'light'|'dark'|'system'|'night'|'noir' | undefined
+  const v = any?.detail?.value as 'light'|'dark'|'system'|'night'|'noir'|'prism' | undefined
       if(!v) return
       setTheme(v)
       if(v==='light') setDark(false)
-      else if(v==='dark' || v==='night' || v==='noir') setDark(true)
+  else if(v==='dark' || v==='night' || v==='noir' || v==='prism') setDark(true)
       else if(v==='system') setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
       try{ localStorage.setItem('schedule_theme', v) }catch{}
     }
@@ -93,15 +93,16 @@ export default function App(){
   },[])
   // Effective theme: restrict management views to light/dark only
   const effectiveTheme = useMemo(()=> {
-    let t = (view==='schedule' ? theme : (dark ? 'dark' : 'light')) as 'system'|'light'|'dark'|'night'|'noir'|string
+    let t = (view==='schedule' ? theme : (dark ? 'dark' : 'light')) as 'system'|'light'|'dark'|'night'|'noir'|'prism'|string
     if(t==='unicorn') t = 'system'
-    return t as 'system'|'light'|'dark'|'night'|'noir'
+    return t as 'system'|'light'|'dark'|'night'|'noir'|'prism'
   }, [view, theme, dark])
   // Compute root classes based on effective theme
   const rootCls = useMemo(()=>{
     const base = 'min-h-screen w-full'
     if(effectiveTheme==='night') return `${base} bg-black text-red-400`
   if(effectiveTheme==='noir') return `${base} bg-black text-white`
+  if(effectiveTheme==='prism') return `${base} bg-black text-neutral-100`
     return dark? `${base} bg-neutral-950 text-neutral-100` : `${base} bg-neutral-100 text-neutral-900`
   }, [effectiveTheme, dark])
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)

@@ -842,19 +842,19 @@
     },
     {
       "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
       "day": "Wed",
       "start": "23:00",
       "end": "23:59",
-      "taskId": "support"
+      "taskId": "support",
+      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276"
     },
     {
       "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
       "day": "Thu",
       "start": "00:00",
       "end": "02:00",
-      "taskId": "support"
+      "taskId": "support",
+      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276"
     },
     {
       "person": "Patrick",
@@ -886,19 +886,19 @@
     },
     {
       "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
       "day": "Thu",
       "start": "20:00",
       "end": "23:59",
-      "taskId": "support"
+      "taskId": "support",
+      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365"
     },
     {
       "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
       "day": "Fri",
       "start": "00:00",
       "end": "02:00",
-      "taskId": "support"
+      "taskId": "support",
+      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365"
     },
     {
       "person": "Miguel",
@@ -908,7 +908,7 @@
       "taskId": "support"
     }
   ],
-  "updatedAt": "2025-08-30T21:15:08.327Z",
+  "updatedAt": "2025-08-30T21:07:21.667Z",
   "agentsIndex": {
     "andi": "7a42a505-9c4d-4ef1-b255-90382b17a276",
     "helena": "7fb24302-cce5-4d83-997e-c2e9f1a41365"

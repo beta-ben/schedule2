@@ -23,7 +23,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const contentRef = React.useRef<HTMLDivElement|null>(null)
   const [contentW, setContentW] = useState<number>(0)
   // Theme detection
-  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'>(()=>{
+  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'|'prism'>(()=>{
     try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : ((v as any) || 'system') }catch{ return 'system' }
   })
   useEffect(()=>{
@@ -307,6 +307,14 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                     {/* Unified base chip */}
                     {(() => {
                       let bgImage: string | undefined
+                      let prism = false
+                      // Prism theme: vivid animated chip gradient with person-based hue offset
+                      if(theme==='prism' && !hasPtoForDay){
+                        prism = true
+                        const hue = (H+20) % 360
+                        // Slightly darker for readability & consistency
+                        bgImage = `linear-gradient(90deg, hsl(${hue} 88% 62% / 0.78), hsl(${(hue+50)%360} 84% 58% / 0.74), hsl(${(hue+100)%360} 82% 62% / 0.78))`
+                      }
                       if(hasPtoForDay){
                         const stripes = `repeating-linear-gradient(135deg, ${dark?'rgba(0,0,0,0.40)':'rgba(0,0,0,0.22)'} 0 8px, transparent 8px 16px)`
                         const darken  = `linear-gradient(0deg, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.22)'} 0%, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.22)'} 100%)`
@@ -321,6 +329,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         boxShadow: `inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : ''),
                         borderRadius: CHIP_RADIUS,
                         ...(bgImage ? { backgroundImage: bgImage } : {}),
+                        ...(prism ? { backgroundColor: 'rgba(0,0,0,0.08)', backgroundBlendMode: 'multiply' } : {}),
+                        ...(prism ? { backgroundSize: '300% 100%', animation: 'prismChip 10s linear infinite', animationDelay: `${(H%60)/30}s` } : {}),
                       }
                       return <div className="absolute" style={style} />
                     })()}
@@ -369,8 +379,18 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const chipPx = dur * pxPerMin
                       const SHOW_MIN_PX = 60
                       const show = chipPx >= SHOW_MIN_PX
+                      const prismText = theme==='prism' && !hasPtoForDay
                       return (
-                        <div className={["absolute flex items-center justify-center px-2 truncate pointer-events-none", hasPtoForDay ? (dark?"text-neutral-500":"text-neutral-500") : ""].join(' ')} style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX }}>
+                        <div
+                          className={[
+                            "absolute flex items-center justify-center px-2 truncate pointer-events-none",
+                            hasPtoForDay ? (dark?"text-neutral-500":"text-neutral-500") : (prismText?"text-white":"")
+                          ].join(' ')}
+                          style={{
+                            left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX,
+                            ...(prismText ? { textShadow: '0 1px 1px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.35)' } : {})
+                          }}
+                        >
                           {show ? ((person||'').split(' ')[0] || person) : ''}
                         </div>
                       )

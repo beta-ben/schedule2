@@ -53,7 +53,6 @@ export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
     orderedPeople.forEach((p,i)=>{ const h=Math.round((i/n)*360); m.set(p,h) })
     return m
   },[orderedPeople])
-
   const active = useMemo(()=>{
     // Compute active shifts for the current minute
     const recs = shifts.filter(s=>{
@@ -89,7 +88,7 @@ export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
   }
 
   return (
-    <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
+    <section className={["rounded-2xl p-3 prism-surface-2 border", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300 shadow-sm"].join(' ')}>
       <div className="flex items-baseline justify-between mb-2">
         <h2 className="text-base font-semibold">
           On deck

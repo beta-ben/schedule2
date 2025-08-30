@@ -1,231 +1,5 @@
 {
   "schemaVersion": 2,
-  "agents": [
-    {
-      "id": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-      "firstName": "Andi",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "398d82ac-3506-4fbc-a267-7cb348e5b0f0",
-      "firstName": "Andres",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "8b3ddefa-f7f8-45e6-8fc0-21293c99e281",
-      "firstName": "Avery",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "b8da76f3-2a97-4e54-bc97-c16ce69dc2f4",
-      "firstName": "Ben",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "ea362e9d-668a-4a2b-9aad-84c7b12d25c3",
-      "firstName": "Brandon",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "20f1ac06-aeae-40cf-a525-b37a7c4bb542",
-      "firstName": "Cameron",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "1143b226-1ebe-4dc5-bc7b-b5ad87e72863",
-      "firstName": "Charlene",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "d5a37e73-78d8-440e-9358-70a10e5dd18c",
-      "firstName": "Chase",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "903c93d7-0faa-459c-84b6-7e881c1a0f72",
-      "firstName": "Cheri",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "32929afb-2e66-4259-9ed2-5ce218b85eb6",
-      "firstName": "Chris",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "7ccea977-1ce0-4a66-9f4d-35bbc1c80f66",
-      "firstName": "Ethan",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
-      "firstName": "Helena",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "483a8ecb-a515-4730-a32e-4599ec32dd75",
-      "firstName": "Ian",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "451ffbcd-abb1-4992-8269-e84216c667e1",
-      "firstName": "Josh",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "a313d7ef-e8d1-4630-a6cf-af1d191df7d6",
-      "firstName": "Kenzie",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "ba2627be-e0de-4993-b47b-d01e70eb5327",
-      "firstName": "Lillian",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "e4a72d1f-0b34-4ef3-b8a5-1619da8e4003",
-      "firstName": "Lindsay",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "6dd0c396-ca8b-404b-a7d2-83a83a04a71d",
-      "firstName": "Mali",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "0740ca45-f2fc-40e6-a3b4-4f5a7413205c",
-      "firstName": "Miguel",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "f42779b8-ee26-4772-a7df-17265b2cd5cf",
-      "firstName": "Mike",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "67caa96c-de4d-425f-a2f7-1d172a7d81ec",
-      "firstName": "Patrick",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "d296fbf8-b589-4dff-a2fa-209e5c30cba2",
-      "firstName": "Peyton",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "fca5649c-2281-4f4a-bf85-8b66314c1157",
-      "firstName": "Richard",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "1e2818cc-4573-435e-9d63-c360e4480853",
-      "firstName": "Rocio",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "5083fd69-5068-4066-b3fb-21a8a94bd782",
-      "firstName": "Sam",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "abbb9141-52b3-4e0f-82d7-5ec676a0fc1b",
-      "firstName": "Sampson",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "c201ff6c-61bd-4aac-b56e-a4878a34a4ea",
-      "firstName": "Sierra",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "ecddf99d-2f73-4bb2-a362-91e89eb2d916",
-      "firstName": "Soroush",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "326383d6-f081-4a3d-bdf4-544974e33dcf",
-      "firstName": "Tabitha",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "6837bf48-c582-4ed0-864a-d58fb190924f",
-      "firstName": "Tanner",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "2f2881cc-c6da-41f7-a704-7cb780ce558e",
-      "firstName": "VIctor",
-      "lastName": "",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    },
-    {
-      "id": "73902da2-9b86-40c2-b0a9-84d2a63375ea",
-      "firstName": "Test",
-      "lastName": "Agent",
-      "tzId": "America/Los_Angeles",
-      "hidden": false
-    }
-  ],
   "shifts": [
     {
       "id": "205d5c9d-c1a8-424e-9668-ba759259885e",
@@ -626,96 +400,6 @@
       "start": "10:00",
       "end": "18:30",
       "endDay": "Fri"
-    },
-    {
-      "id": "64796d9d-0f79-476b-81b0-fdaa2919851d",
-      "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-      "day": "Mon",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Mon"
-    },
-    {
-      "id": "6732bb36-4a3b-4ef6-9066-1b93f239a562",
-      "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-      "day": "Tue",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Tue"
-    },
-    {
-      "id": "9f1ce1a7-81fa-40dd-8697-287cf561443e",
-      "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-      "day": "Wed",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Wed"
-    },
-    {
-      "id": "966f9fd3-61f5-4ffe-8d1f-2a2c26872164",
-      "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-      "day": "Thu",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Thu"
-    },
-    {
-      "id": "abe42750-24b6-4de9-ae76-8fa82c2743bf",
-      "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-      "day": "Fri",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Fri"
-    },
-    {
-      "id": "f94c2334-8e03-4911-9997-bdf415e4ff02",
-      "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
-      "day": "Mon",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Mon"
-    },
-    {
-      "id": "b2f3f7ad-69da-4607-bcf4-67a2c7538b51",
-      "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
-      "day": "Tue",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Tue"
-    },
-    {
-      "id": "d2383bea-4f94-430e-a681-856c39473da4",
-      "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
-      "day": "Wed",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Wed"
-    },
-    {
-      "id": "c63beb07-1d85-4231-aa72-0141fbff8f69",
-      "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
-      "day": "Thu",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Thu"
-    },
-    {
-      "id": "0304f649-b53e-42ee-9f23-dc548c89c893",
-      "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
-      "day": "Fri",
-      "start": "08:00",
-      "end": "16:30",
-      "endDay": "Fri"
     }
   ],
   "pto": [
@@ -842,7 +526,6 @@
     },
     {
       "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
       "day": "Wed",
       "start": "23:00",
       "end": "23:59",
@@ -850,7 +533,6 @@
     },
     {
       "person": "Andi",
-      "agentId": "7a42a505-9c4d-4ef1-b255-90382b17a276",
       "day": "Thu",
       "start": "00:00",
       "end": "02:00",
@@ -886,7 +568,6 @@
     },
     {
       "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
       "day": "Thu",
       "start": "20:00",
       "end": "23:59",
@@ -894,7 +575,6 @@
     },
     {
       "person": "Helena",
-      "agentId": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
       "day": "Fri",
       "start": "00:00",
       "end": "02:00",
@@ -908,9 +588,232 @@
       "taskId": "support"
     }
   ],
-  "updatedAt": "2025-08-30T21:15:08.327Z",
-  "agentsIndex": {
-    "andi": "7a42a505-9c4d-4ef1-b255-90382b17a276",
-    "helena": "7fb24302-cce5-4d83-997e-c2e9f1a41365"
-  }
+  "updatedAt": "2025-08-29T01:14:14.024Z",
+  "agentsIndex": {},
+  "agents": [
+    {
+      "id": "7a42a505-9c4d-4ef1-b255-90382b17a276",
+      "firstName": "Andi",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "398d82ac-3506-4fbc-a267-7cb348e5b0f0",
+      "firstName": "Andres",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "8b3ddefa-f7f8-45e6-8fc0-21293c99e281",
+      "firstName": "Avery",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "b8da76f3-2a97-4e54-bc97-c16ce69dc2f4",
+      "firstName": "Ben",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "ea362e9d-668a-4a2b-9aad-84c7b12d25c3",
+      "firstName": "Brandon",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "20f1ac06-aeae-40cf-a525-b37a7c4bb542",
+      "firstName": "Cameron",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "1143b226-1ebe-4dc5-bc7b-b5ad87e72863",
+      "firstName": "Charlene",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "d5a37e73-78d8-440e-9358-70a10e5dd18c",
+      "firstName": "Chase",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "903c93d7-0faa-459c-84b6-7e881c1a0f72",
+      "firstName": "Cheri",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "32929afb-2e66-4259-9ed2-5ce218b85eb6",
+      "firstName": "Chris",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "7ccea977-1ce0-4a66-9f4d-35bbc1c80f66",
+      "firstName": "Ethan",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "7fb24302-cce5-4d83-997e-c2e9f1a41365",
+      "firstName": "Helena",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "483a8ecb-a515-4730-a32e-4599ec32dd75",
+      "firstName": "Ian",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "451ffbcd-abb1-4992-8269-e84216c667e1",
+      "firstName": "Josh",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "a313d7ef-e8d1-4630-a6cf-af1d191df7d6",
+      "firstName": "Kenzie",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "ba2627be-e0de-4993-b47b-d01e70eb5327",
+      "firstName": "Lillian",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "e4a72d1f-0b34-4ef3-b8a5-1619da8e4003",
+      "firstName": "Lindsay",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "6dd0c396-ca8b-404b-a7d2-83a83a04a71d",
+      "firstName": "Mali",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "0740ca45-f2fc-40e6-a3b4-4f5a7413205c",
+      "firstName": "Miguel",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "f42779b8-ee26-4772-a7df-17265b2cd5cf",
+      "firstName": "Mike",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "67caa96c-de4d-425f-a2f7-1d172a7d81ec",
+      "firstName": "Patrick",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "d296fbf8-b589-4dff-a2fa-209e5c30cba2",
+      "firstName": "Peyton",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "fca5649c-2281-4f4a-bf85-8b66314c1157",
+      "firstName": "Richard",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "1e2818cc-4573-435e-9d63-c360e4480853",
+      "firstName": "Rocio",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "5083fd69-5068-4066-b3fb-21a8a94bd782",
+      "firstName": "Sam",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "abbb9141-52b3-4e0f-82d7-5ec676a0fc1b",
+      "firstName": "Sampson",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "c201ff6c-61bd-4aac-b56e-a4878a34a4ea",
+      "firstName": "Sierra",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "ecddf99d-2f73-4bb2-a362-91e89eb2d916",
+      "firstName": "Soroush",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "326383d6-f081-4a3d-bdf4-544974e33dcf",
+      "firstName": "Tabitha",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "6837bf48-c582-4ed0-864a-d58fb190924f",
+      "firstName": "Tanner",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "2f2881cc-c6da-41f7-a704-7cb780ce558e",
+      "firstName": "VIctor",
+      "lastName": "",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    },
+    {
+      "id": "73902da2-9b86-40c2-b0a9-84d2a63375ea",
+      "firstName": "Test",
+      "lastName": "Agent",
+      "tzId": "America/Los_Angeles",
+      "hidden": false
+    }
+  ]
 }

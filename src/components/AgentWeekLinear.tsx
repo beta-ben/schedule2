@@ -69,8 +69,8 @@ export default function AgentWeekLinear({
   // When true, suppress outer time tags that would overlap neighboring tags
   avoidLabelOverlap?: boolean
 }){
-  // Detect theme from root [data-theme] for Night/Noir adjustments
-  const theme: 'system'|'light'|'dark'|'night'|'noir' = (()=>{
+  // Detect theme from root [data-theme] for Night/Noir/Prism adjustments
+  const theme: 'system'|'light'|'dark'|'night'|'noir'|'prism' = (()=>{
     try{
       const el = document.querySelector('[data-theme]') as HTMLElement | null
       const v = (el?.getAttribute('data-theme') as any) || 'system'
@@ -79,6 +79,7 @@ export default function AgentWeekLinear({
   })()
   const isNight = theme==='night'
   const isNoir = theme==='noir'
+  const isPrism = theme==='prism'
   // Simple string hash to 0..359 for per-chip hue variance
   function hashStr(s: string) { 
     let h = 0; 
@@ -443,10 +444,10 @@ export default function AgentWeekLinear({
                     : (selectedIds as string[]).includes(g.id)
                 )
                 // Use high-contrast hover ring; when framed (overflow-hidden), use inset to avoid clipping top/bottom
-                const ringHover = isHover
+        const ringHover = isHover
                   ? (framed
                       ? (isNight || isNoir ? 'inset 0 0 0 2px rgba(255,255,255,0.35)' : (dark ? 'inset 0 0 0 2px rgba(255,255,255,0.85)' : 'inset 0 0 0 2px rgba(0,0,0,0.7)'))
-                      : (isNight || isNoir ? '0 0 0 2px rgba(255,255,255,0.35)' : (dark ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 0 0 2px rgba(0,0,0,0.7)')))
+          : (isNight || isNoir ? '0 0 0 2px rgba(255,255,255,0.35)' : (dark ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 0 0 2px rgba(0,0,0,0.7)')))
                   : ''
                 const ringSelected = isSel
                   ? (isNight
@@ -514,13 +515,38 @@ export default function AgentWeekLinear({
                   <div
                     key={partKey}
           className={"absolute inset-y-0"}
-                    style={{
-                      left: `${leftPct}%`,
-                      width: `${widthPct}%`,
-  background: chipBg,
-                      // No borders for dense look; rely on hover outline only
-                      boxShadow: boxShadow || undefined,
-                    }}
+                    style={(function(){
+                      const base: React.CSSProperties = {
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`,
+                        // No borders for dense look; rely on hover outline only
+                        boxShadow: boxShadow || undefined,
+                      }
+                      if(isPrism){
+                        // Animated darker gradient with multiply for readability, stagger per group
+                        const h = hashStr(g.id)
+                        const a = 0.42 // alpha for chip bands
+                        const s = 88
+                        const l = 55
+                        base.backgroundColor = '#0a0a0a'
+                        base.backgroundImage = `linear-gradient(90deg,
+                          hsla(${(h+330)%360}, ${s}%, ${l}%, ${a}),
+                          hsla(${(h+15)%360},  ${s}%, ${l}%, ${a}),
+                          hsla(${(h+60)%360},  ${s}%, ${l}%, ${a}),
+                          hsla(${(h+120)%360}, ${s}%, ${l}%, ${a}),
+                          hsla(${(h+180)%360}, ${s}%, ${l}%, ${a}),
+                          hsla(${(h+240)%360}, ${s}%, ${l}%, ${a}),
+                          hsla(${(h+300)%360}, ${s}%, ${l}%, ${a})
+                        )`
+                        base.backgroundBlendMode = 'multiply'
+                        base.backgroundSize = '300% 100%'
+                        base.animation = 'prismChip 12s ease-in-out infinite'
+                        base.animationDelay = `${-((h % 7) * 0.33)}s`
+                      }else{
+                        ;(base as any).background = chipBg
+                      }
+                      return base
+                    })()}
                     title={(titlePrefix ? `${titlePrefix} • ${g.title}` : g.title) + (tooltipLines.length? `\n\nPostures:\n${tooltipLines.join('\n')}`:'')}
                     onMouseDown={draggable ? (e)=>beginSingleDrag(g.id, e) : undefined}
                     onMouseEnter={()=>{ setHoverGroupId(g.id); setHoverBand(false) }}
