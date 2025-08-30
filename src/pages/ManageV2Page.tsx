@@ -32,8 +32,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   const [sortMode, setSortMode] = React.useState<'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'>('start')
   const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc')
-  // Shifts tab: option to include hidden agents (default off)
-  const [includeHiddenAgents, setIncludeHiddenAgents] = React.useState(false)
+  // Shifts tab: option to include hidden agents (default off, persisted)
+  const INCLUDE_HIDDEN_KEY = React.useMemo(()=> `schedule2.v2.shifts.includeHidden.${weekStart}.${tz.id}`, [weekStart, tz.id])
+  const [includeHiddenAgents, setIncludeHiddenAgents] = React.useState<boolean>(()=>{
+    try{ const v = localStorage.getItem(INCLUDE_HIDDEN_KEY); return v ? v==='1' : false }catch{ return false }
+  })
+  React.useEffect(()=>{ try{ localStorage.setItem(INCLUDE_HIDDEN_KEY, includeHiddenAgents ? '1':'0') }catch{} }, [includeHiddenAgents, INCLUDE_HIDDEN_KEY])
   // Shifts tab: number of visible days (1-7)
   const DAYS_VISIBLE_KEY = React.useMemo(()=> `schedule2.v2.shifts.daysVisible.${weekStart}.${tz.id}`, [weekStart, tz.id])
   const [visibleDays, setVisibleDays] = React.useState<number>(()=>{

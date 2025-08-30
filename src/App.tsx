@@ -275,7 +275,24 @@ export default function App(){
       cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()}) 
     },600); 
     return ()=>clearTimeout(t) 
-  },[shifts,pto,calendarSegs,agentsV2,loadedFromCloud,canEdit,draftActive])
+  },[shifts,pto,calendarSegs,loadedFromCloud,canEdit,draftActive])
+
+  // Persist agent metadata (including hidden flags) even when a draft is active.
+  // This lets the Hide/Show Agent toggle reflect across devices immediately without waiting for a draft publish.
+  useEffect(()=>{
+    if(!loadedFromCloud || !canEdit) return
+    const t = setTimeout(()=>{
+      // Post only agents alongside the current live schedule snapshot to avoid modifying live draft data.
+      cloudPost({
+        shifts,
+        pto,
+        calendarSegs,
+        agents: agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden })),
+        updatedAt: new Date().toISOString()
+      })
+    }, 600)
+    return ()=> clearTimeout(t)
+  }, [agentsV2, loadedFromCloud, canEdit])
 
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   // Use refs to avoid creating a render loop when setting state inside this effect.
