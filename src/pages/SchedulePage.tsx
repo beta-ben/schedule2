@@ -139,7 +139,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
         {/* Left: large date (if not today) + live clock + tz */}
-        <div className="flex items-end gap-3 pl-2 order-1">
+  <div className="flex items-end gap-3 pl-2 order-1 unicorn-header">
           {/* Show date only when a non-today day is selected */}
           {fmtNice(selectedDate) !== fmtNice(parseYMD(nowInTZ(tz.id).ymd)) && (
             <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
@@ -189,7 +189,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
           </div>
 
           {!agentView && (
-            <div className="overflow-x-auto no-scrollbar max-w-full">
+            <div className="overflow-x-auto no-scrollbar max-w-full unicorn-anim-bg">
               <div className="inline-flex gap-1.5 sm:gap-2 whitespace-nowrap pr-1">
               {DAYS.map((d,i)=> {
                 const isToday = d === todayKey
@@ -199,7 +199,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                   : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")
                 const todayCls = isToday ? (dark?"text-red-400":"text-red-600") : ""
                 return (
-                  <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls].filter(Boolean).join(' ')}>{d}</button>
+                  <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls, 'unicorn-anim-bg'].filter(Boolean).join(' ')}>{d}</button>
                 )
               })}
               </div>
