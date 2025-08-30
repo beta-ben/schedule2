@@ -90,14 +90,16 @@ export default function App(){
       else if((mq as any).removeListener) (mq as any).removeListener(onChange)
     }
   },[])
-  // Compute root classes based on theme
+  // Effective theme: restrict management views to light/dark only
+  const effectiveTheme = useMemo(()=> (view==='schedule' ? theme : (dark ? 'dark' : 'light')), [view, theme, dark])
+  // Compute root classes based on effective theme
   const rootCls = useMemo(()=>{
     const base = 'min-h-screen w-full'
-    if(theme==='night') return `${base} bg-black text-red-400`
-    if(theme==='noir') return `${base} bg-black text-white`
-    if(theme==='unicorn') return `${base} text-white theme-unicorn`
+    if(effectiveTheme==='night') return `${base} bg-black text-red-400`
+    if(effectiveTheme==='noir') return `${base} bg-black text-white`
+    if(effectiveTheme==='unicorn') return `${base} text-white theme-unicorn`
     return dark? `${base} bg-neutral-950 text-neutral-100` : `${base} bg-neutral-100 text-neutral-900`
-  }, [theme, dark])
+  }, [effectiveTheme, dark])
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
@@ -443,7 +445,7 @@ export default function App(){
 
   return (
     <ErrorCatcher dark={dark}>
-      <div className={rootCls} data-theme={theme}>
+  <div className={rootCls} data-theme={effectiveTheme}>
         <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
           <TopBar
           dark={dark} setDark={setDark}

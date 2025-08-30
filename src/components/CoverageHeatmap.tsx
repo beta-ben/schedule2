@@ -51,11 +51,11 @@ export default function CoverageHeatmap({
   const colorFor = (v:number)=>{
     if(maxCount<=0) return dark? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
     const t = v / maxCount
-    // Use higher contrast: green->yellow->red ramp
+    // Black -> Red -> Yellow ramp
     const ramp = [
-      [34,197,94],   // green-500
-      [250,204,21],  // yellow-400
+      [0,0,0],       // black
       [239,68,68],   // red-500
+      [250,204,21],  // yellow-400
     ]
     const seg = t<=0.5 ? 0 : 1
     const lt = t<=0.5 ? (t/0.5) : ((t-0.5)/0.5)
@@ -87,28 +87,23 @@ export default function CoverageHeatmap({
   return (
     <div className={["sticky bottom-0 z-30", dark?"bg-neutral-950/92":"bg-white/95","backdrop-blur","border-t", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
       <div className="px-2 py-1.5">
-        <div className="flex items-center justify-between">
-          <div className={["text-xs font-medium", dark?"text-neutral-200":"text-neutral-700"].join(' ')}>Coverage heatmap</div>
-          <div className="flex items-center gap-2">
-            <div className="text-[10px] opacity-70">max {maxCount || 0}</div>
-            <button
-              onClick={()=> setCollapsed(v=>!v)}
-              aria-expanded={!collapsed}
-              className={["inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-200 hover:bg-neutral-800":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
-              title={collapsed? 'Expand coverage heatmap' : 'Collapse coverage heatmap'}
-            >
-              <span>{collapsed? 'Expand' : 'Collapse'}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                {collapsed ? (
-                  // chevron-up
-                  <polyline points="18 15 12 9 6 15"></polyline>
-                ) : (
-                  // chevron-down
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                )}
-              </svg>
-            </button>
-          </div>
+        <div className="relative h-6">
+          <div className={["absolute inset-0 flex items-center justify-center text-xs font-medium", dark?"text-neutral-200":"text-neutral-700"].join(' ')}>Coverage heatmap</div>
+          <button
+            onClick={()=> setCollapsed(v=>!v)}
+            aria-expanded={!collapsed}
+            className={["absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 inline-flex items-center justify-center w-6 h-6 rounded-full border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200 hover:bg-neutral-800":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+            title={collapsed? 'Expand' : 'Collapse'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {collapsed ? (
+                <polyline points="18 15 12 9 6 15"></polyline>
+              ) : (
+                <polyline points="6 9 12 15 18 9"></polyline>
+              )}
+            </svg>
+          </button>
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] opacity-70">max {maxCount || 0}</div>
         </div>
         {!collapsed && (
         <div className="flex items-stretch gap-1 mt-1">
