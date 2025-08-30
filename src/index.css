@@ -37,6 +37,20 @@ input[type="time"]::-webkit-calendar-picker-indicator{
 input[type="time"]{ padding-right: 2.25rem; }
 /* On Firefox, keep default icon; avoid WebKit-specific rules */
 
+/* Date input: ensure native calendar icon tints appropriately by theme */
+input[type="date"]::-webkit-calendar-picker-indicator{
+	opacity: 1; /* match time input behavior */
+}
+[data-theme='night'] input[type="date"]::-webkit-calendar-picker-indicator{
+	/* Approximate Tailwind red-500 via filter; keeps native picker UX */
+	filter: invert(36%) sepia(78%) saturate(2561%) hue-rotate(344deg) brightness(96%) contrast(96%);
+}
+[data-theme='noir'] input[type="date"]::-webkit-calendar-picker-indicator{
+	/* High-contrast white for strict noir */
+	filter: invert(100%);
+	opacity: 0.9;
+}
+
 /* THEME OVERRIDES */
 /* Night: fully black background, deep red text and accents */
 [data-theme='night'] {

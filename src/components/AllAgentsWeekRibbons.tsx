@@ -46,6 +46,10 @@ export default function AllAgentsWeekRibbons({
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
 }){
+  // Hover state for global time indicator (across all agents)
+  const [hoverX, setHoverX] = React.useState<number|null>(null)
+  const [hoverActive, setHoverActive] = React.useState(false)
+  const scrollerRef = React.useRef<HTMLDivElement|null>(null)
   // Dynamic name column width to fit full names without excessive truncation
   const [nameColPx, setNameColPx] = React.useState<number>(160)
   React.useEffect(()=>{
@@ -176,7 +180,26 @@ export default function AllAgentsWeekRibbons({
   const daysVisible = Math.min(7, Math.max(1, visibleDays || 7))
   const scaleWidthPct = (7 / daysVisible) * 100
   const BAND_H = 28 // keep in sync with AgentWeekLinear default unless overridden
-  const scrollerRef = React.useRef<HTMLDivElement|null>(null)
+  // Compute on-deck count for a particular minute within the week
+  const tzShifts = useMemo(()=> convertShiftsToTZ(shifts, tz.offset), [shifts, tz.offset])
+  const onDeckAt = (absMin:number)=>{
+    let count = 0
+    for(const s of tzShifts){
+      const sd = DAYS.indexOf(s.day as any)
+      if(sd<0) continue
+      const sAbs = sd*1440 + toMin(s.start)
+      let eAbs = (DAYS.indexOf(((s as any).endDay||s.day) as any) < 0 ? sd : DAYS.indexOf(((s as any).endDay||s.day) as any))*1440 + toMin(s.end)
+      if(eAbs <= sAbs) eAbs += 1440
+      const a = ((sAbs % (7*1440)) + 7*1440) % (7*1440)
+      const b = ((eAbs % (7*1440)) + 7*1440) % (7*1440)
+      // Handle wrap by checking both [a,b) and [a, b+T) windows
+      const T = 7*1440
+      const within = (m:number, L:number, R:number)=> m>=L && m<R
+      if(a < b){ if(within(absMin, a, b)) count++ }
+      else { if(within(absMin, a, T) || within(absMin, 0, b)) count++ }
+    }
+    return count
+  }
 
   // Programmatic chunk scroll when visibleDays < 7
   React.useEffect(()=>{
@@ -204,7 +227,22 @@ export default function AllAgentsWeekRibbons({
           ))}
         </div>
         {/* Right column: single synchronized horizontal scroller containing header labels and ribbons */}
-  <div ref={scrollerRef} className="flex-1 overflow-x-auto no-scrollbar">
+        <div
+          ref={scrollerRef}
+          className="flex-1 overflow-x-auto no-scrollbar relative"
+          onMouseLeave={()=>{ setHoverActive(false); setHoverX(null) }}
+          onMouseMove={(e)=>{
+            const host = scrollerRef.current
+            if(!host) return
+            const inner = host.firstElementChild as HTMLElement | null
+            if(!inner) return
+            const rect = inner.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            if(x < 0 || x > rect.width){ setHoverActive(false); setHoverX(null); return }
+            setHoverActive(true)
+            setHoverX(x)
+          }}
+        >
           <div style={{ width: `${scaleWidthPct}%` }}>
             {/* Top day labels aligned to ribbons */}
             <div className="relative h-7">
@@ -217,6 +255,25 @@ export default function AllAgentsWeekRibbons({
                   </div>
                 )
               })}
+              {/* Global hover time indicator line + label under header */}
+              {hoverActive && hoverX!=null && (
+                <>
+                  <div className="absolute inset-y-0" style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }} />
+                  <div className={["absolute -translate-x-1/2 top-full mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
+                    {/* time and count computed below in a render-safe way */}
+                    {(()=>{
+                      const inner = scrollerRef.current?.firstElementChild as HTMLElement | null
+                      const widthPx = inner?.getBoundingClientRect().width || 1
+                      const totalMins = 7*1440
+                      const absMin = Math.max(0, Math.min(totalMins-1, Math.round((hoverX/widthPx) * totalMins)))
+                      const hh = Math.floor((absMin%1440)/60).toString().padStart(2,'0')
+                      const mm = (absMin%60).toString().padStart(2,'0')
+                      const count = onDeckAt(absMin)
+                      return `${hh}:${mm} • ${count} on deck`
+                    })()}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Ribbons list */}

@@ -445,10 +445,16 @@ export default function AgentWeekLinear({
                 // Use high-contrast hover ring; when framed (overflow-hidden), use inset to avoid clipping top/bottom
                 const ringHover = isHover
                   ? (framed
-                      ? (dark ? 'inset 0 0 0 2px rgba(255,255,255,0.85)' : 'inset 0 0 0 2px rgba(0,0,0,0.7)')
-                      : (dark ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 0 0 2px rgba(0,0,0,0.7)'))
+                      ? (isNight || isNoir ? 'inset 0 0 0 2px rgba(255,255,255,0.35)' : (dark ? 'inset 0 0 0 2px rgba(255,255,255,0.85)' : 'inset 0 0 0 2px rgba(0,0,0,0.7)'))
+                      : (isNight || isNoir ? '0 0 0 2px rgba(255,255,255,0.35)' : (dark ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 0 0 2px rgba(0,0,0,0.7)')))
                   : ''
-                const ringSelected = isSel ? (dark? '0 0 0 2px rgba(234,179,8,0.95)':'0 0 0 2px rgba(234,179,8,0.95)') : ''
+                const ringSelected = isSel
+                  ? (isNight
+                      ? '0 0 0 2px rgba(239,68,68,0.65)'
+                      : isNoir
+                        ? '0 0 0 2px rgba(255,255,255,0.45)'
+                        : (dark? '0 0 0 2px rgba(234,179,8,0.95)':'0 0 0 2px rgba(234,179,8,0.95)'))
+                  : ''
                 const boxShadow = [ringHover, ringSelected].filter(Boolean).join(', ')
                 const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || (showEdgeTimeTagsForHighlights && isHi) || isSel
                 // Collision avoidance for outer labels when requested
@@ -511,10 +517,7 @@ export default function AgentWeekLinear({
                     style={{
                       left: `${leftPct}%`,
                       width: `${widthPct}%`,
-      // Per-chip hue shifts for Unicorn theme; fallback to computed bg otherwise
-      background: chipBg,
-      // Provide a deterministic hue per group id for wild rainbow variety
-      ['--h' as any]: String(Math.abs(hashStr(g.id)) % 360),
+  background: chipBg,
                       // No borders for dense look; rely on hover outline only
                       boxShadow: boxShadow || undefined,
                     }}
@@ -528,7 +531,7 @@ export default function AgentWeekLinear({
                       onToggleSelect?.(g.id)
                     }}
                   >
-                    {/* Posture overlays: solid fills in posture color, no labels */}
+                    {/* Posture overlays: subtle and on-theme */}
                     {seg.sub && tasks && seg.sub.map((sub, idx)=>{
                       // Absolute (week) minutes after drag
                       const a0 = newStart + sub.stOff
@@ -540,12 +543,17 @@ export default function AgentWeekLinear({
                       const leftInPart = ((a - pLeft) / (pRight - pLeft)) * 100
                       const widthInPart = ((b - a) / (pRight - pLeft)) * 100
                       const t = (tasks||[]).find(t=>t.id===sub.taskId)
-                      const color = t?.color || (dark? 'rgba(59,130,246,0.85)':'rgba(59,130,246,0.85)')
+                      // Subtle overlay: Night uses deep red tint, Noir uses faint white, others use task color
+                      const color = isNight
+                        ? 'rgba(239,68,68,0.28)'
+                        : isNoir
+                          ? 'rgba(255,255,255,0.16)'
+                          : (t?.color || (dark? 'rgba(59,130,246,0.85)':'rgba(59,130,246,0.85)'))
                       return (
                         <div
                           key={`${partKey}-seg-${idx}`}
                           className="absolute inset-y-0 pointer-events-none"
-                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: color, opacity: 0.9 }}
+                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: color, opacity: isNight ? 0.35 : isNoir ? 0.25 : 0.9 }}
                           aria-hidden
                         />
                       )
@@ -612,7 +620,10 @@ export default function AgentWeekLinear({
             <div className={["absolute -translate-x-1/2 inset-y-0", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%`, width: 1 }} />
           )}
           {showNow && showNowLabel && (
-            <div className={["absolute -translate-x-1/2 -top-5 px-1.5 py-0.5 rounded text-white", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_TAG_F }}>
+            <div
+              className={["absolute -translate-x-1/2 top-full mt-1 px-1.5 py-0.5 rounded text-white whitespace-nowrap", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
+              style={{ left: `${nowLeft}%`, fontSize: NOW_TAG_F }}
+            >
               {minToHHMM(now.minutes)}
             </div>
           )}

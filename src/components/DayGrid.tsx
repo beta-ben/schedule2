@@ -224,13 +224,13 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 let baseColor = hasPtoForDay ? grayBg : (dark?darkbg:light)
                 let baseBorder = hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`)
                 if(isNight){
-                  // Night theme: chips go fully black; keep the red border for contrast
+                  // Night theme: chips go fully black; use a muted deep-red border
                   baseColor = '#000'
-                  baseBorder = 'rgba(239,68,68,0.9)'
+                  baseBorder = 'rgba(239,68,68,0.55)'
                 } else if(isNoir){
-                  // Noir theme: chips go fully black; keep white border for contrast
+                  // Noir theme: chips go fully black; use a muted light border
                   baseColor = '#000'
-                  baseBorder = 'rgba(255,255,255,0.7)'
+                  baseBorder = 'rgba(255,255,255,0.35)'
                 }
                 const segs = (Array.isArray(s.segments)? s.segments: []).slice().sort((a,b)=>a.startOffsetMin-b.startOffsetMin)
                 const chipTitleLines = segs.map(seg=>{
@@ -292,8 +292,14 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const segW = ((enOff - stOff)/totalMins)*100
                       const t = taskMap.get(seg.taskId)
                       const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
-                      // More subtle posture stripes
-                      const stripes = `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
+                      // Subtle posture overlays; for Night/Noir use on-theme stripes
+                      const stripes = (
+                        isNight
+                          ? 'repeating-linear-gradient(135deg, rgba(239,68,68,0.28) 0 6px, transparent 6px 14px)'
+                          : isNoir
+                            ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 6px, transparent 6px 14px)'
+                            : `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
+                      )
                       const style: React.CSSProperties = {
                         left: `${segLeft}%`,
                         width: `${segW}%`,
@@ -303,7 +309,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         backgroundImage: stripes,
                         pointerEvents: 'none',
                         borderRadius: CHIP_RADIUS,
-                        opacity: 0.45,
+                        opacity: isNight ? 0.35 : isNoir ? 0.25 : 0.45,
                       }
                       return <div key={seg.id} className="absolute" style={style} />
                     })}
