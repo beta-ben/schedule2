@@ -36,3 +36,87 @@ input[type="time"]::-webkit-calendar-picker-indicator{
 /* Reserve space so text doesn't sit under the native icon */
 input[type="time"]{ padding-right: 2.25rem; }
 /* On Firefox, keep default icon; avoid WebKit-specific rules */
+
+/* THEME OVERRIDES */
+/* Night: fully black background, deep red text and accents */
+[data-theme='night'] {
+	background-color: #000 !important;
+	color: #ef4444;
+}
+[data-theme='night'] .bg-white,
+[data-theme='night'] .bg-neutral-50,
+[data-theme='night'] .bg-neutral-100,
+[data-theme='night'] .bg-neutral-200,
+[data-theme='night'] .bg-neutral-800,
+[data-theme='night'] .bg-neutral-900 {
+	background-color: #000 !important;
+}
+[data-theme='night'] .text-neutral-900,
+[data-theme='night'] .text-neutral-800,
+[data-theme='night'] .text-neutral-700,
+[data-theme='night'] .text-white {
+	color: #ef4444 !important;
+}
+[data-theme='night'] .border-neutral-200,
+[data-theme='night'] .border-neutral-300,
+[data-theme='night'] .border-neutral-600,
+[data-theme='night'] .border-neutral-700,
+[data-theme='night'] .border-neutral-800,
+[data-theme='night'] .border-white,
+[data-theme='night'] .border {
+	border-color: rgba(127, 29, 29, 0.6) !important;
+}
+[data-theme='night'] .hover\:bg-neutral-100:hover,
+[data-theme='night'] .hover\:bg-neutral-800:hover {
+	background-color: #1a0000 !important;
+}
+
+/* Noir: strict black and white */
+[data-theme='noir'] { background-color: #000 !important; color: #fff !important; }
+[data-theme='noir'] .bg-white,
+[data-theme='noir'] .bg-neutral-50,
+[data-theme='noir'] .bg-neutral-100,
+[data-theme='noir'] .bg-neutral-200,
+[data-theme='noir'] .bg-neutral-800,
+[data-theme='noir'] .bg-neutral-900 { background-color: #000 !important; }
+[data-theme='noir'] .text-neutral-900,
+[data-theme='noir'] .text-neutral-800,
+[data-theme='noir'] .text-neutral-700,
+[data-theme='noir'] .text-neutral-100 { color: #fff !important; }
+[data-theme='noir'] .border-neutral-200,
+[data-theme='noir'] .border-neutral-300,
+[data-theme='noir'] .border-neutral-600,
+[data-theme='noir'] .border-neutral-700,
+[data-theme='noir'] .border-neutral-800,
+[data-theme='noir'] .border,
+[data-theme='noir'] .border-white { border-color: rgba(255,255,255,0.6) !important; }
+[data-theme='noir'] .hover\:bg-neutral-100:hover,
+[data-theme='noir'] .hover\:bg-neutral-800:hover { background-color: #111 !important; }
+
+/* Unicorn LSD: animated rainbow surfaces with readable overlay */
+@keyframes unicornShift {
+	0% { background-position: 0% 50%; }
+	50% { background-position: 100% 50%; }
+	100% { background-position: 0% 50%; }
+}
+.theme-unicorn {
+	background: linear-gradient(270deg,
+		#ff0080, #ff8c00, #ffd300, #21d19f, #00c3ff, #7f00ff, #ff0080
+	);
+	background-size: 1200% 1200%;
+	animation: unicornShift 18s ease infinite;
+}
+[data-theme='unicorn'] { color: #fff !important; }
+[data-theme='unicorn'] .bg-white,
+[data-theme='unicorn'] .bg-neutral-50,
+[data-theme='unicorn'] .bg-neutral-100,
+[data-theme='unicorn'] .bg-neutral-200 { background-color: rgba(255,255,255,0.8) !important; color: #111 !important; }
+[data-theme='unicorn'] .bg-neutral-800,
+[data-theme='unicorn'] .bg-neutral-900 { background-color: rgba(17,17,17,0.55) !important; }
+[data-theme='unicorn'] .border-neutral-200,
+[data-theme='unicorn'] .border-neutral-300,
+[data-theme='unicorn'] .border-neutral-600,
+[data-theme='unicorn'] .border-neutral-700,
+[data-theme='unicorn'] .border-neutral-800,
+[data-theme='unicorn'] .border,
+[data-theme='unicorn'] .border-white { border-color: rgba(255,255,255,0.6) !important; }

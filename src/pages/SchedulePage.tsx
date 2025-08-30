@@ -258,6 +258,9 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                       <option value="system">System</option>
                       <option value="light">Light</option>
                       <option value="dark">Dark</option>
+                      <option value="night">Night</option>
+                      <option value="noir">Noir</option>
+                      <option value="unicorn">Unicorn LSD</option>
                     </select>
                   </label>
                 </div>
