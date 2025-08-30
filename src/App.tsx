@@ -49,11 +49,14 @@ export default function App(){
   const [view,setView] = useState<'schedule'|'manage'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
+  const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir"|"unicorn">(()=>{
+    try{ return (localStorage.getItem('schedule_theme') as any) || 'system' }catch{ return 'system' }
+  })
   const [dark,setDark] = useState(()=>{
     try{
-      const pref = localStorage.getItem('schedule_theme') as 'light'|'dark'|'system'|null
+      const pref = localStorage.getItem('schedule_theme') as 'light'|'dark'|'system'|'night'|'noir'|'unicorn'|null
       if(pref==='light') return false
-      if(pref==='dark') return true
+      if(pref==='dark' || pref==='night' || pref==='noir' || pref==='unicorn') return true
       // system default
       return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
     }catch{ return true }
@@ -61,11 +64,13 @@ export default function App(){
   useEffect(()=>{
     const handler = (e: Event)=>{
       const any = e as CustomEvent
-      const v = any?.detail?.value as 'light'|'dark'|'system' | undefined
+      const v = any?.detail?.value as 'light'|'dark'|'system'|'night'|'noir'|'unicorn' | undefined
       if(!v) return
+      setTheme(v)
       if(v==='light') setDark(false)
-      else if(v==='dark') setDark(true)
+      else if(v==='dark' || v==='night' || v==='noir' || v==='unicorn') setDark(true)
       else if(v==='system') setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      try{ localStorage.setItem('schedule_theme', v) }catch{}
     }
     window.addEventListener('schedule:set-theme', handler as any)
     return ()=> window.removeEventListener('schedule:set-theme', handler as any)
@@ -85,6 +90,14 @@ export default function App(){
       else if((mq as any).removeListener) (mq as any).removeListener(onChange)
     }
   },[])
+  // Compute root classes based on theme
+  const rootCls = useMemo(()=>{
+    const base = 'min-h-screen w-full'
+    if(theme==='night') return `${base} bg-black text-red-400`
+    if(theme==='noir') return `${base} bg-black text-white`
+    if(theme==='unicorn') return `${base} text-white theme-unicorn`
+    return dark? `${base} bg-neutral-950 text-neutral-100` : `${base} bg-neutral-100 text-neutral-900`
+  }, [theme, dark])
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
@@ -430,7 +443,7 @@ export default function App(){
 
   return (
     <ErrorCatcher dark={dark}>
-      <div className={dark?"min-h-screen w-full bg-neutral-950 text-neutral-100":"min-h-screen w-full bg-neutral-100 text-neutral-900"}>
+      <div className={rootCls} data-theme={theme}>
         <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
           <TopBar
           dark={dark} setDark={setDark}

@@ -136,10 +136,16 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
 
   return (
     <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-      {/* Header row with clock left, title/date, and controls right; wraps nicely on mobile */}
+      {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
-        {/* Left: live clock + tz */}
-        <div className="flex items-end gap-2 pl-2 order-1">
+        {/* Left: large date (if not today) + live clock + tz */}
+        <div className="flex items-end gap-3 pl-2 order-1">
+          {/* Show date only when a non-today day is selected */}
+          {fmtNice(selectedDate) !== fmtNice(parseYMD(nowInTZ(tz.id).ymd)) && (
+            <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+              {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
+            </div>
+          )}
           <div className={["font-bold tabular-nums", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
             {nowClock.hhmm}
           </div>
@@ -152,17 +158,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
             </div>
           </div>
         </div>
-        {/* Middle: title/date */}
-        {!agentView ? (
-          <div className="font-semibold order-3 sm:order-2">
-            {/* Show date only when a non-today day is selected */}
-            {fmtNice(selectedDate) !== fmtNice(parseYMD(nowInTZ(tz.id).ymd)) && (
-              <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
-                {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
-              </div>
-            )}
-          </div>
-        ) : (
+        {/* Middle: agent week title (only in agent view) */}
+        {agentView && (
           <div className="pl-2 font-semibold text-xl sm:text-2xl order-3 sm:order-2">
             {agentView} <span className="opacity-70">Week of {fmtNice(weekStartDate)}</span>
           </div>
