@@ -496,7 +496,7 @@ export default function AgentWeekLinear({
         return (
                   <div
                     key={partKey}
-          className={"absolute inset-y-0 chip-unicorn-h"}
+          className={"absolute inset-y-0"}
                     style={{
                       left: `${leftPct}%`,
                       width: `${widthPct}%`,

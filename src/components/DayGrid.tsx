@@ -23,8 +23,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const contentRef = React.useRef<HTMLDivElement|null>(null)
   const [contentW, setContentW] = useState<number>(0)
   // Theme detection
-  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'|'unicorn'>(()=>{
-    try{ return (localStorage.getItem('schedule_theme') as any) || 'system' }catch{ return 'system' }
+  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'>(()=>{
+    try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : ((v as any) || 'system') }catch{ return 'system' }
   })
   useEffect(()=>{
     const initFromDom = ()=>{
@@ -33,7 +33,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       if(v) setTheme(v)
     }
     initFromDom()
-    const onEvt = (e: Event)=>{ const ce = e as CustomEvent; if(ce?.detail?.value){ setTheme(ce.detail.value) } }
+  const onEvt = (e: Event)=>{ const ce = e as CustomEvent; if(ce?.detail?.value){ const v = ce.detail.value; setTheme(v==='unicorn' ? 'system' : v) } }
     window.addEventListener('schedule:set-theme', onEvt as any)
     return ()=> window.removeEventListener('schedule:set-theme', onEvt as any)
   }, [])
@@ -144,30 +144,29 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
     return (agents||[]).find(a=> `${a.firstName||''} ${a.lastName||''}`.trim().toLowerCase()===n)
   }
   const idxOfDay = (d:string)=> DAYS.indexOf(d as any)
-  // Simple deterministic hash to drive per-chip hues in Unicorn theme
-  const hashStr = (s: string)=>{ let h=0; for(let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0 } return ((h%360)+360)%360 }
+  // (unicorn hue hashing removed)
 
   return (
     <div className="overflow-x-auto no-scrollbar w-full no-select">
       {/* Header (hidden in compact mode) */}
     {!compact && (
-  <div className={["relative sticky top-0 z-40 shadow-sm px-2", theme==='unicorn'?"unicorn-header-bg":"", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].filter(Boolean).join(' ')} style={{height:HEADER_H, display:'flex', alignItems:'center'}}>
+  <div className={["relative sticky top-0 z-40 shadow-sm px-2", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].filter(Boolean).join(' ')} style={{height:HEADER_H, display:'flex', alignItems:'center'}}>
           {showHeaderTitle && (
-            <div className={["absolute left-2 right-2 text-center font-bold", theme==='unicorn'? 'unicorn-header-text':'' ].join(' ')} style={{ top: Math.max(0, Math.round(6*scale)), fontSize: Math.round(13*scale), lineHeight: 1 }}>
+            <div className={"absolute left-2 right-2 text-center font-bold"} style={{ top: Math.max(0, Math.round(6*scale)), fontSize: Math.round(13*scale), lineHeight: 1 }}>
               {dayKey} <span className={["ml-1",textSub].join(' ')}>{fmtYMD(date)}</span>
             </div>
           )}
           {/* Subtle AM background from 0:00 to 12:00 (aligned to content width) - hidden in Night theme */}
             {theme!=='night' && (
             <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
-              <div className={["absolute inset-y-0 left-0", theme==='unicorn'? 'unicorn-columns':''].join(' ')} style={{ width: `calc(12 * (100% / ${COLS}))`, backgroundColor: theme==='unicorn'? undefined : (dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)') }} />
+              <div className="absolute inset-y-0 left-0" style={{ width: `calc(12 * (100% / ${COLS}))`, backgroundColor: (dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)') }} />
             </div>
           )}
             {theme!=='night' && (
             <div className="absolute left-2 right-2" style={{bottom:LABEL_BOTTOM,height:LABEL_H}}>
               {hourMarks.map((h,i)=> (
                 (i % hourEvery === 0) && (
-                  <div key={i} className={["absolute text-left pl-0.5 leading-none pointer-events-none", theme==='unicorn'? 'unicorn-header-text':''].join(' ')} style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
+                  <div key={i} className={"absolute text-left pl-0.5 leading-none pointer-events-none"} style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
                     <div className={["font-bold hour-label tracking-tight",textSub].join(' ')} style={{ fontSize: HOUR_LABEL_PX }}>
                       {h===0?12:h>12?h-12:h}
                     </div>
@@ -198,12 +197,12 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
               <div
                 className="absolute inset-y-0 left-0 right-0 pointer-events-none"
                 style={{
-                  backgroundImage: theme==='unicorn'? undefined : `repeating-linear-gradient(to right, ${colLight} 0, ${colLight} ${unitPct}%, ${colDark} ${unitPct}%, ${colDark} ${unitPct*2}%)`,
+                  backgroundImage: `repeating-linear-gradient(to right, ${colLight} 0, ${colLight} ${unitPct}%, ${colDark} ${unitPct}%, ${colDark} ${unitPct*2}%)`,
                   backgroundRepeat: 'no-repeat',
                   backgroundSize: '100% 100%'
                 }}
               >
-                {theme==='unicorn' && <div className="absolute inset-0 unicorn-columns" />}
+                {/* unicorn overlay removed */}
               </div>
             )}
               {shifts.filter(s=>s.person===person).sort((a,b)=>toMin(a.start)-toMin(b.start)).map((s, idx, arr)=>{
@@ -221,7 +220,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 // Theme-driven chip colors
                 const isNight = theme==='night'
                 const isNoir = theme==='noir'
-                const isUnicorn = theme==='unicorn'
+                // unicorn theme removed
                 let baseColor = hasPtoForDay ? grayBg : (dark?darkbg:light)
                 let baseBorder = hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`)
                 if(isNight){
@@ -230,10 +229,6 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 } else if(isNoir){
                   baseColor = hasPtoForDay ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.15)'
                   baseBorder = 'rgba(255,255,255,0.7)'
-                } else if(isUnicorn){
-                  // background via CSS class; keep a subtle translucent base for blending
-                  baseColor = hasPtoForDay ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)'
-                  baseBorder = 'rgba(255,255,255,0.85)'
                 }
                 const segs = (Array.isArray(s.segments)? s.segments: []).slice().sort((a,b)=>a.startOffsetMin-b.startOffsetMin)
                 const chipTitleLines = segs.map(seg=>{
@@ -282,12 +277,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         borderRadius: CHIP_RADIUS,
                         ...(bgImage ? { backgroundImage: bgImage } : {}),
                       }
-                      const cls = ["absolute"]
-                      if(isUnicorn && !hasPtoForDay){
-                        cls.push('chip-unicorn-h')
-                        style['--h'] = String(hashStr(s.id))
-                      }
-                      return <div className={cls.join(' ')} style={style} />
+                      return <div className="absolute" style={style} />
                     })()}
 
 
@@ -318,15 +308,9 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
 
                     {/* Always-on top border frame to keep the main chip border visible above overlays */}
                     <div
-                      className={["absolute pointer-events-none", (isUnicorn && !hasPtoForDay)? 'chip-unicorn-border' : ''].join(' ')}
+                      className="absolute pointer-events-none"
                       style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: CHIP_RADIUS, zIndex: 5 }}
                     />
-                    {isUnicorn && !hasPtoForDay && (
-                      <div
-                        className="absolute pointer-events-none chip-unicorn-border-anim"
-                        style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, borderRadius: CHIP_RADIUS, zIndex: 6 }}
-                      />
-                    )}
 
                     {/* Center label: first name only; hide if chip too narrow */}
                     {(()=>{
