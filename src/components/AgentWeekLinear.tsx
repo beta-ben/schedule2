@@ -369,8 +369,8 @@ export default function AgentWeekLinear({
         </div>
       )}
 
-      {/* Band with day stripes and hour ticks */}
-  <div className={["relative", framed?"rounded-md overflow-hidden":"", framed?(dark?"bg-neutral-950":"bg-neutral-50"):""].filter(Boolean).join(' ')} style={{ height: BAND_H }}>
+    {/* Band with day stripes and hour ticks */}
+  <div className={["relative", framed?"rounded-md overflow-hidden":"", framed?(dark?"bg-neutral-950":"bg-neutral-50"):""].filter(Boolean).join(' ')} style={{ height: BAND_H, overflow: 'visible', marginBottom: 6 }}>
         <div
           ref={containerRef}
           className="absolute inset-y-0"
@@ -557,7 +557,7 @@ export default function AgentWeekLinear({
                       onToggleSelect?.(g.id)
                     }}
                   >
-                    {/* Posture overlays: subtle and on-theme */}
+                    {/* Posture overlays: subtle and on-theme; animated gradient in Prism */}
                     {seg.sub && tasks && seg.sub.map((sub, idx)=>{
                       // Absolute (week) minutes after drag
                       const a0 = newStart + sub.stOff
@@ -569,17 +569,24 @@ export default function AgentWeekLinear({
                       const leftInPart = ((a - pLeft) / (pRight - pLeft)) * 100
                       const widthInPart = ((b - a) / (pRight - pLeft)) * 100
                       const t = (tasks||[]).find(t=>t.id===sub.taskId)
-                      // Subtle overlay: Night uses deep red tint, Noir uses faint white, others use task color
+                      // Subtle overlay normally; in Prism use animated gradient derived from task color
                       const color = isNight
                         ? 'rgba(239,68,68,0.28)'
                         : isNoir
                           ? 'rgba(255,255,255,0.16)'
                           : (t?.color || (dark? 'rgba(59,130,246,0.85)':'rgba(59,130,246,0.85)'))
+                      const prismImage = t?.color
+                        ? `linear-gradient(90deg,
+                            color-mix(in oklab, ${t.color} 85%, #000 15%) 0%,
+                            color-mix(in oklab, ${t.color} 65%, #000 35%) 50%,
+                            color-mix(in oklab, ${t.color} 85%, #000 15%) 100%
+                          )`
+                        : undefined
                       return (
                         <div
                           key={`${partKey}-seg-${idx}`}
                           className="absolute inset-y-0 pointer-events-none"
-                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: color, opacity: isNight ? 0.35 : isNoir ? 0.25 : 0.9 }}
+                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: isPrism ? undefined : color, backgroundImage: isPrism ? prismImage : undefined, backgroundSize: isPrism ? '300% 100%' : undefined, animation: isPrism ? 'prismChip 12s ease-in-out infinite' : undefined, backgroundBlendMode: isPrism ? 'multiply' : undefined, opacity: isPrism ? 0.75 : (isNight ? 0.35 : isNoir ? 0.25 : 0.9) }}
                           aria-hidden
                         />
                       )

@@ -1,3 +1,4 @@
+// Deprecated: Legacy ManagePage is no longer used. Retained temporarily to avoid churn.
 import React from 'react'
 import ManageEditor from './ManageEditor'
 import { login } from '../lib/api'

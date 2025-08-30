@@ -29,7 +29,11 @@ function getCsrfFromCookieOnly(): string | null {
 function getCsrfToken(): string | null {
   return CSRF_TOKEN_MEM || getCsrfFromCookieOnly()
 }
-export function hasCsrfCookie(){ return !!getCsrfToken() }
+export function hasCsrfCookie(){ return !!getCsrfFromCookieOnly() }
+export function hasCsrfToken(){ return !!getCsrfToken() }
+export function getCsrfDiagnostics(){
+  return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: !!getCsrfToken() }
+}
 
 // Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
 export async function login(password: string){

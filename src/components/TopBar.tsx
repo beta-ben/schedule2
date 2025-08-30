@@ -5,8 +5,8 @@ import { TZ_OPTS } from '../constants'
 export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
-  view: 'schedule'|'manage'|'manageV2'
-  setView: (v:'schedule'|'manage'|'manageV2')=>void
+  view: 'schedule'|'manageV2'
+  setView: (v:'schedule'|'manageV2')=>void
   weekStart: string
   setWeekStart: (v:string)=>void
   tz: { id:string; label:string; offset:number }
@@ -61,7 +61,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
         {/* Center: page title above date range (or portal header in manage) */}
   <div className="text-center whitespace-nowrap overflow-visible">
     <div className={dark?"text-neutral-400":"text-neutral-600"} style={{ fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.05 }}>Customer Care Team Schedule</div>
-  {view==='manage' || view==='manageV2' ? (
+  {view==='manageV2' ? (
     <div className={["font-bold tracking-wide", dark?"text-red-300":"text-red-600"].join(' ')} style={{ letterSpacing: '0.02em', fontSize: '1.35rem', lineHeight: 1.12 }}>PORTAL OF POWER</div>
   ) : (
     <div className="font-medium tabular-nums" style={{ letterSpacing: '0.005em', fontSize: '1.35rem', lineHeight: 1.12 }}>{fmtDateRange(safeWeekStartDate, weekEndDate)}</div>

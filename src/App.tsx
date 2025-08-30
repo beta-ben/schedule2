@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { fmtYMD, startOfWeek } from './lib/utils'
-import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents } from './lib/api'
+import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken } from './lib/api'
 import type { PTO, Shift, Task } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
-import ManagePage from './pages/ManagePage'
+// Legacy ManagePage phased out; use ManageV2Page only
 import ManageV2Page from './pages/ManageV2Page'
 import { generateSample } from './sample'
 // sha256Hex removed from App; keep local hashing only in components that need it
@@ -40,13 +40,13 @@ export default function App(){
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  const hashToView = (hash:string): 'schedule'|'manage'|'manageV2' => {
+  const hashToView = (hash:string): 'schedule'|'manageV2' => {
     const h = (hash||'').toLowerCase()
     if(h.includes('manage2')) return 'manageV2'
-    if(h.includes('manage')) return 'manage'
+    if(h.includes('manage')) return 'manageV2'
     return 'schedule'
   }
-  const [view,setView] = useState<'schedule'|'manage'|'manageV2'>(()=> hashToView(window.location.hash))
+  const [view,setView] = useState<'schedule'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
   const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir"|"prism">(()=>{
@@ -253,7 +253,7 @@ export default function App(){
 
   useEffect(()=>{ (async()=>{
     // Editing is allowed only when an authenticated session exists (cookie+CSRF).
-  setCanEdit(hasCsrfCookie())
+  setCanEdit(hasCsrfToken())
   })() }, [view])
 
   useEffect(()=>{ (async()=>{
@@ -279,8 +279,8 @@ export default function App(){
     return ()=> window.removeEventListener('hashchange', handler)
   },[])
   useEffect(()=>{
-    if(view==='manageV2' || view==='manage'){
-      const desired = view==='manageV2' ? '#manage2' : '#manage'
+    if(view==='manageV2'){
+      const desired = '#manage2'
       if(window.location.hash !== desired){ window.location.hash = desired }
     } else {
       // schedule: remove hash for clean URL
@@ -473,29 +473,6 @@ export default function App(){
               onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
               agents={agentsV2}
               slimline={slimline}
-            />
-          ) : view==='manage' ? (
-            <ManagePage
-              dark={dark}
-              weekStart={weekStart}
-              // In Manage, route edits to draft if active
-              shifts={draftActive ? (draft!.data.shifts) : shifts}
-              setShifts={setShiftsRouted}
-              pto={draftActive ? (draft!.data.pto) : pto}
-              setPto={setPtoRouted}
-              tasks={tasks}
-              setTasks={setTasks}
-              calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
-              setCalendarSegs={setCalendarSegsRouted}
-              tz={tz}
-              agents={agentsV2}
-              // Draft controls
-              isDraft={draftActive}
-              draftMeta={draft?.meta || null}
-              onStartDraftFromLive={startDraftFromLive}
-              onStartDraftEmpty={startDraftEmpty}
-              onDiscardDraft={discardDraft}
-              onPublishDraft={publishDraft}
             />
           ) : (
             <ManageV2Page

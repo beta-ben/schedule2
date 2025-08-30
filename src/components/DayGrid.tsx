@@ -150,7 +150,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   // (unicorn hue hashing removed)
 
   return (
-    <div className="overflow-x-auto no-scrollbar w-full no-select">
+    <div className="overflow-x-auto no-scrollbar w-full no-select" style={{ overflowY: 'visible' }}>
       {/* Header (hidden in compact mode) */}
     {!compact && (
   <div className={["relative sticky top-0 z-40 shadow-sm px-2", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].filter(Boolean).join(' ')} style={{height:HEADER_H, display:'flex', alignItems:'center'}}>
@@ -196,7 +196,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       setHoverActive(true)
       setHoverX(x)
     }}
-    style={{ paddingBottom: Math.max(18, NOW_FONT_PX + 10) }}
+  style={{ paddingBottom: Math.max(28, NOW_FONT_PX + 24) }}
   >
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
@@ -316,9 +316,9 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         bgImage = `linear-gradient(90deg, hsl(${hue} 88% 62% / 0.78), hsl(${(hue+50)%360} 84% 58% / 0.74), hsl(${(hue+100)%360} 82% 62% / 0.78))`
                       }
                       if(hasPtoForDay){
-                        const stripes = `repeating-linear-gradient(135deg, ${dark?'rgba(0,0,0,0.40)':'rgba(0,0,0,0.22)'} 0 8px, transparent 8px 16px)`
-                        const darken  = `linear-gradient(0deg, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.22)'} 0%, ${dark?'rgba(0,0,0,0.35)':'rgba(0,0,0,0.22)'} 100%)`
-                        bgImage = `${stripes}, ${darken}`
+                        // Keep PTO chips grayed out without stripes for cleaner look
+                        const darken  = `linear-gradient(0deg, ${dark?'rgba(0,0,0,0.18)':'rgba(0,0,0,0.08)'} 0%, ${dark?'rgba(0,0,0,0.18)':'rgba(0,0,0,0.08)'} 100%)`
+                        bgImage = darken
                       }
                       const style: React.CSSProperties & Record<string, any> = {
                         left: `${left}%`,
@@ -336,7 +336,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                     })()}
 
 
-                    {/* Posture overlays (striped) */}
+                    {/* Posture overlays: striped normally; animated gradients in Prism */}
                     {segs.map(seg => {
                       const stOff = Math.max(0, Math.min(dur, seg.startOffsetMin))
                       const enOff = Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin))
@@ -345,24 +345,31 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const segW = ((enOff - stOff)/totalMins)*100
                       const t = taskMap.get(seg.taskId)
                       const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
-                      // Subtle posture overlays; for Night/Noir use on-theme stripes
-                      const stripes = (
-                        isNight
-                          ? 'repeating-linear-gradient(135deg, rgba(239,68,68,0.28) 0 6px, transparent 6px 14px)'
-                          : isNoir
-                            ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 6px, transparent 6px 14px)'
-                            : `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
+                      // Prism: animated gradient ribbon; Night/Noir: on-theme stripes; Others: subtle stripes
+                      const bgImage = (
+                        theme==='prism'
+                          ? `linear-gradient(90deg,
+                              color-mix(in oklab, ${tColor} 85%, #000 15%) 0%,
+                              color-mix(in oklab, ${tColor} 65%, #000 35%) 50%,
+                              color-mix(in oklab, ${tColor} 85%, #000 15%) 100%
+                            )`
+                          : isNight
+                            ? 'repeating-linear-gradient(135deg, rgba(239,68,68,0.28) 0 6px, transparent 6px 14px)'
+                            : isNoir
+                              ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 6px, transparent 6px 14px)'
+                              : `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
                       )
-                      const style: React.CSSProperties = {
+                      const style: React.CSSProperties & { [k:string]: any } = {
                         left: `${segLeft}%`,
                         width: `${segW}%`,
                         // Align overlays to the chip area; border frame remains on top
                         top: 2,
                         height: CHIP_H,
-                        backgroundImage: stripes,
+                        backgroundImage: bgImage,
+                        ...(theme==='prism' ? { backgroundSize: '300% 100%', animation: 'prismChip 12s ease-in-out infinite', backgroundBlendMode: 'multiply' } : {}),
                         pointerEvents: 'none',
                         borderRadius: CHIP_RADIUS,
-                        opacity: isNight ? 0.35 : isNoir ? 0.25 : 0.45,
+                        opacity: theme==='prism' ? 0.7 : (isNight ? 0.35 : isNoir ? 0.25 : 0.45),
                       }
                       return <div key={seg.id} className="absolute" style={style} />
                     })}

@@ -1,6 +1,6 @@
 import React from 'react'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie } from '../lib/api'
+import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
@@ -18,7 +18,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
   React.useEffect(()=>{
-    if(hasCsrfCookie()){ setUnlocked(true); setMsg('') }
+    if(hasCsrfToken()){ setUnlocked(true); setMsg('') }
   },[])
   const apiBase = React.useMemo(()=> getApiBase(), [])
   const apiPrefix = React.useMemo(()=> getApiPrefix(), [])
@@ -386,10 +386,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             const res = await login(pwInput)
             if(res.ok){
               try{ await ensureSiteSession(pwInput) }catch{}
-              if(hasCsrfCookie()){
+              const diag = getCsrfDiagnostics()
+              if(hasCsrfToken()){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
               } else {
-                setUnlocked(false); setMsg('Signed in, but CSRF cookie is missing. Check cookie Domain/Path and SameSite; reload and try again.')
+                setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
               }
             } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
           })() }}>
@@ -404,7 +405,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             <div>API base: <code>{apiBase}</code></div>
             <div>API path: <code>{apiPrefix}</code></div>
             <div>Dev proxy: {usingDevProxy? 'on (local only)':'off'}</div>
-            <div>CSRF cookie detected: {hasCsrfCookie()? 'yes' : 'no'}</div>
+            {(()=>{ const d = getCsrfDiagnostics(); return (
+              <div>
+                <div>CSRF token available: {d.token? 'yes':'no'}</div>
+                <div className="opacity-75">• cookie readable: {d.cookie? 'yes':'no'}; • memory: {d.memory? 'yes':'no'}</div>
+              </div>
+            ) })()}
           </div>
         </div>
       </section>
