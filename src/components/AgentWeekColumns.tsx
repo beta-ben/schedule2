@@ -116,7 +116,16 @@ export default function AgentWeekColumns({
 
                   // Segments overlay if provided
                   const cal = (calendarSegs||[])
-                    .filter(cs=> cs.day===d.key && ((((s as any).agentId) && cs.agentId === (s as any).agentId) || cs.person===agent))
+                    .filter(cs=> ((((s as any).agentId) && cs.agentId === (s as any).agentId) || cs.person===agent))
+                    .flatMap(cs=>{
+                      const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
+                      if(sameDay){ return [cs] }
+                      return [
+                        { ...cs, day: cs.day, start: cs.start, end: '24:00' },
+                        { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
+                      ]
+                    })
+                    .filter(cs=> cs.day===d.key)
                     .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
                   const merged: any = mergeSegments(s as any, cal)
                   const segs: Array<{ startOffsetMin:number; durationMin:number; taskId:string; id?:string }> = Array.isArray(merged)? merged as any : []

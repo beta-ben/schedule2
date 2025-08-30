@@ -144,6 +144,9 @@ export type CalendarSegment = {
   person: string
   agentId?: string
   day: Day
+  // Optional end day to allow posture segments that span midnight into the next day
+  // If omitted or equal to `day`, the segment ends on the same local day.
+  endDay?: Day
   start: string // HH:MM within day (local after convert)
   end: string   // HH:MM within day (local)
   taskId: string

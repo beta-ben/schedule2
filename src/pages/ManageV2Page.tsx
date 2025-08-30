@@ -33,6 +33,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc')
   // Shifts tab: option to include hidden agents (default off)
   const [includeHiddenAgents, setIncludeHiddenAgents] = React.useState(false)
+  // Shifts tab: number of visible days (1-7)
+  const DAYS_VISIBLE_KEY = React.useMemo(()=> `schedule2.v2.shifts.daysVisible.${weekStart}.${tz.id}`, [weekStart, tz.id])
+  const [visibleDays, setVisibleDays] = React.useState<number>(()=>{
+    try{ const v = localStorage.getItem(DAYS_VISIBLE_KEY); const n = v? parseInt(v,10): 7; return Number.isFinite(n) && n>=1 && n<=7 ? n : 7 }catch{ return 7 }
+  })
+  React.useEffect(()=>{ try{ localStorage.setItem(DAYS_VISIBLE_KEY, String(visibleDays)) }catch{} }, [visibleDays, DAYS_VISIBLE_KEY])
   // Shifts tab: working copy (draft) of shifts
   const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
   // PTO tab: working copy (draft) of PTO entries
@@ -210,6 +216,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [assignStart, setAssignStart] = React.useState('09:00')
   const [assignEnd, setAssignEnd] = React.useState('10:00')
   const [assignTaskId, setAssignTaskId] = React.useState<string>('')
+  const [assignEndDay, setAssignEndDay] = React.useState<typeof DAYS[number]>('Mon' as any)
   React.useEffect(()=>{ if(!assignTaskId && activeTasks[0]) setAssignTaskId(activeTasks[0].id) },[activeTasks, assignTaskId])
   // Inline edit state for assigned calendar segments
   const [editingIdx, setEditingIdx] = React.useState<number|null>(null)
@@ -218,6 +225,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [eaStart, setEaStart] = React.useState('09:00')
   const [eaEnd, setEaEnd] = React.useState('10:00')
   const [eaTaskId, setEaTaskId] = React.useState('')
+  const [eaEndDay, setEaEndDay] = React.useState<typeof DAYS[number]>('Mon' as any)
   // const [filterTaskId, setFilterTaskId] = React.useState('') // not used currently
   // Calendar filter (posture) — empty means show all
   const [calendarFilterTaskId, setCalendarFilterTaskId] = React.useState('')
@@ -498,6 +506,23 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 )}
               </svg>
             </button>
+            {/* Visible days select (1-7) */}
+            <div className="inline-flex items-center gap-1" title="Visible days">
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              <div className="relative">
+                <select
+                  className={["border rounded-xl pl-2 pr-7 py-1 w-[6rem] appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                  value={visibleDays}
+                  onChange={(e)=> setVisibleDays(Math.max(1, Math.min(7, parseInt(e.target.value,10) || 7)))}
+                  aria-label="Visible days"
+                >
+                  {Array.from({length:7},(_,i)=>i+1).map(n=> (
+                    <option key={n} value={n}>{n} day{n===1?'':'s'}</option>
+                  ))}
+                </select>
+                <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
             {/* Toggle: show all time labels (icon button) */}
             <button
               type="button"
@@ -726,6 +751,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             pto={pto}
             tasks={tasks}
             calendarSegs={calendarSegs}
+            visibleDays={visibleDays}
             showAllTimeLabels={showAllTimeLabels}
             sortMode={sortMode}
             sortDir={sortDir}
@@ -850,7 +876,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
                       </select>
                     </label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
                       <label className="text-sm flex flex-col col-span-1">
                         <span className="mb-1">Day</span>
                         <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignDay} onChange={e=>setAssignDay(e.target.value as any)}>
@@ -865,17 +891,23 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         <span className="mb-1">End</span>
                         <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignEnd} onChange={e=>setAssignEnd(e.target.value)} />
                       </label>
+                        <label className="text-sm flex flex-col col-span-1">
+                          <span className="mb-1">End Day</span>
+                          <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignEndDay} onChange={e=>setAssignEndDay(e.target.value as any)}>
+                            {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </label>
                     </div>
                     <button
                       onClick={()=>{
                         if(!assignee) return alert('Choose an agent')
                         if(!assignTaskId) return alert('Choose a posture')
                         const aS = toMin(assignStart), aE = toMin(assignEnd)
-                        if(!(aE>aS)) return alert('End must be after start')
+                          if(assignEndDay===assignDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                         const dayShiftsLocal = shiftsForDayInTZ(shifts, assignDay as any, tz.offset).filter(s=>s.person===assignee)
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
                         if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.'); }
-                        setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, start: assignStart, end: assignEnd, taskId: assignTaskId }]))
+                          setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
                       }}
                       className={["h-10 rounded-xl border font-medium px-4", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}
                     >Add assignment</button>
@@ -930,13 +962,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                                 </summary>
                                 <div className="px-3 py-1.5 space-y-1">
                                   {rows.map(r=> (
-                                    <div key={`${r._idx}-${r.day}-${r.start}-${r.end}`} className="flex items-center justify-between gap-2 text-sm">
+                  <div key={`${r._idx}-${r.day}-${r.start}-${r.end}`} className="flex items-center justify-between gap-2 text-sm">
                                       <div className="flex items-center gap-3">
-                                        <span className="w-[6ch] opacity-70">{r.day}</span>
-                                        <span className="w-[11ch] tabular-nums">{r.start}–{r.end}</span>
+                    <span className="w-[12ch] opacity-70">{r.day}{(r as any).endDay && (r as any).endDay !== r.day ? ` → ${(r as any).endDay}` : ''}</span>
+                    <span className="w-[11ch] tabular-nums">{r.start}–{r.end}</span>
                                       </div>
                                       <div className="shrink-0 flex gap-1.5">
-                                        <button onClick={()=>{ setEditingIdx(r._idx); setEaPerson(r.person); setEaDay(r.day as any); setEaStart(r.start); setEaEnd(r.end); setEaTaskId(r.taskId) }} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Edit</button>
+                    <button onClick={()=>{ setEditingIdx(r._idx); setEaPerson(r.person); setEaDay(r.day as any); setEaStart(r.start); setEaEnd(r.end); setEaTaskId(r.taskId); setEaEndDay((r as any).endDay || (r.day as any)) }} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Edit</button>
                                         <button onClick={()=>{ if(confirm('Remove this assignment?')) setCalendarSegs(prev=> prev.filter((_,i)=> i!==r._idx)) }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
                                       </div>
                                     </div>
@@ -960,7 +992,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 {editingIdx!=null && (
                   <div className={["rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
                     <div className="text-sm font-medium mb-2">Edit assignment</div>
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                       <label className="text-sm flex flex-col">
                         <span className="mb-1">Agent</span>
                         <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaPerson} onChange={e=>setEaPerson(e.target.value)}>
@@ -976,22 +1008,28 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       <label className="text-sm flex flex-col"><span className="mb-1">Start</span><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaStart} onChange={e=>setEaStart(e.target.value)} /></label>
                       <label className="text-sm flex flex-col"><span className="mb-1">End</span><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaEnd} onChange={e=>setEaEnd(e.target.value)} /></label>
                       <label className="text-sm flex flex-col">
+                        <span className="mb-1">End Day</span>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaEndDay} onChange={e=>setEaEndDay(e.target.value as any)}>
+                          {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-sm flex flex-col">
                         <span className="mb-1">Posture</span>
                         <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaTaskId} onChange={e=>setEaTaskId(e.target.value)}>
                           {tasks.filter(t=>!t.archived).map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                       </label>
-                      <div className="md:col-span-5 flex gap-2">
+                      <div className="md:col-span-6 flex gap-2">
                         <button onClick={()=>{
                           if(editingIdx==null) return
                           if(!eaPerson.trim()) return alert('Choose an agent')
                           if(!eaTaskId) return alert('Choose a posture')
                           const aS=toMin(eaStart), aE=toMin(eaEnd)
-                          if(!(aE>aS)) return alert('End must be after start')
+                          if(eaEndDay===eaDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                           const dayShiftsLocal = shiftsForDayInTZ(shifts, eaDay as any, tz.offset).filter(s=>s.person===eaPerson)
                           const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE=s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
                           if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.') }
-                          setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, start: eaStart, end: eaEnd, taskId: eaTaskId } : cs))
+                          setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, endDay: eaEndDay, start: eaStart, end: eaEnd, taskId: eaTaskId } as any : cs))
                           setEditingIdx(null)
                         }} className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
                         <button onClick={()=>setEditingIdx(null)} className={["px-3 py-1.5 rounded border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
@@ -1031,6 +1069,17 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       // Build lanes so overlapping items render side-by-side
                       const dayItems = calendarSegs
                         .map((cs, _idx)=> ({...cs, _idx}))
+                        // Expand any cross-day segments into per-day pieces so they render on both days
+                        .flatMap(cs=>{
+                          const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
+                          if(sameDay){ return [cs] }
+                          const startMin = toMin(cs.start)
+                          const endMin = cs.end==='24:00'?1440:toMin(cs.end)
+                          return [
+                            { ...cs, day: cs.day, start: cs.start, end: '24:00' },
+                            { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
+                          ]
+                        })
                         .filter(cs=> cs.day===day && (!calendarFilterTaskId || cs.taskId===calendarFilterTaskId))
                         .sort((a,b)=> toMin(a.start) - toMin(b.start))
                       const lanes: number[] = [] // end minute per lane

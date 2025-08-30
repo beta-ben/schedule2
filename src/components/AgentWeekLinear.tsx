@@ -108,9 +108,18 @@ export default function AgentWeekLinear({
       let sub: { taskId:string; stOff:number; enOff:number }[] | undefined
       try{
         const durLoc = Math.max(0, (eAbs - sAbs))
-        const calForDay = (calendarSegs||[])
-          .filter(cs=> cs.person===agent && cs.day===s.day)
-          .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
+            const calForDay = (calendarSegs||[])
+              .filter(cs=> (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===agent))
+              .flatMap(cs=>{
+                const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
+                if(sameDay){ return [cs] }
+                return [
+                  { ...cs, day: cs.day, start: cs.start, end: '24:00' },
+                  { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
+                ]
+              })
+              .filter(cs=> cs.day === (s.day as any))
+              .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
         // Use original piece (local day) to merge segments
         const merged = mergeSegments({ ...s }, calForDay) || []
         if(merged && merged.length){

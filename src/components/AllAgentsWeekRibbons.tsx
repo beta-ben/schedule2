@@ -16,6 +16,7 @@ export default function AllAgentsWeekRibbons({
   pto,
   tasks,
   calendarSegs,
+  visibleDays = 7,
   showAllTimeLabels = false,
   onDragAll,
   onDragShift,
@@ -33,6 +34,7 @@ export default function AllAgentsWeekRibbons({
   pto: PTO[]
   tasks?: Task[]
   calendarSegs?: CalendarSegment[]
+  visibleDays?: number
   showAllTimeLabels?: boolean
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
@@ -168,63 +170,83 @@ export default function AllAgentsWeekRibbons({
   }, [agents, shifts, tz.offset, sortMode, sortDir])
   // Full names are shown; we still compute titles for hover via name itself
 
-  return (
-  <div className="space-y-0">
-      {/* Top day labels aligned to ribbons */}
-      <div className="flex items-center gap-1">
-        <div className={nameColClass + ' opacity-0 select-none'} style={{ width: nameColPx }}>label</div>
-    <div className="flex-1 relative h-7">
-          {DAYS.map((d,i)=>{
-            const left = (i/7)*100
-            const width = (1/7)*100
-            return (
-      <div key={d} className={["absolute text-center", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 13, lineHeight: 1.5 }}>
-                {d}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+  // Visible-day scaling: show fewer days by widening content so it's horizontally scrollable
+  const daysVisible = Math.min(7, Math.max(1, visibleDays || 7))
+  const scaleWidthPct = (7 / daysVisible) * 100
+  const BAND_H = 28 // keep in sync with AgentWeekLinear default unless overridden
 
-      {agentNamesSorted.length===0 ? (
-        <div className="text-sm opacity-70 px-2">No agents.</div>
-      ) : agentNamesSorted.map(name=> (
-        <div key={name} className="py-0">
-          <div className="flex items-center gap-1">
-            <div className={[nameColClass, dark?"text-neutral-300":"text-neutral-700"].join(' ')} title={name} style={{ width: nameColPx }}>
-              {name}
+  return (
+    <div className="space-y-1">
+      <div className="flex items-stretch gap-1">
+        {/* Left column: header spacer + names */}
+        <div className="shrink-0" style={{ width: nameColPx }}>
+          <div className="h-7 opacity-0 select-none">label</div>
+          {agentNamesSorted.length===0 ? (
+            <div className="text-sm opacity-70 px-2">No agents.</div>
+          ) : agentNamesSorted.map(name=> (
+            <div key={name} className={["flex items-center", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ height: BAND_H }} title={name}>
+              <div className={nameColClass} style={{ width: nameColPx }}>{name}</div>
             </div>
-            <div className="flex-1" title={name}>
-              <AgentWeekLinear
-                dark={dark}
-                tz={tz}
-                weekStart={weekStart}
-                agent={name}
-                shifts={shifts}
-                pto={pto}
-                tasks={tasks}
-                calendarSegs={calendarSegs}
-                titlePrefix={name}
-                draggable={Boolean(onDragAll || onDragShift)}
-                onDragAll={(d)=> onDragAll?.(name, d)}
-                onDragShift={(id,d)=> onDragShift?.(name, id, d)}
-                showDayLabels={false}
-                showWeekLabel={false}
-                framed={false}
-                showNowLabel={false}
-                showShiftLabels={true}
-                alwaysShowTimeTags={showAllTimeLabels}
-                forceOuterTimeTags={showAllTimeLabels}
-                avoidLabelOverlap={showAllTimeLabels}
-                highlightIds={highlightIds}
-                showEdgeTimeTagsForHighlights={true}
-                selectedIds={selectedIds}
-                onToggleSelect={onToggleSelect}
-              />
+          ))}
+        </div>
+        {/* Right column: single synchronized horizontal scroller containing header labels and ribbons */}
+        <div className="flex-1 overflow-x-auto no-scrollbar">
+          <div style={{ width: `${scaleWidthPct}%` }}>
+            {/* Top day labels aligned to ribbons */}
+            <div className="relative h-7">
+              {DAYS.map((d,i)=>{
+                const left = (i/7)*100
+                const width = (1/7)*100
+                return (
+                  <div key={d} className={["absolute text-center", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 13, lineHeight: 1.5 }}>
+                    {d}
+                  </div>
+                )
+              })}
             </div>
+
+            {/* Ribbons list */}
+            {agentNamesSorted.length>0 && agentNamesSorted.map(name=> (
+              <div key={name} className="py-0">
+                <AgentWeekLinear
+                  dark={dark}
+                  tz={tz}
+                  weekStart={weekStart}
+                  agent={name}
+                  shifts={shifts}
+                  pto={pto}
+                  tasks={tasks}
+                  calendarSegs={(calendarSegs||[]).flatMap(cs=>{
+                    const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
+                    if(sameDay){ return [cs] }
+                    return [
+                      { ...cs, day: cs.day, start: cs.start, end: '24:00' },
+                      { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
+                    ]
+                  }) as any}
+                  titlePrefix={name}
+                  draggable={Boolean(onDragAll || onDragShift)}
+                  onDragAll={(d)=> onDragAll?.(name, d)}
+                  onDragShift={(id,d)=> onDragShift?.(name, id, d)}
+                  showDayLabels={false}
+                  showWeekLabel={false}
+                  framed={false}
+                  showNowLabel={false}
+                  showShiftLabels={true}
+                  bandHeight={BAND_H}
+                  alwaysShowTimeTags={showAllTimeLabels}
+                  forceOuterTimeTags={showAllTimeLabels}
+                  avoidLabelOverlap={showAllTimeLabels}
+                  highlightIds={highlightIds}
+                  showEdgeTimeTagsForHighlights={true}
+                  selectedIds={selectedIds}
+                  onToggleSelect={onToggleSelect}
+                />
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+      </div>
     </div>
   )
 }
