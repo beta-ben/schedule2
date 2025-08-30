@@ -22,9 +22,19 @@ export default function CoverageHeatmap({
 }){
   // Collapsed state (persisted)
   const [collapsed, setCollapsed] = React.useState<boolean>(()=>{
-    try{ return localStorage.getItem('coverage_heatmap_collapsed') === '1' }catch{ return false }
+    try{
+      const v = localStorage.getItem('coverage_heatmap_collapsed')
+      if(v === '1') return true
+      if(v === '0') return false
+      // Default collapsed when no preference stored
+      return true
+    }catch{ return true }
   })
-  React.useEffect(()=>{ try{ localStorage.setItem('coverage_heatmap_collapsed', collapsed ? '1' : '0') }catch{} }, [collapsed])
+  React.useEffect(()=>{
+    try{ localStorage.setItem('coverage_heatmap_collapsed', collapsed ? '1' : '0') }catch{}
+    // announce to parent listeners for layout adjustments
+    try{ window.dispatchEvent(new CustomEvent('coverage:collapsed', { detail: { value: collapsed } })) }catch{}
+  }, [collapsed])
   // Filter to visible agents
   const visibleSet = React.useMemo(()=> new Set(visibleAgentNames), [visibleAgentNames])
   const tzShifts = React.useMemo(()=> convertShiftsToTZ(shifts, tz.offset).filter(s=> visibleSet.has(s.person)), [shifts, tz.offset, visibleSet])
@@ -132,7 +142,7 @@ export default function CoverageHeatmap({
                       {Array.from({length:24},(_,h)=>h).map(h=>{
                         const top = h*(CELL_H+GAP_Y)
                         const v = counts[di][h]
-                        const title = `${d} — ${String(h).padStart(2,'0')}:00 to ${String(h+1).padStart(2,'0')}:00 • ${v} on-duty`
+                        const title = `${d} — ${String(h).padStart(2,'0')}:00 to ${String(h+1).padStart(2,'0')}:00 • ${v} on deck`
                         return <div key={h} className="w-full" style={{ position:'absolute', top, height: CELL_H, backgroundColor: colorFor(v), borderRadius: 2 }} title={title} />
                       })}
                     </div>

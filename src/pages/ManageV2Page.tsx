@@ -774,7 +774,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           onSelectIdx={(idx)=> setSelectedAgentIdx(idx)}
         />
       ) : subtab==='Shifts' ? (
-        <div className={["rounded-xl p-2 border pb-44", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+  <div className={["rounded-xl p-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
           <AllAgentsWeekRibbons
             dark={dark}
             tz={tz}

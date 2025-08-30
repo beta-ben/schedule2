@@ -138,6 +138,9 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const taskMap = useMemo(()=>{ const m=new Map<string,Task>(); for(const t of (tasks||[])) m.set(t.id,t); return m },[tasks])
   // Hover state for tooltips (track which shift and cursor x within row)
   const [hover, setHover] = useState<{ id: string|null; x: number }>({ id: null, x: 0 })
+  // Global hover time indicator for schedule: blue line and label below
+  const [hoverX, setHoverX] = useState<number|null>(null)
+  const [hoverActive, setHoverActive] = useState(false)
   const tzMap = useMemo(()=>{ const m=new Map<string,number>(); for(const o of TZ_OPTS){ m.set(o.id, o.offset) } return m }, [])
   const agentFor = (fullName: string)=>{
     const n = (fullName||'').trim().toLowerCase()
@@ -180,12 +183,51 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       )}
 
       {/* Body */}
-  <div className="relative px-2" ref={contentRef}>
+  <div
+    className="relative px-2"
+    ref={contentRef}
+    onMouseLeave={()=>{ setHoverActive(false); setHoverX(null) }}
+    onMouseMove={(e)=>{
+      const host = contentRef.current
+      if(!host) return
+      const rect = host.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      if(x < 0 || x > rect.width){ setHoverActive(false); setHoverX(null); return }
+      setHoverActive(true)
+      setHoverX(x)
+    }}
+  >
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
             <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
-            <div className={["absolute -translate-x-1/2 -top-5 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}>
+            <div className={["absolute -translate-x-1/2 top-full mt-1 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}>
               {minToHHMM(displayNowMin)}
+            </div>
+          </div>
+        )}
+
+        {/* Global hover time indicator: blue line and label below */}
+        {hoverActive && hoverX!=null && (
+          <div className="absolute inset-y-0 left-0 right-0 z-30 pointer-events-none">
+            <div className="absolute inset-y-0" style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }} />
+            <div className={["absolute -translate-x-1/2 top-full mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
+              {(()=>{
+                const host = contentRef.current
+                const w = host?.getBoundingClientRect().width || 1
+                const total = 24*60
+                const min = Math.max(0, Math.min(total-1, Math.round((hoverX/w) * total)))
+                const hh = Math.floor((min/60)).toString().padStart(2,'0')
+                const mm = (min%60).toString().padStart(2,'0')
+                // Count on-deck = active at this minute in current day
+                let count = 0
+                for(const s of shifts){
+                  const sMin = toMin(s.start)
+                  const eRaw = toMin(s.end)
+                  const eMin = eRaw > sMin ? eRaw : 1440
+                  if(min >= sMin && min < eMin) count++
+                }
+                return `${hh}:${mm} • ${count} on deck`
+              })()}
             </div>
           </div>
         )}
