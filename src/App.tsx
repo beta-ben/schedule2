@@ -260,8 +260,15 @@ export default function App(){
     return ()=> window.removeEventListener('hashchange', handler)
   },[])
   useEffect(()=>{
-    const desired = view==='manageV2' ? '#manage2' : view==='manage' ? '#manage' : '#schedule'
-    if(window.location.hash !== desired){ window.location.hash = desired }
+    if(view==='manageV2' || view==='manage'){
+      const desired = view==='manageV2' ? '#manage2' : '#manage'
+      if(window.location.hash !== desired){ window.location.hash = desired }
+    } else {
+      // schedule: remove hash for clean URL
+      if(window.location.hash){
+        try{ history.replaceState(null, '', window.location.pathname + window.location.search) }catch{}
+      }
+    }
   },[view])
   // Seed default postures if none exist on first mount
   useEffect(()=>{
