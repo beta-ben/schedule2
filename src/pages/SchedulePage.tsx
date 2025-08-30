@@ -60,21 +60,24 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   },[shifts, hiddenNames])
   const [agentView, setAgentView] = useState<string>('')
   const [showViewOpts, setShowViewOpts] = useState(false)
-  // Close the small pane on outside click / Escape
+  const [showAgentMenu, setShowAgentMenu] = useState(false)
+  const agentMenuRef = React.useRef<HTMLDivElement|null>(null)
+  // Close the small panes on outside click / Escape
   const viewOptsRef = React.useRef<HTMLDivElement|null>(null)
   useEffect(()=>{
-    if(!showViewOpts) return
+    if(!(showViewOpts || showAgentMenu)) return
     const onDocClick = (e: MouseEvent)=>{
       const t = e.target as Node
       if(viewOptsRef.current && !viewOptsRef.current.contains(t)) setShowViewOpts(false)
+      if(agentMenuRef.current && !agentMenuRef.current.contains(t)) setShowAgentMenu(false)
     }
     const onKey = (e: KeyboardEvent)=>{ if(e.key === 'Escape') setShowViewOpts(false) }
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKey)
     return ()=> { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey) }
-  },[showViewOpts])
+  },[showViewOpts, showAgentMenu])
   // Close when switching agent/day
-  useEffect(()=>{ setShowViewOpts(false) }, [agentView, dayIndex])
+  useEffect(()=>{ setShowViewOpts(false); setShowAgentMenu(false) }, [agentView, dayIndex])
 
   // Panels tied to "now": always use today's shifts regardless of selected tab
   const nowTz = nowInTZ(tz.id)
@@ -133,67 +136,64 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
 
   return (
     <section className={["rounded-2xl p-2", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-      {/* Row with selected day label on left, live clock in the middle, and controls on the right */}
-  <div className="flex items-center justify-between mb-2 gap-2">
-        {!agentView ? (
-          <div className="pl-2 font-semibold self-end">
-            {/* Big day label with month; align size with clock */}
-              <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.7rem', lineHeight: 1.1, whiteSpace: 'nowrap', position: 'relative', top: -2 }}>
-                {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
+      {/* Header row with clock left, title/date, and controls right; wraps nicely on mobile */}
+      <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
+        {/* Left: live clock + tz */}
+        <div className="flex items-end gap-2 pl-2 order-1">
+          <div className={["font-bold tabular-nums", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
+            {nowClock.hhmm}
+          </div>
+          <div className="flex flex-col items-start leading-tight text-left">
+            <div className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
+              {nowClock.ampm}
+            </div>
+            <div className={["uppercase tracking-wide", dark?"text-neutral-500":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
+              {tzAbbrev(tz.id)}
             </div>
           </div>
+        </div>
+        {/* Middle: title/date */}
+        {!agentView ? (
+          <div className="font-semibold order-3 sm:order-2">
+            {/* Show date only when a non-today day is selected */}
+            {fmtNice(selectedDate) !== fmtNice(parseYMD(nowInTZ(tz.id).ymd)) && (
+              <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+                {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
+              </div>
+            )}
+          </div>
         ) : (
-          <div className="pl-2 font-semibold text-xl sm:text-2xl">
+          <div className="pl-2 font-semibold text-xl sm:text-2xl order-3 sm:order-2">
             {agentView} <span className="opacity-70">Week of {fmtNice(weekStartDate)}</span>
           </div>
         )}
 
-        {/* Middle: live HH:MM clock in selected timezone */}
-        <div className="flex-1 min-w-[6rem]" />
-        <div className="min-w-[6rem] text-right pr-3">
-          <div className="inline-flex items-end justify-end gap-2">
-            <div className={["font-bold", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
-              {nowClock.hhmm}
-            </div>
-            <div className="flex flex-col items-start leading-tight text-left">
-              <div className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
-                {nowClock.ampm}
-              </div>
-              <div className={["uppercase tracking-wide", dark?"text-neutral-500":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
-                {tzAbbrev(tz.id)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-  <div className="flex items-center gap-2">
-          {/* Agent weekly view selector (icon inside field, no text label) */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <svg aria-hidden className={["pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5", dark?"text-neutral-300":"text-neutral-600"].join(' ')} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <select
-                aria-label="Agent"
-                title="Agent"
-                className={["border rounded-xl pl-9 pr-2 py-1 sm:py-1.5 text-xs sm:text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                value={agentView}
-                onChange={(e)=>setAgentView(e.target.value)}
-              >
-                <option value="">—</option>
+        {/* Right: agent picker button, day selector, settings */}
+        <div className="flex items-center gap-2 order-2 sm:order-3 w-full sm:w-auto justify-between sm:justify-end">
+          {/* Agent picker: compact button that opens a menu */}
+          <div className="relative" ref={agentMenuRef}>
+            <button
+              aria-label="Choose agent"
+              title={agentView ? `Agent: ${agentView}` : 'Choose agent'}
+              onClick={()=> setShowAgentMenu(v=>!v)}
+              className={["inline-flex items-center justify-center h-8 sm:h-9 w-9 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+            >
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </button>
+            {showAgentMenu && (
+              <div className={["absolute right-0 mt-2 w-56 sm:w-64 rounded-xl p-2 border shadow-lg z-50 max-h-[18rem] overflow-auto", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
+                <div className="text-xs font-medium px-2 pb-1">Agents</div>
+                <button onClick={()=>{ setAgentView(''); setShowAgentMenu(false) }} className={["w-full text-left px-2 py-1 rounded text-sm", dark?"hover:bg-neutral-800":"hover:bg-neutral-100"].join(' ')}>All</button>
                 {allPeople.map(p=> (
-                  <option key={p} value={p}>{p}</option>
+                  <button key={p} onClick={()=>{ setAgentView(p); setShowAgentMenu(false) }} className={["w-full text-left px-2 py-1 rounded text-sm", p===agentView ? (dark?"bg-neutral-800":"bg-neutral-100") : (dark?"hover:bg-neutral-800":"hover:bg-neutral-100")].join(' ')}>{p}</button>
                 ))}
-              </select>
-            </div>
-            {agentView && (
-              <button onClick={()=>setAgentView('')} className={["px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border text-xs sm:text-sm", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>Clear</button>
+              </div>
             )}
           </div>
 
           {!agentView && (
-            <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <div className="overflow-x-auto no-scrollbar max-w-full">
+              <div className="inline-flex gap-1.5 sm:gap-2 whitespace-nowrap pr-1">
               {DAYS.map((d,i)=> {
                 const isToday = d === todayKey
                 const base = "px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm border"
@@ -205,10 +205,11 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                   <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls].filter(Boolean).join(' ')}>{d}</button>
                 )
               })}
+              </div>
             </div>
           )}
 
-          {/* Schedule-only view options toggle (small pane under button) — moved to the right of day selectors */}
+          {/* Schedule-only settings (small pane under button) */}
           {!agentView && (
             <div className="relative" ref={viewOptsRef}>
               <button
@@ -224,18 +225,43 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
               </button>
               {showViewOpts && (
                 <div className={["absolute right-0 mt-2 w-64 sm:w-72 rounded-xl p-3 border shadow-lg z-50", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
-                  <div className="text-sm font-semibold mb-2">Schedule view</div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={!!slimline}
-                      onChange={e=>{
-                        const val = e.target.checked
+                  <div className="text-sm font-semibold mb-2">Schedule settings</div>
+                  {/* Slimline switch */}
+                  <div className="flex items-center justify-between gap-3 text-sm py-1">
+                    <span className="flex-1">Slimline: only active and on-deck; hide PTO and stale chips</span>
+                    <button
+                      role="switch"
+                      aria-checked={!!slimline}
+                      onClick={()=>{
+                        const val = !slimline
                         try{ localStorage.setItem('schedule_slimline',''+(val?'1':'0')) }catch{}
                         window.dispatchEvent(new CustomEvent('schedule:set-slimline', { detail: { value: val } }))
                       }}
-                    />
-                    <span>Slimline: only active and on-deck; hide PTO and stale chips</span>
+                      className={["w-12 h-6 rounded-full border relative transition", dark?"bg-neutral-800 border-neutral-700":"bg-white border-neutral-300"].join(' ')}
+                      aria-label="Toggle slimline"
+                    >
+                      <span className={["absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-sm flex items-center justify-center transition-transform", (!!slimline ? 'translate-x-6' : 'translate-x-0'), dark?"bg-neutral-700 text-neutral-200":"bg-neutral-100 text-neutral-700"].join(' ')}>
+                        {/* dot */}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Theme select */}
+                  <label className="flex items-center justify-between gap-3 text-sm py-1">
+                    <span className="flex-1">Theme</span>
+                    <select
+                      className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-900"].join(' ')}
+                      defaultValue={(()=>{ try{ return localStorage.getItem('schedule_theme') || 'system' }catch{ return 'system' }})()}
+                      onChange={(e)=>{
+                        const val = e.target.value as 'light'|'dark'|'system'
+                        try{ localStorage.setItem('schedule_theme', val) }catch{}
+                        window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
+                      }}
+                    >
+                      <option value="system">System</option>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
                   </label>
                 </div>
               )}

@@ -49,7 +49,42 @@ export default function App(){
   const [view,setView] = useState<'schedule'|'manage'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
-  const [dark,setDark] = useState(true)
+  const [dark,setDark] = useState(()=>{
+    try{
+      const pref = localStorage.getItem('schedule_theme') as 'light'|'dark'|'system'|null
+      if(pref==='light') return false
+      if(pref==='dark') return true
+      // system default
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    }catch{ return true }
+  })
+  useEffect(()=>{
+    const handler = (e: Event)=>{
+      const any = e as CustomEvent
+      const v = any?.detail?.value as 'light'|'dark'|'system' | undefined
+      if(!v) return
+      if(v==='light') setDark(false)
+      else if(v==='dark') setDark(true)
+      else if(v==='system') setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    }
+    window.addEventListener('schedule:set-theme', handler as any)
+    return ()=> window.removeEventListener('schedule:set-theme', handler as any)
+  },[])
+  // React to OS theme changes when preference is 'system'
+  useEffect(()=>{
+    if(!window.matchMedia) return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = ()=>{
+      try{ if(localStorage.getItem('schedule_theme')==='system'){ setDark(mq.matches) } }catch{}
+    }
+    // addEventListener is modern; fallback for older
+    if((mq as any).addEventListener) (mq as any).addEventListener('change', onChange)
+    else if((mq as any).addListener) (mq as any).addListener(onChange)
+    return ()=>{
+      if((mq as any).removeEventListener) (mq as any).removeEventListener('change', onChange)
+      else if((mq as any).removeListener) (mq as any).removeListener(onChange)
+    }
+  },[])
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
