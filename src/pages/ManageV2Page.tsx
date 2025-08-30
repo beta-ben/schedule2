@@ -3,6 +3,7 @@ import React from 'react'
 import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
+import CoverageHeatmap from '../components/CoverageHeatmap'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
@@ -769,7 +770,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           onSelectIdx={(idx)=> setSelectedAgentIdx(idx)}
         />
       ) : subtab==='Shifts' ? (
-        <div className={["rounded-xl p-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+        <div className={["rounded-xl p-2 border pb-44", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
           <AllAgentsWeekRibbons
             dark={dark}
             tz={tz}
@@ -777,8 +778,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             agents={includeHiddenAgents ? localAgents : localAgents.filter(a=> !a.hidden)}
             shifts={workingShifts}
             pto={pto}
-            tasks={tasks}
-            calendarSegs={calendarSegs}
+            /* Hide posture data in this view */
+            tasks={undefined as any}
+            calendarSegs={undefined as any}
             visibleDays={visibleDays}
             scrollChunk={dayChunkIdx}
             showAllTimeLabels={showAllTimeLabels}
@@ -877,6 +879,23 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               setIsDirty(true)
             }}
           />
+          {(()=>{
+            // bottom sticky coverage heatmap aligned with visible agents/days
+            const visibleAgents = (includeHiddenAgents ? localAgents : localAgents.filter(a=> !a.hidden))
+              .map(a=> [a.firstName, a.lastName].filter(Boolean).join(' ').trim())
+              .filter(Boolean)
+            return (
+              <CoverageHeatmap
+                dark={dark}
+                tz={tz}
+                weekStart={weekStart}
+                shifts={workingShifts}
+                visibleAgentNames={visibleAgents}
+                visibleDays={visibleDays}
+                scrollChunk={dayChunkIdx}
+              />
+            )
+          })()}
         </div>
       ) : (
         subtab==='Postures' ? (
