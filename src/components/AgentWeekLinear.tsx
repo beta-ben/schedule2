@@ -370,7 +370,7 @@ export default function AgentWeekLinear({
       )}
 
     {/* Band with day stripes and hour ticks */}
-  <div className={["relative", framed?"rounded-md overflow-hidden":"", framed?(dark?"bg-neutral-950":"bg-neutral-50"):""].filter(Boolean).join(' ')} style={{ height: BAND_H, overflow: 'visible', marginBottom: 6 }}>
+  <div className={["relative", framed?"rounded-md overflow-hidden":"", framed?(dark?"bg-neutral-950":"bg-neutral-50"):""].filter(Boolean).join(' ')} style={{ height: BAND_H, overflow: 'visible', marginBottom: 0 }}>
         <div
           ref={containerRef}
           className="absolute inset-y-0"
@@ -654,7 +654,7 @@ export default function AgentWeekLinear({
           )}
           {showNow && showNowLabel && (
             <div
-              className={["absolute -translate-x-1/2 top-full mt-1 px-1.5 py-0.5 rounded text-white whitespace-nowrap", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
+              className={["absolute -translate-x-1/2 bottom-full mb-1 px-1.5 py-0.5 rounded text-white whitespace-nowrap", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
               style={{ left: `${nowLeft}%`, fontSize: NOW_TAG_F }}
             >
               {minToHHMM(now.minutes)}

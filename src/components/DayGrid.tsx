@@ -3,7 +3,7 @@ import { COLS, DAYS, TZ_OPTS } from '../constants'
 import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 
-export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact, agents }:{ 
+export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact, agents }:{
   date: Date
   dayKey: string
   people: string[]
@@ -201,7 +201,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
             <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
-            <div className={["absolute -translate-x-1/2 top-full mt-1 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}>
+            <div className={["absolute -translate-x-1/2 bottom-full mb-1 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}>
               {minToHHMM(displayNowMin)}
             </div>
           </div>
@@ -211,7 +211,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         {hoverActive && hoverX!=null && (
           <div className="absolute inset-y-0 left-0 right-0 z-30 pointer-events-none">
             <div className="absolute inset-y-0" style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }} />
-            <div className={["absolute -translate-x-1/2 top-full mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
+            <div className={["absolute -translate-x-1/2 bottom-full mb-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
               {(()=>{
                 const host = contentRef.current
                 const w = host?.getBoundingClientRect().width || 1
