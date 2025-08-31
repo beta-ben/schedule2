@@ -3,6 +3,8 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+/* Prevent horizontal overflow/gutters on mobile (iOS Safari) */
+html, body, #root { max-width: 100%; overflow-x: hidden; }
 .hour-label{ font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .no-select{ -webkit-user-select:none; -moz-user-select:none; user-select:none; }
 /* Slightly tighter default text spacing to fit more on small widths */
@@ -16,6 +18,15 @@ html, body, #root { height: 100%; }
 /* Also hide page-level scrollbars globally */
 html, body { -ms-overflow-style: none; scrollbar-width: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+
+/* Theme body backgrounds using :has to avoid white gutters behind app on iOS */
+/* Dark-oriented themes */
+body:has([data-theme='night']),
+body:has([data-theme='noir']) { background-color: #000 !important; color-scheme: dark; }
+body:has([data-theme='prism']) { background-color: #02020A !important; color-scheme: dark; }
+/* Standard dark */
+body:has([data-theme='dark']) { background-color: #0a0a0a !important; color-scheme: dark; }
+/* Light/system fall back to default UA */
 
 /* Quick animate-in for newly added list items */
 @keyframes shift-add-in-keyframes {
@@ -245,7 +256,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 		animation: prismBgPan 60s ease-in-out infinite;
 		color: #E6EAF2 !important;
 	}
-	[data-theme='prism'] body { background: transparent !important; }
+	/* Remove invalid descendant targeting of body; body themed via :has above */
 	[data-theme='prism'] input, [data-theme='prism'] select, [data-theme='prism'] button { color: inherit }
 	[data-theme='prism'] .bg-white,
 	[data-theme='prism'] .bg-neutral-50,

@@ -78,7 +78,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   }, [people, PERSON_FONT_PX, MIN_NAME_COL_PX])
   const NAME_COL_PX = Math.max(MIN_NAME_COL_PX, Math.min(MAX_NAME_COL_PX, measuredNameColPx))
   // Reduce header height by ~40% to tighten vertical space
-  const HEADER_H = Math.round(54*0.5*scale)
+  const HEADER_H = Math.round(54*0.56*scale)
   const HOUR_LABEL_PX = Math.max(9, Math.round(11*scale))
   // Keep chip label font stable (revert recent scaling change)
   const CHIP_FONT_PX = 12
@@ -166,7 +166,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             </div>
           )}
             {theme!=='night' && (
-            <div className="absolute left-2 right-2" style={{bottom:LABEL_BOTTOM,height:LABEL_H}}>
+            <div className="absolute left-2 right-2" style={{bottom:LABEL_BOTTOM,height:LABEL_H, paddingTop: Math.max(2, Math.round(2*scale))}}>
               {hourMarks.map((h,i)=> (
                 (i % hourEvery === 0) && (
                   <div key={i} className={"absolute text-left pl-0.5 leading-none pointer-events-none"} style={{ left: `calc(${i} * (100% / ${COLS}))`, width: `calc(100% / ${COLS})` }}>
@@ -180,7 +180,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
           )}
           {/* Floating time labels: render inside header so they remain visible without affecting scroll */}
           {isToday && (
-            <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
+            <div className="absolute inset-y-0 left-2 right-2 pointer-events-none" style={{ paddingTop: Math.max(1, Math.round(1*scale)) }}>
               <div
                 className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
                 style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}
@@ -190,7 +190,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             </div>
           )}
           {hoverActive && hoverX!=null && (
-            <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
+            <div className="absolute inset-y-0 left-2 right-2 pointer-events-none" style={{ paddingTop: Math.max(1, Math.round(1*scale)) }}>
               {(()=>{
                 const w = contentRef.current?.getBoundingClientRect().width || 1
                 const pct = Math.max(0, Math.min(100, (hoverX / w) * 100))
