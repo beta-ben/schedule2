@@ -178,6 +178,44 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
               ))}
             </div>
           )}
+          {/* Floating time labels: render inside header so they remain visible without affecting scroll */}
+          {isToday && (
+            <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
+              <div
+                className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
+                style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}
+              >
+                {minToHHMM(displayNowMin)}
+              </div>
+            </div>
+          )}
+          {hoverActive && hoverX!=null && (
+            <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
+              {(()=>{
+                const w = contentRef.current?.getBoundingClientRect().width || 1
+                const pct = Math.max(0, Math.min(100, (hoverX / w) * 100))
+                const total = 24*60
+                const min = Math.max(0, Math.min(total-1, Math.round((hoverX/w) * total)))
+                const hh = Math.floor((min/60)).toString().padStart(2,'0')
+                const mm = (min%60).toString().padStart(2,'0')
+                let count = 0
+                for(const s of shifts){
+                  const sMin = toMin(s.start)
+                  const eRaw = toMin(s.end)
+                  const eMin = eRaw > sMin ? eRaw : 1440
+                  if(min >= sMin && min < eMin) count++
+                }
+                return (
+                  <div
+                    className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')}
+                    style={{ left: `${pct}%` }}
+                  >
+                    {`${hh}:${mm} • ${count} on deck`}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
           {/* AM/PM chips removed in favor of subtle AM background */}
         </div>
       )}
@@ -196,14 +234,11 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       setHoverActive(true)
       setHoverX(x)
     }}
-  style={{ paddingBottom: Math.max(8, NOW_FONT_PX + 6) }}
+  style={{ paddingBottom: 8 }}
   >
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
             <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
-            <div className={["absolute -translate-x-1/2 bottom-full mb-1 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')} style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}>
-              {minToHHMM(displayNowMin)}
-            </div>
           </div>
         )}
 
@@ -211,25 +246,6 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         {hoverActive && hoverX!=null && (
           <div className="absolute inset-y-0 left-0 right-0 z-30 pointer-events-none">
             <div className="absolute inset-y-0" style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }} />
-            <div className={["absolute -translate-x-1/2 bottom-full mb-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
-              {(()=>{
-                const host = contentRef.current
-                const w = host?.getBoundingClientRect().width || 1
-                const total = 24*60
-                const min = Math.max(0, Math.min(total-1, Math.round((hoverX/w) * total)))
-                const hh = Math.floor((min/60)).toString().padStart(2,'0')
-                const mm = (min%60).toString().padStart(2,'0')
-                // Count on-deck = active at this minute in current day
-                let count = 0
-                for(const s of shifts){
-                  const sMin = toMin(s.start)
-                  const eRaw = toMin(s.end)
-                  const eMin = eRaw > sMin ? eRaw : 1440
-                  if(min >= sMin && min < eMin) count++
-                }
-                return `${hh}:${mm} • ${count} on deck`
-              })()}
-            </div>
           </div>
         )}
 

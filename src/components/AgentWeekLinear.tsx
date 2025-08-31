@@ -654,7 +654,7 @@ export default function AgentWeekLinear({
           )}
           {showNow && showNowLabel && (
             <div
-              className={["absolute -translate-x-1/2 bottom-full mb-1 px-1.5 py-0.5 rounded text-white whitespace-nowrap", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
+              className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded text-white whitespace-nowrap", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
               style={{ left: `${nowLeft}%`, fontSize: NOW_TAG_F }}
             >
               {minToHHMM(now.minutes)}

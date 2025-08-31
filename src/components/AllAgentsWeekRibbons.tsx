@@ -255,11 +255,11 @@ export default function AllAgentsWeekRibbons({
                   </div>
                 )
               })}
-              {/* Global hover time indicator line + label under header */}
+              {/* Global hover time indicator line + label inside header */}
         {hoverActive && hoverX!=null && (
                 <>
                   <div className="absolute inset-y-0" style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }} />
-          <div className={["absolute -translate-x-1/2 bottom-full mb-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
+          <div className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
                     {/* time and count computed below in a render-safe way */}
                     {(()=>{
                       const inner = scrollerRef.current?.firstElementChild as HTMLElement | null
