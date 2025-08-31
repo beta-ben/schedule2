@@ -48,6 +48,7 @@ export async function login(password: string){
       try{ const j = await r.clone().json(); if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf } }catch{}
       // Best-effort: some servers also require a site session for reads/writes
       try{ await ensureSiteSession(password) }catch{}
+  try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
     }
     return { ok: r.ok, status: r.status }
   }catch{
@@ -57,6 +58,7 @@ export async function login(password: string){
 
 export async function logout(){
   try{ await fetch(`${API_BASE}${API_PREFIX}/logout`,{ method:'POST', credentials:'include' }) }catch{}
+  try{ CSRF_TOKEN_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
 }
 
 // Site-level gate for dev proxy
@@ -133,10 +135,9 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs
 // Agents-only write to avoid schedule conflicts when toggling hidden or renaming agents
 export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>): Promise<boolean>{
   try{
-    const csrf = (typeof document!=='undefined' ? (document.cookie.match(/(?:^|; )csrf=([^;]+)/)?.[1] && decodeURIComponent(document.cookie.match(/(?:^|; )csrf=([^;]+)/)![1])) : null) || null
+    const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
-    if(CSRF_TOKEN_MEM) headers['x-csrf-token'] = CSRF_TOKEN_MEM
-    else if(csrf) headers['x-csrf-token'] = csrf
+    if(csrf) headers['x-csrf-token'] = csrf
     const r = await fetch(`${API_BASE}${API_PREFIX}/agents`,{
       method:'POST', credentials:'include', headers, body: JSON.stringify({ agents })
     })

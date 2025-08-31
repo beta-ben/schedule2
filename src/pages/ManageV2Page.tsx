@@ -1,6 +1,6 @@
 import React from 'react'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics } from '../lib/api'
+import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
@@ -383,12 +383,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           <div className="text-lg font-semibold">Protected — Manage Data</div>
           <p className="text-sm opacity-80">Sign in to your session.</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-            const res = await login(pwInput)
+      const res = await login(pwInput)
             if(res.ok){
               try{ await ensureSiteSession(pwInput) }catch{}
               const diag = getCsrfDiagnostics()
               if(hasCsrfToken()){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
+        // Proactively push agents metadata so Hidden flags propagate immediately post-login
+        try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))) }catch{}
               } else {
                 setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
               }

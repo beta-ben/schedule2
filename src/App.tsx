@@ -253,8 +253,24 @@ export default function App(){
 
   useEffect(()=>{ (async()=>{
     // Editing is allowed only when an authenticated session exists (cookie+CSRF).
-  setCanEdit(hasCsrfToken())
+    setCanEdit(hasCsrfToken())
   })() }, [view])
+
+  // React to auth changes from Manage login/logout so autosave can kick in immediately
+  useEffect(()=>{
+    const onAuth = (e: Event)=>{
+      const any = e as CustomEvent
+      const ok = !!hasCsrfToken()
+      setCanEdit(ok)
+      if(ok){
+        // Push current agents metadata (hidden flags, tz, names) so other users see changes
+        const payload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+        cloudPostAgents(payload)
+      }
+    }
+    window.addEventListener('schedule:auth', onAuth as any)
+    return ()=> window.removeEventListener('schedule:auth', onAuth as any)
+  }, [agentsV2])
 
   useEffect(()=>{ (async()=>{
     if(useDevProxy && !siteUnlocked) return

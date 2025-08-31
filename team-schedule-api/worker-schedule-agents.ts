@@ -1,3 +1,4 @@
+/// <reference types="@cloudflare/workers-types" />
 /*
   Cloudflare Worker: Schedule API with agents support (hidden flag persists)
 
@@ -34,14 +35,7 @@
       - GET/POST schedule handlers
 */
 
-// Minimal Workers type shims so this compiles without @cloudflare/workers-types
-// (Wrangler will provide real types at deploy time.)
-type KVNamespace = {
-  get(key: string): Promise<string | null>
-  put(key: string, value: string, options?: any): Promise<void>
-  delete(key: string): Promise<void>
-}
-interface ExecutionContext { waitUntil(p: Promise<any>): void }
+// Workers types are provided via @cloudflare/workers-types and Wrangler
 
 export interface Env {
   SCHEDULE_KV: KVNamespace

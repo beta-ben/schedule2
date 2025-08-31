@@ -222,7 +222,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                   <div className="text-sm font-semibold mb-2">Schedule settings</div>
                   {/* Slimline switch */}
                   <div className="flex items-center justify-between gap-3 text-sm py-1">
-                    <span className="flex-1">Hide off agents</span>
+                    <span className="flex-1">Hide off-duty agents</span>
                     <button
                       role="switch"
                       aria-checked={!!slimline}
@@ -275,9 +275,10 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   const filteredShifts = (!slimline || !forToday) ? dayShifts : (()=>{
       const now = nowInTZ(tz.id)
       const nowAbs = (DAYS.indexOf(dayKey as any))*1440 + now.minutes
+      const ymdNow = now.ymd
       return dayShifts.filter(s=>{
-        // Hide PTO chips entirely
-        const hasPto = pto.some(p=> p.person===s.person && selectedDate>=parseYMD(p.startDate) && selectedDate<=parseYMD(p.endDate))
+        // Hide PTO entirely for today using TZ-based YMD (matches OnDeck logic)
+        const hasPto = pto.some(p=> p.person===s.person && p.startDate <= ymdNow && ymdNow <= p.endDate)
         if(hasPto) return false
     // Keep only active and on-deck (within next 2 hours), and hide chips >30m past end
         const sd = DAYS.indexOf(s.day as any)
@@ -292,7 +293,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     return nowAbs <= (eAbs + 30)
       })
     })()
-    const filteredPeople = Array.from(new Set(filteredShifts.map(s=> s.person)))
+  const filteredPeople = Array.from(new Set(filteredShifts.map(s=> s.person)))
     return (
       <DayGrid
         date={selectedDate}
