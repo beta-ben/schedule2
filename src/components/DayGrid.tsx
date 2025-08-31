@@ -196,7 +196,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
       setHoverActive(true)
       setHoverX(x)
     }}
-  style={{ paddingBottom: Math.max(28, NOW_FONT_PX + 24) }}
+  style={{ paddingBottom: Math.max(8, NOW_FONT_PX + 6) }}
   >
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">

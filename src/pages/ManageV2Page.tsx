@@ -494,12 +494,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 )}
               </button>
             </div>
-            {/* Toggle: include hidden agents (icon button) */}
+            {/* Toggle: include hidden/off-duty agents (icon button) */}
             <button
               type="button"
               onClick={()=> setIncludeHiddenAgents(v=>!v)}
               aria-pressed={includeHiddenAgents}
-              title={includeHiddenAgents?"Hide hidden agents":"Show hidden agents"}
+              title={includeHiddenAgents?"Hide off-duty agents":"Show off-duty agents"}
               className={[
                 "px-2.5 py-1.5 rounded-xl border font-medium",
                 includeHiddenAgents ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
