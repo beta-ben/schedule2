@@ -22,7 +22,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   return (
     <>
     <header className="mb-1">
-  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1 pb-2">
+  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1 pb-2">
         {/* Left: view buttons */}
   <div className="flex flex-wrap items-center gap-2 justify-start">
           <button
@@ -69,9 +69,9 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   </div>
 
   {/* Right: selectors + dark toggle */}
-  <div className="flex items-center gap-2 justify-end">
+  <div className="flex flex-wrap items-center gap-2 justify-end w-full sm:w-auto">
           {/* Timezone select with embedded icon */}
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <svg aria-hidden className={["pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5", dark?"text-neutral-300":"text-neutral-600"].join(' ')} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/>
               <path d="M2 12h20"/>
@@ -80,7 +80,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             <select
               aria-label="Timezone"
               title="Timezone"
-              className={["border rounded-lg pl-9 pr-2 h-10 text-sm appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+              className={["border rounded-lg pl-9 pr-2 h-10 text-sm appearance-none w-full sm:w-auto", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
               value={tz.id}
               onChange={e=>{ const opt = TZ_OPTS.find(x=>x.id===e.target.value); if(opt) setTz(opt); }}
             >
@@ -88,11 +88,11 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             </select>
           </div>
       {/* Date picker (use native calendar icon) */}
-      <div className="relative">
+      <div className="relative w-full sm:w-auto">
             <input
               aria-label="Week start (Sun)"
               title="Week start (Sun)"
-        className={["border rounded-lg pl-3 pr-2 h-10 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+        className={["border rounded-lg pl-3 pr-2 h-10 text-sm w-full sm:w-auto", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
               type="date"
               value={wsValid ? weekStart : fmtYMD(safeWeekStartDate)}
               onChange={e=>{
@@ -103,7 +103,7 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
         style={{ colorScheme: dark ? 'dark' : 'light' }}
             />
           </div>
-          <div className="flex items-center h-10">
+          <div className="flex items-center h-10 shrink-0">
             <button
               role="switch"
               aria-checked={dark}
