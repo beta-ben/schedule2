@@ -9,7 +9,7 @@ compatibility_date = "2025-08-28"
 binding = "SCHEDULE_KV"
 # Replace with your real KV id before deploy (from Cloudflare dashboard)
 # e.g., id = "abcdef1234567890abcdef1234567890"
-# id = "REPLACE_WITH_PROD_KV_ID"
+id = "00000000000000000000000000000000" # dev placeholder; replace in prod
 
 [vars]
 # These can be overridden in Cloudflare dashboard (Settings > Variables).
@@ -27,4 +27,4 @@ USE_D1 = "0"
 [[d1_databases]]
 binding = "DB"
 database_name = "schedule2"
-# database_id = "REPLACE_WITH_CREATED_ID"
+database_id = "964685e3-46af-4ac4-95de-94c0c5356ede"
