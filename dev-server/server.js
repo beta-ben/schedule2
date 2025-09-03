@@ -21,14 +21,13 @@ if (ORIGINS.includes('http://localhost:5173') && !ORIGINS.includes('http://127.0
   ORIGINS.push('http://127.0.0.1:5173')
 }
 const ADMIN_PW = process.env.DEV_ADMIN_PASSWORD
-const BYPASS_SITE = (process.env.DEV_BYPASS_SITE_AUTH || 'false').toLowerCase() === 'true'
 const SITE_PW = process.env.DEV_SITE_PASSWORD || process.env.DEV_VIEW_PASSWORD
 if (!ADMIN_PW) {
   console.error('DEV_ADMIN_PASSWORD is required in dev-server/.env')
   process.exit(1)
 }
-if (!SITE_PW && !BYPASS_SITE) {
-  console.error('DEV_SITE_PASSWORD (or DEV_VIEW_PASSWORD) is required in dev-server/.env (or set DEV_BYPASS_SITE_AUTH=true)')
+if (!SITE_PW) {
+  console.error('DEV_SITE_PASSWORD (or DEV_VIEW_PASSWORD) is required in dev-server/.env')
   process.exit(1)
 }
 
@@ -152,7 +151,6 @@ app.post('/api/logout', (req, res) => {
 })
 
 function requireSite(req, res, next) {
-  if (BYPASS_SITE) return next()
   const origin = req.headers.origin
   if (origin && !isAllowedOrigin(origin)) return res.status(403).json({ error: 'forbidden_origin', origin, allowed: ORIGINS })
   const sid = req.cookies?.site_sid
@@ -185,7 +183,6 @@ function requireAdmin(req, res, next) {
 
 // For SSE: require site session (read-only)
 function requireSession(req, res, next) {
-  if (BYPASS_SITE) return next()
   const origin = req.headers.origin
   if (origin && !isAllowedOrigin(origin)) return res.status(403).json({ error: 'forbidden_origin', origin, allowed: ORIGINS })
   const sid = req.cookies?.site_sid
@@ -225,7 +222,6 @@ app.get('/api/_info', (req, res) => {
   res.json({
     ok: true,
     origins: ORIGINS,
-    bypassSiteAuth: BYPASS_SITE,
     routes: [
       'POST /api/login-site',
       'POST /api/logout-site',
@@ -243,7 +239,6 @@ app.get('/api/_info', (req, res) => {
     env: {
       hasAdminPw: !!ADMIN_PW,
       hasSitePw: !!SITE_PW,
-      bypassSiteAuth: BYPASS_SITE,
       port: PORT,
       dataset: dataBase
     }
@@ -517,7 +512,6 @@ app.post('/api/admin/import', requireAdmin, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Dev auth proxy listening on http://localhost:${PORT}`)
   console.log(`Allowed origins: ${ORIGINS.join(', ')}`)
-  if (BYPASS_SITE) console.log('WARNING: DEV_BYPASS_SITE_AUTH is enabled; site auth is bypassed for GET endpoints.')
   console.log('Routes:')
   console.log('  POST /api/login-site  (sets site_sid)')
   console.log('  POST /api/logout-site (clears site_sid)')
