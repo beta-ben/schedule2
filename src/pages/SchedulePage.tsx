@@ -175,7 +175,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
               <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </button>
             {showAgentMenu && (
-              <div className={["absolute right-0 mt-2 w-56 sm:w-64 rounded-xl p-2 border shadow-lg z-50 max-h-[18rem] overflow-auto", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
+              <div className={["absolute right-0 mt-2 w-56 sm:w-64 max-w-[calc(100vw-2rem)] sm:max-w-none rounded-xl p-2 border shadow-lg z-50 max-h-[18rem] overflow-auto", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
                 <div className="text-xs font-medium px-2 pb-1">Agents</div>
                 <button onClick={()=>{ setAgentView(''); setShowAgentMenu(false) }} className={["w-full text-left px-2 py-1 rounded text-sm", dark?"hover:bg-neutral-800":"hover:bg-neutral-100"].join(' ')}>All</button>
                 {allPeople.map(p=> (
@@ -218,7 +218,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                 </svg>
               </button>
               {showViewOpts && (
-                <div className={["absolute right-0 mt-2 w-64 sm:w-72 rounded-xl p-3 border shadow-lg z-50", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
+                <div className={["absolute right-0 mt-2 w-64 sm:w-72 max-w-[calc(100vw-2rem)] sm:max-w-none rounded-xl p-3 border shadow-lg z-50", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
                   <div className="text-sm font-semibold mb-2">Schedule settings</div>
                   {/* Slimline switch */}
                   <div className="flex items-center justify-between gap-3 text-sm py-1">
