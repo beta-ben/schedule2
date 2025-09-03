@@ -8,5 +8,5 @@
     "strict": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["worker-schedule-agents.ts"]
+  "include": ["worker-schedule-agents.ts", "db.ts"]
 }

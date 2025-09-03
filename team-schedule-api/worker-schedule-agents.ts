@@ -48,6 +48,9 @@ export interface Env {
   COOKIE_SAMESITE?: string
   REQUIRE_SITE_SESSION?: string
   DATA_KEY?: string
+  // Optional during migration to D1
+  DB?: D1Database
+  USE_D1?: string
 }
 
 // Types
@@ -74,8 +77,16 @@ export default {
       if (req.method === 'POST' && path === '/api/login-site') return loginSite(req, env, cors)
       if (req.method === 'POST' && path === '/api/logout-site') return logoutSite(req, env, cors)
 
+  // Lightweight diagnostics during KV -> D1 migration
+  if (req.method === 'GET' && path === '/api/_health') return health(req, env, cors)
+  if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
+  if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
+
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
+  // v2 (D1) read-only endpoints for canary/parity
+  if (req.method === 'GET' && path === '/api/v2/agents') return getAgentsV2(req, env, cors)
+  if (req.method === 'GET' && path === '/api/v2/shifts') return getShiftsV2(req, env, cors)
   // Agents-only endpoints to persist metadata (like hidden) without schedule conflicts
   if (req.method === 'GET' && path === '/api/agents') return getAgents(req, env, cors)
   if (req.method === 'POST' && path === '/api/agents') return postAgents(req, env, cors)
@@ -103,6 +114,19 @@ function setCookie(name: string, value: string, opts: { maxAge?: number } & Retu
   return parts.join('; ')
 }
 function clearCookie(name: string, base: ReturnType<typeof cookieBase>){ return setCookie(name, '', { ...base, maxAge: 0 }) }
+
+type StorePref = 'kv'|'d1'
+function resolveStorePref(req: Request, env: Env): { pref: StorePref; from: 'param'|'cookie'|'env'|'default'; cookie?: string; param?: string }{
+  const url = new URL(req.url)
+  const p = (url.searchParams.get('store')||'').toLowerCase()
+  if(p === 'kv' || p === 'd1') return { pref: p, from: 'param', param: p }
+  const cookies = getCookieMap(req)
+  const c = (cookies.get('store')||'').toLowerCase()
+  if(c === 'kv' || c === 'd1') return { pref: c as StorePref, from: 'cookie', cookie: c }
+  const envFlag = (env.USE_D1||'0').toLowerCase()
+  if(envFlag === '1' || envFlag === 'true') return { pref: 'd1', from: 'env' }
+  return { pref: 'kv', from: 'default' }
+}
 
 function corsHeaders(req: Request, env: Env){
   const origin = req.headers.get('Origin') || ''
@@ -136,7 +160,7 @@ async function writeDoc(env: Env, doc: ScheduleDoc){ await env.SCHEDULE_KV.put(d
 // Auth handlers
 async function loginAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
-  const { password } = await safeJson(req)
+  const { password } = await safeJson<{ password?: string }>(req)
   if(typeof password !== 'string' || password.length < 3) return json({ error:'invalid_input' }, 400, cors)
   if(password !== env.ADMIN_PASSWORD) return json({ error:'bad_password' }, 401, cors)
   const sid = nanoid(24)
@@ -160,7 +184,7 @@ async function logoutAdmin(req: Request, env: Env, cors: Headers){
 }
 async function loginSite(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
-  const { password } = await safeJson(req)
+  const { password } = await safeJson<{ password?: string }>(req)
   if(typeof password !== 'string' || password.length < 3) return json({ error:'invalid_input' }, 400, cors)
   if(password !== env.SITE_PASSWORD) return json({ error:'bad_password' }, 401, cors)
   const sid = nanoid(24)
@@ -220,7 +244,7 @@ async function getSchedule(req: Request, env: Env, cors: Headers){
 async function postSchedule(req: Request, env: Env, cors: Headers){
   const admin = await requireAdmin(req, env)
   if(!admin.ok) return json(admin.body, admin.status, cors)
-  const incoming = await safeJson(req)
+  const incoming = await safeJson<Partial<ScheduleDoc>>(req)
   if(typeof incoming !== 'object' || incoming===null) return json({ error:'invalid_body' }, 400, cors)
 
   // Load previous doc for concurrency + mapping backfill
@@ -243,7 +267,7 @@ async function postSchedule(req: Request, env: Env, cors: Headers){
 }
 
 // Body parser
-async function safeJson(req: Request){ try{ return await req.json() }catch{ return {} } }
+async function safeJson<T = any>(req: Request): Promise<T>{ try{ return await req.json() }catch{ return {} as T } }
 
 // ------------- Validation + Normalization
 function hhmmToMin(hhmm: string){ if(hhmm==='24:00') return 1440; const m=hhmm.match(/^\d{2}:\d{2}$/); if(!m) return NaN; const [h,mm]=hhmm.split(':').map(n=>parseInt(n,10)); if(mm>=60) return NaN; return (h*60)+mm }
@@ -327,7 +351,7 @@ async function getAgents(req: Request, env: Env, cors: Headers){
 async function postAgents(req: Request, env: Env, cors: Headers){
   const admin = await requireAdmin(req, env)
   if(!admin.ok) return json(admin.body, admin.status, cors)
-  const body = await safeJson(req)
+  const body = await safeJson<{ agents?: Agent[] }>(req)
   const incomingAgents = Array.isArray(body?.agents) ? (body.agents as Agent[]) : null
   if(!incomingAgents) return json({ error:'invalid_body', details:'agents array required' }, 400, cors)
 
@@ -359,4 +383,85 @@ function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
     }
   }
   return Array.from(byId.values())
+}
+
+// ---- Store canary helpers
+async function storePrefEndpoint(req: Request, env: Env, cors: Headers){
+  const base = cookieBase(env)
+  const url = new URL(req.url)
+  const set = (url.searchParams.get('set')||'').toLowerCase()
+  const valid = set === 'kv' || set === 'd1'
+  const cookies = new Headers(cors)
+  if(valid){ cookies.append('Set-Cookie', setCookie('store', set, { ...base, maxAge: 60*60 })) }
+  const resolved = resolveStorePref(req, env)
+  return json({ ok:true, set: valid? set : undefined, resolved }, 200, cookies)
+}
+
+async function parityEndpoint(req: Request, env: Env, cors: Headers){
+  // Compare top-level doc presence/updatedAt from KV vs D1 availability
+  const kvRaw = await env.SCHEDULE_KV.get(dataKey(env))
+  let kvUpdatedAt: string | undefined
+  try{ if(kvRaw){ const j = JSON.parse(kvRaw); if(j && typeof j.updatedAt==='string') kvUpdatedAt = j.updatedAt } }catch{}
+  let d1Ok = false
+  try{ if(env.DB){ const r = await env.DB.prepare('SELECT 1 as ok').first<any>(); d1Ok = !!(r && (r.ok===1||r.ok==='1')) } }catch{}
+  return json({ kv: { present: !!kvRaw, updatedAt: kvUpdatedAt }, d1: { ok: d1Ok } }, 200, cors)
+}
+
+// ---- Diagnostics endpoint
+async function health(req: Request, env: Env, cors: Headers){
+  // No auth; read-only status for canarying and smoke checks
+  // KV probe
+  let kvOk = false
+  let kvUpdatedAt: string | undefined
+  try{
+    const raw = await env.SCHEDULE_KV.get(dataKey(env))
+    if(raw){ try{ const j = JSON.parse(raw as string); if(j && typeof j.updatedAt === 'string') kvUpdatedAt = j.updatedAt }catch{} }
+    kvOk = true
+  }catch{ kvOk = false }
+  // D1 probe
+  let d1Ok = false
+  let d1Message: string | undefined
+  try{
+    if(env.DB){
+      const r = await env.DB.prepare('SELECT 1 as ok').first<any>()
+      d1Ok = !!(r && (r.ok === 1 || r.ok === '1'))
+    }else{
+      d1Ok = false
+      d1Message = 'no_binding'
+    }
+  }catch(e:any){ d1Ok = false; d1Message = e?.message || String(e) }
+
+  const body = { ok: true, kv: { ok: kvOk, updatedAt: kvUpdatedAt }, d1: { ok: d1Ok, message: d1Message }, use_d1: (env.USE_D1||'0') }
+  return json(body, 200, cors)
+}
+
+// ---- v2 read endpoints (D1-backed, canary-friendly)
+type D1AgentRow = { id: string; name: string; color?: string; active: number; meta?: unknown }
+type D1ShiftRow = { id: string; agent_id: string; start_ts: number; end_ts: number; role?: string; note?: string }
+
+async function getAgentsV2(req: Request, env: Env, cors: Headers){
+  const gate = await requireSite(req, env)
+  if(!gate.ok) return json(gate.body, gate.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  const { results } = await env.DB.prepare('SELECT id,name,color,active,meta FROM agents WHERE active=1 ORDER BY name').all()
+  const agents = (results||[]).map((r:any)=> ({
+    id: r.id as string,
+    name: r.name as string,
+    color: r.color ?? undefined,
+    active: Number(r.active) ?? 1,
+    meta: r.meta ? (()=>{ try{return JSON.parse(String(r.meta))}catch{return undefined} })() : undefined
+  })) as D1AgentRow[]
+  return json({ agents }, 200, cors)
+}
+
+async function getShiftsV2(req: Request, env: Env, cors: Headers){
+  const gate = await requireSite(req, env)
+  if(!gate.ok) return json(gate.body, gate.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  const url = new URL(req.url)
+  const start = Number(url.searchParams.get('start_ts')||'')
+  const end = Number(url.searchParams.get('end_ts')||'')
+  if(!Number.isFinite(start) || !Number.isFinite(end) || !(end>start)) return json({ error:'invalid_range' }, 400, cors)
+  const { results } = await env.DB.prepare('SELECT id,agent_id,start_ts,end_ts,role,note FROM shifts WHERE start_ts < ?2 AND end_ts > ?1 ORDER BY start_ts').bind(start,end).all()
+  return json({ shifts: (results||[]) as D1ShiftRow[] }, 200, cors)
 }

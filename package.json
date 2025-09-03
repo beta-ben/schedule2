@@ -9,7 +9,7 @@
   "dev:all": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,proxy -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix dev-server run dev\"",
     "build": "vite build",
     "preview": "vite preview",
-  "predeploy": "npm run build && cp -f public/CNAME dist/CNAME && mkdir -p dist/schedule2 && cp -a dist/assets dist/schedule2/ && cp -f dist/favicon.svg dist/schedule2/favicon.svg && cp -f dist/site.webmanifest dist/schedule2/site.webmanifest && cp -f dist/sw.js dist/schedule2/sw.js",
+  "predeploy": "npm run build && cp -f public/CNAME dist/CNAME && mkdir -p dist/schedule2 && cp -a dist/assets dist/schedule2/ && cp -f dist/sw.js dist/schedule2/sw.js",
   "deploy": "gh-pages -d dist",
   "smoke": "node ./scripts/smoke.mjs",
   "validate:prod": "node ./scripts/validate-prod.mjs",
