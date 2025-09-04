@@ -2,7 +2,12 @@
 .env
 **/.env
 dev-server/.env
+dev-server/**/.env
 dev-server/data.json
+dev-server/**/data.json
+dev-server/**/data.*.json
+dev-server/**/data.json.bak.*
+dev-server/**/backups/
 
 node_modules
 dist

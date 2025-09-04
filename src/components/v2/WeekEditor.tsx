@@ -408,27 +408,40 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.lastName || '—'}</div>
 																				<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
 																																																																																<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
-																																																																																		<div className="inline-flex items-center gap-2">
-																																																																																				<label className="inline-flex items-center gap-1 text-[11px]">
-																																																																																						<input type="checkbox" checked={!!a.isSupervisor} onChange={(e)=> onUpdateAgent?.(i, { ...a, isSupervisor: e.target.checked })} />
-																																																																																						<span className={dark?"text-neutral-300":"text-neutral-700"}>Supervisor</span>
-																																																																																				</label>
-																																																																																				<select
-																																																																																					title="Assign supervisor"
-																																																																																					className={["text-[11px] border rounded px-1 py-0.5", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-																																																																																					value={a.supervisorId||''}
-																																																																																					onChange={(e)=> onUpdateAgent?.(i, { ...a, supervisorId: e.target.value || undefined })}
-																																																																																				>
-																																																																																					<option value="">No supervisor</option>
-																																																																																					{supervisors.filter(x=> x.i!==i).map(x=> (
-																																																																																						<option key={x.i} value={x.id!}>{x.name||`Agent ${x.i+1}`}</option>
-																																																																																					))}
-																																																																																				</select>
+																																																																																	<div className="inline-flex items-center gap-1 flex-wrap justify-end min-w-0">
+																																																																																		<label className="inline-flex items-center gap-1 text-[11px]" title="Supervisor">
+																																																																																			<input
+																																																																																					aria-label="Supervisor"
+																																																																																					title="Supervisor"
+																																																																																					type="checkbox"
+																																																																																					className="w-3 h-3 align-middle"
+																																																																																					checked={!!a.isSupervisor}
+																																																																																					onChange={(e)=> onUpdateAgent?.(i, { ...a, isSupervisor: e.target.checked })}
+																																																																																			/>
+																																																																																			<span className="sr-only">Supervisor</span>
+																																																																																			<svg aria-hidden className={[(dark?"text-neutral-300":"text-neutral-700"), "w-3.5 h-3.5"].join(' ')} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+																																																																																				<path d="M3 7l9-4 9 4-9 4-9-4z"/>
+																																																																																				<path d="M21 10l-9 4-9-4"/>
+																																																																																		</svg>
+																																																																																	</label>
+																																																																																	<div className="min-w-0">
+																																																																																		<select
+																																																																																				title="Assign supervisor"
+																																																																																				className={["text-[11px] border rounded px-1 py-0.5 h-6 leading-5 max-w-[9.5rem] min-w-0", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+																																																																																				value={a.supervisorId||''}
+																																																																																				onChange={(e)=> onUpdateAgent?.(i, { ...a, supervisorId: e.target.value || undefined })}
+																																																																																		>
+																																																																																			<option value="">No supervisor</option>
+																																																																																			{supervisors.filter(x=> x.i!==i).map(x=> (
+																																																																																					<option key={x.i} value={x.id!}>{x.name||`Agent ${x.i+1}`}</option>
+																																																																																			))}
+																																																																																		</select>
+																																																																																	</div>
 																																																																		<button
 																																																																			title={a.hidden?"Show in schedule":"Hide from schedule"}
 																																																																			aria-label={a.hidden?"Show in schedule":"Hide from schedule"}
-																																																																			onClick={()=> onUpdateAgent?.(i, { ...a, hidden: !a.hidden })}
-																																																																			className={["inline-flex items-center justify-center w-7 h-7 rounded border mr-1", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+																																																																																			onClick={()=> onUpdateAgent?.(i, { ...a, hidden: !a.hidden })}
+																																																																																			className={["inline-flex items-center justify-center w-7 h-7 rounded border mr-1", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
 																																																																		>
 																																																																			{a.hidden ? (
 																																																																				<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

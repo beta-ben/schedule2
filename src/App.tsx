@@ -133,7 +133,8 @@ export default function App(){
     return ()=> window.removeEventListener('schedule:set-slimline', handler as any)
   },[])
   // v2: dedicated agents list (temporary local persistence)
-  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
+  // Include supervisor fields so UI toggles persist locally and to the cloud
+  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_agents_v2_v1')
@@ -510,9 +511,9 @@ export default function App(){
                 if(!newFull){ alert('Enter a first and/or last name'); return }
                 const dup = agentsV2.some(row=> nameKey(fullNameOf(row))===nameKey(newFull))
                 if(dup){ alert('An agent with that name already exists.'); return }
-                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
+                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, isSupervisor: false, supervisorId: undefined }]))
               }}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean })=>{
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string })=>{
                 // Compute names and check duplicates (excluding self)
                 const cur = agentsV2[index]
                 if(!cur){ return }
@@ -533,8 +534,21 @@ export default function App(){
                   setCalendarSegsRouted(prev=> prev.map(cs=> cs.person===oldFull ? { ...cs, person: newFull, agentId: ensureId((cs as any).agentId) } : cs))
                 }
 
-                // Finally update the agents list
-                setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: nextFirst, lastName: nextLast, tzId: a.tzId || r.tzId, hidden: a.hidden!=null ? a.hidden : r.hidden } : r))
+                // Finally update the agents list, preserving supervisor fields
+                setAgentsV2(prev=> prev.map((r,i)=> {
+                  if(i!==index) return r
+                  const next: AgentRow = {
+                    ...r,
+                    firstName: nextFirst,
+                    lastName: nextLast,
+                    tzId: a.tzId || r.tzId,
+                    hidden: a.hidden!=null ? a.hidden : r.hidden,
+                    // Keep or set supervisor flags explicitly from the update payload
+                    isSupervisor: (a as any).isSupervisor!=null ? !!(a as any).isSupervisor : (r as any).isSupervisor,
+                    supervisorId: (a as any).supervisorId!==undefined ? (a as any).supervisorId : (r as any).supervisorId,
+                  }
+                  return next
+                }))
               }}
               onDeleteAgent={(index:number)=> setAgentsV2(prev=> prev.filter((_,i)=> i!==index))}
               weekStart={weekStart}

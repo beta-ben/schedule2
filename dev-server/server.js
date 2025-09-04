@@ -306,7 +306,7 @@ app.post('/api/schedule', requireAdmin, (req, res) => {
       // allow end < start (wrap) for posture segments, but disallow equal times
       if(val.start === val.end) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'segment start and end cannot be equal', path: ['start'] })
     })
-    const AgentZ = z.object({ id: z.string(), firstName: z.string().default(''), lastName: z.string().default(''), tzId: z.string().optional(), hidden: z.boolean().optional() })
+  const AgentZ = z.object({ id: z.string(), firstName: z.string().default(''), lastName: z.string().default(''), tzId: z.string().optional(), hidden: z.boolean().optional(), isSupervisor: z.boolean().optional(), supervisorId: z.string().optional() })
     const DocZ = z.object({
       schemaVersion: z.number().int().min(1).default(2),
       agents: z.array(AgentZ).default([]).optional(),
@@ -400,7 +400,7 @@ app.post('/api/agents', requireAdmin, (req, res) => {
   try{
     const body = req.body
     if(typeof body !== 'object' || body===null) return res.status(400).json({ error:'invalid_body' })
-    const AgentZ = z.object({ id: z.string(), firstName: z.string().default(''), lastName: z.string().default(''), tzId: z.string().optional(), hidden: z.boolean().optional() })
+  const AgentZ = z.object({ id: z.string(), firstName: z.string().default(''), lastName: z.string().default(''), tzId: z.string().optional(), hidden: z.boolean().optional(), isSupervisor: z.boolean().optional(), supervisorId: z.string().optional() })
     const InputZ = z.object({ agents: z.array(AgentZ).default([]) })
     const parsed = InputZ.safeParse(body)
     if(!parsed.success) return res.status(400).json({ error:'invalid_body', details: parsed.error.flatten() })

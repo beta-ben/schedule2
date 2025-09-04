@@ -135,7 +135,11 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs
 
 // Agents-only write to avoid schedule conflicts when toggling hidden or renaming agents
 export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }>): Promise<boolean>{
+  // Capability check: some prod deployments may not expose /api/agents yet.
+  // We probe once via GET and cache. Treat 200/401/403 as "exists"; 404 => not supported.
   try{
+    const okToUse = await agentsEndpointSupported()
+    if(!okToUse){ return false }
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
@@ -161,4 +165,34 @@ export async function ensureSiteSession(password?: string){
       body: JSON.stringify({ password: password||'' })
     })
   }catch{}
+}
+
+// --- Internal: feature detection for agents-only endpoint
+let AGENTS_POST_SUPPORTED: boolean | null = null
+let AGENTS_POST_WARNED = false
+async function agentsEndpointSupported(): Promise<boolean>{
+  if(AGENTS_POST_SUPPORTED!=null) return AGENTS_POST_SUPPORTED
+  try{
+    const res = await fetch(`${API_BASE}${API_PREFIX}/agents`, { method:'GET', credentials:'include' })
+    // 200 with data, or 401/403 due to missing session/CSRF still proves endpoint exists
+    if(res.status===200 || res.status===401 || res.status===403){ AGENTS_POST_SUPPORTED = true; return true }
+    if(res.status===404){
+      AGENTS_POST_SUPPORTED = false
+      if(!AGENTS_POST_WARNED){
+        AGENTS_POST_WARNED = true
+        try{ console.info('[schedule2] Agents-only endpoint not available on this API base; skipping /api/agents writes to avoid 404s.', { base: API_BASE, prefix: API_PREFIX }) }catch{}
+      }
+      return false
+    }
+    // Any other status: be conservative and skip for now
+    AGENTS_POST_SUPPORTED = false
+    return false
+  }catch{
+    AGENTS_POST_SUPPORTED = false
+    if(!AGENTS_POST_WARNED){
+      AGENTS_POST_WARNED = true
+      try{ console.info('[schedule2] Agents-only endpoint probe failed; skipping /api/agents writes.', { base: API_BASE, prefix: API_PREFIX }) }catch{}
+    }
+    return false
+  }
 }
