@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Use '/' for custom domains. Override with GHPAGES_BASE (e.g. '/schedule2/') when deploying under a subpath.
-const BASE = process.env.GHPAGES_BASE || '/'
+// Use relative base so it works on GH Pages subpaths (e.g., /schedule2/) and custom domains.
+const BASE = './'
 
 export default defineConfig({
   plugins: [react()],

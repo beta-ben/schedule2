@@ -24,14 +24,19 @@ try{
   if(!existsSync(dist)) fail('dist not found after build')
 
   // 2) CNAME exists
-  if(!existsSync(join(dist, 'CNAME'))) fail('CNAME missing in dist (custom domain will 404)')
-  ok('CNAME present in dist')
+  if(existsSync(join(dist, 'CNAME'))){
+    ok('CNAME present in dist')
+  } else {
+    ok('No CNAME (GH Pages under username.github.io)')
+  }
 
   // 3) schedule2 mirror for cache bridge (created by predeploy)
   const mirror = join(dist, 'schedule2')
-  if(!existsSync(mirror)) fail('dist/schedule2 missing')
-  if(!existsSync(join(mirror, 'assets'))) fail('dist/schedule2/assets missing')
-  ok('schedule2 asset mirror present')
+  if(existsSync(mirror) && existsSync(join(mirror, 'assets'))){
+    ok('schedule2 asset mirror present')
+  } else {
+    ok('No schedule2 asset mirror (not required without custom domain cache bridge)')
+  }
 
   // 4) Asset sanity
   const assets = join(dist, 'assets')

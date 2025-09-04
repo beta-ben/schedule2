@@ -10,7 +10,7 @@ compatibility_date = "2025-08-28"
 #   wrangler secret put ADMIN_PASSWORD
 #   wrangler secret put SITE_PASSWORD
 # Non-secret vars can live here and be overridden per-environment if needed.
-ALLOWED_ORIGINS = "https://teamschedule.cc"
+ALLOWED_ORIGINS = "https://beta-ben.github.io,https://teamschedule.cc"
 COOKIE_DOMAIN = ""
 COOKIE_SECURE = "true"
 COOKIE_SAMESITE = "None"
