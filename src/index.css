@@ -24,6 +24,12 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
 body:has([data-theme='night']),
 body:has([data-theme='noir']) { background-color: #000 !important; color-scheme: dark; }
 body:has([data-theme='prism']) { background-color: #02020A !important; color-scheme: dark; }
+/* Subtle + seasonal accents */
+body:has([data-theme='subtle']) { background-color: #f7f7f8 !important; }
+body:has([data-theme='spring']) { background-color: #f0fdf4 !important; }
+body:has([data-theme='summer']) { background-color: #ecfeff !important; }
+body:has([data-theme='autumn']) { background-color: #fffbeb !important; }
+body:has([data-theme='winter']) { background-color: #eff6ff !important; }
 /* Standard dark */
 body:has([data-theme='dark']) { background-color: #0a0a0a !important; color-scheme: dark; }
 /* Light/system fall back to default UA */
@@ -327,4 +333,55 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 		50% { background-position: 100% 50%; }
 		100% { background-position: 0% 50%; }
 	}
+
+/* Seasonal theme overrides: tint white/neutral surfaces to match theme */
+/* Subtle: near-neutral light surfaces */
+[data-theme='subtle'] .bg-white,
+[data-theme='subtle'] .bg-neutral-50,
+[data-theme='subtle'] .bg-neutral-100,
+[data-theme='subtle'] .bg-neutral-200 { background-color: #fafafa !important; }
+[data-theme='subtle'] .border-neutral-200,
+[data-theme='subtle'] .border-neutral-300,
+[data-theme='subtle'] .border { border-color: #e5e7eb !important; }
+[data-theme='subtle'] .hover\:bg-neutral-100:hover { background-color: #f5f5f5 !important; }
+
+/* Spring: emerald tints */
+[data-theme='spring'] .bg-white,
+[data-theme='spring'] .bg-neutral-50,
+[data-theme='spring'] .bg-neutral-100,
+[data-theme='spring'] .bg-neutral-200 { background-color: #ecfdf5 !important; }
+[data-theme='spring'] .border-neutral-200,
+[data-theme='spring'] .border-neutral-300,
+[data-theme='spring'] .border { border-color: #a7f3d0 !important; }
+[data-theme='spring'] .hover\:bg-neutral-100:hover { background-color: #d1fae5 !important; }
+
+/* Summer: sky tints */
+[data-theme='summer'] .bg-white,
+[data-theme='summer'] .bg-neutral-50,
+[data-theme='summer'] .bg-neutral-100,
+[data-theme='summer'] .bg-neutral-200 { background-color: #cffafe !important; } /* cyan-100 */
+[data-theme='summer'] .border-neutral-200,
+[data-theme='summer'] .border-neutral-300,
+[data-theme='summer'] .border { border-color: #a5f3fc !important; } /* cyan-200 */
+[data-theme='summer'] .hover\:bg-neutral-100:hover { background-color: #a5f3fc !important; }
+
+/* Autumn: amber tints */
+[data-theme='autumn'] .bg-white,
+[data-theme='autumn'] .bg-neutral-50,
+[data-theme='autumn'] .bg-neutral-100,
+[data-theme='autumn'] .bg-neutral-200 { background-color: #fffbeb !important; }
+[data-theme='autumn'] .border-neutral-200,
+[data-theme='autumn'] .border-neutral-300,
+[data-theme='autumn'] .border { border-color: #fde68a !important; }
+[data-theme='autumn'] .hover\:bg-neutral-100:hover { background-color: #fef3c7 !important; }
+
+/* Winter: blue tints */
+[data-theme='winter'] .bg-white,
+[data-theme='winter'] .bg-neutral-50,
+[data-theme='winter'] .bg-neutral-100,
+[data-theme='winter'] .bg-neutral-200 { background-color: #e0e7ff !important; } /* indigo-100 */
+[data-theme='winter'] .border-neutral-200,
+[data-theme='winter'] .border-neutral-300,
+[data-theme='winter'] .border { border-color: #93c5fd !important; } /* blue-300 for crisp borders */
+[data-theme='winter'] .hover\:bg-neutral-100:hover { background-color: #93c5fd !important; }
 

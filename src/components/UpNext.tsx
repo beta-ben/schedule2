@@ -10,6 +10,17 @@ export default function UpNext({ dark, tz, dayKey, shifts, pto, windowMin=120 }:
   pto: PTO[]
   windowMin?: number
 }){
+  // Detect theme to align visuals
+  const theme: 'system'|'light'|'dark'|'night'|'noir'|'prism'|'subtle'|'spring'|'summer'|'autumn'|'winter' = ((): any=>{
+    try{
+      const el = document.querySelector('[data-theme]') as HTMLElement | null
+      return (el?.getAttribute('data-theme') as any) || 'system'
+    }catch{ return 'system' as const }
+  })()
+  const isNight = theme==='night'
+  const isNoir = theme==='noir'
+  const isPrism = theme==='prism'
+  const isSeasonal = theme==='subtle' || theme==='spring' || theme==='summer' || theme==='autumn' || theme==='winter'
   const [nowTick, setNowTick] = useState(Date.now())
   useEffect(()=>{
     let to: number | undefined
@@ -87,7 +98,11 @@ export default function UpNext({ dark, tz, dayKey, shifts, pto, windowMin=120 }:
   }
 
   return (
-    <section className={["rounded-2xl p-3 prism-surface-3 border", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300 shadow-sm"].join(' ')}>
+    <section className={[
+      'rounded-2xl p-3 border',
+      isPrism ? 'prism-surface-3' : '',
+      (dark || isNight || isNoir || isPrism)?'bg-neutral-900 border-neutral-700':'bg-white border-neutral-300 shadow-sm'
+    ].join(' ')}>
       <div className="flex items-baseline justify-between mb-2">
         <h2 className="text-base font-semibold">
           Up next
@@ -101,11 +116,16 @@ export default function UpNext({ dark, tz, dayKey, shifts, pto, windowMin=120 }:
         <ul className="space-y-1">
           {upcoming.map(a=> {
             const H = colorMap.get(a.person) ?? 0
-            const bgL = dark? 28 : 82
-            const bgA1 = dark? 0.22 : 0.35
-            const bgA2 = dark? 0.10 : 0.18
-            const bdL = dark? 40 : 62
-            const accentL = dark? 50 : 48
+            const darkLike = dark || isNight || isNoir || isPrism
+            let bgL = darkLike ? 28 : 82
+            let bgA1 = darkLike ? 0.22 : 0.35
+            let bgA2 = darkLike ? 0.10 : 0.18
+            let bdL = darkLike ? 40 : 62
+            let accentL = darkLike ? 50 : 48
+            if(isSeasonal){ bgL = 90; bgA1 = 0.35; bgA2 = 0.22; bdL = 70; accentL = 55 }
+            if(isPrism){ bgA1 = 0.12; bgA2 = 0.06; bdL = 55; accentL = 65 }
+            if(isNoir){ bdL = 70; accentL = 85 }
+            if(isNight){ bdL = 30; accentL = 60 }
             const containerStyle: React.CSSProperties = {
               background: `linear-gradient(90deg, hsla(${H},70%,${bgL}%,${bgA1}) 0%, hsla(${H},70%,${bgL}%,${bgA2}) 100%)`,
               borderColor: `hsl(${H},70%,${bdL}%)`,
@@ -117,8 +137,8 @@ export default function UpNext({ dark, tz, dayKey, shifts, pto, windowMin=120 }:
             return (
               <li key={a.person} className="flex items-center justify-between text-sm rounded-md border px-2 py-1" style={containerStyle}>
                 <span className="font-medium">{a.person}</span>
-                <span className={dark?"text-neutral-300":"text-neutral-700"}>
-                  {a.at} <span className={dark?"text-neutral-400":"text-neutral-500"}>• in {formatIn(startsIn)}</span>
+                <span className={(dark || isNight || isNoir || isPrism)?"text-neutral-300":"text-neutral-700"}>
+                  {a.at} <span className={(dark || isNight || isNoir || isPrism)?"text-neutral-400":"text-neutral-500"}>• in {formatIn(startsIn)}</span>
                 </span>
               </li>
             )

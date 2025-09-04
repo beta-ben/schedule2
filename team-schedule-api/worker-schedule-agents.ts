@@ -58,7 +58,7 @@ export type Day = 'Sun'|'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'
 export type Shift = { id: string; person: string; agentId?: string; day: Day; start: string; end: string; endDay?: Day; segments?: Array<{ id: string; shiftId: string; taskId: string; startOffsetMin: number; durationMin: number; notes?: string }> }
 export type PTO = { id: string; person: string; agentId?: string; startDate: string; endDate: string; notes?: string }
 export type CalendarSegment = { person: string; agentId?: string; day: Day; start: string; end: string; taskId: string }
-export type Agent = { id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
+export type Agent = { id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }
 export type ScheduleDoc = { schemaVersion: number; agents?: Agent[]; shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt?: string; agentsIndex?: Record<string,string> }
 
 // Router
@@ -301,6 +301,8 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
   for(const a of (doc.agents||[])){
     if(!a || typeof a.id!=='string' || !a.id) errors.push({ where:'agent', field:'id' })
     if(typeof a.firstName!=='string' || typeof a.lastName!=='string') errors.push({ where:'agent', id:a?.id, field:'name' })
+  if(a.supervisorId && typeof a.supervisorId !== 'string') errors.push({ where:'agent', id:a?.id, field:'supervisorId' })
+  if(a.isSupervisor!=null && typeof a.isSupervisor !== 'boolean') errors.push({ where:'agent', id:a?.id, field:'isSupervisor' })
   }
   if(errors.length>0) return { ok:false, error:'invalid_body', details: errors }
 
@@ -357,6 +359,13 @@ async function postAgents(req: Request, env: Env, cors: Headers){
 
   const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
   const merged = upsertAgents(prev.agents||[], incomingAgents)
+  // Validate supervisor links: must reference an existing id and cannot self-reference
+  const ids = new Set(merged.map(a=> a.id))
+  for(const a of merged){
+    if(a.supervisorId && (!ids.has(a.supervisorId) || a.supervisorId===a.id)){
+      a.supervisorId = undefined
+    }
+  }
   const idx: Record<string,string> = {}
   for(const a of merged){ const full=`${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim().toLowerCase(); if(full) idx[full] = a.id }
   const next: ScheduleDoc = { ...prev, agents: merged, agentsIndex: idx, updatedAt: nowIso() }
@@ -375,11 +384,13 @@ function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
     const lastName = (a.lastName||'').trim()
     const tzId = a.tzId && typeof a.tzId==='string' ? a.tzId : undefined
     const hidden = !!a.hidden
+    const isSupervisor = !!a.isSupervisor
+    const supervisorId = a.supervisorId && typeof a.supervisorId==='string' ? a.supervisorId : undefined
     const existing = byId.get(id)
     if(existing){
-      byId.set(id, { ...existing, firstName, lastName, tzId, hidden })
+      byId.set(id, { ...existing, firstName, lastName, tzId, hidden, isSupervisor, supervisorId })
     }else{
-      byId.set(id, { id, firstName, lastName, tzId, hidden })
+      byId.set(id, { id, firstName, lastName, tzId, hidden, isSupervisor, supervisorId })
     }
   }
   return Array.from(byId.values())

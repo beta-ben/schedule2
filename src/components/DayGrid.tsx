@@ -23,7 +23,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const contentRef = React.useRef<HTMLDivElement|null>(null)
   const [contentW, setContentW] = useState<number>(0)
   // Theme detection
-  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'|'prism'>(()=>{
+  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'|'prism'|'subtle'|'spring'|'summer'|'autumn'|'winter'>(()=>{
     try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : ((v as any) || 'system') }catch{ return 'system' }
   })
   useEffect(()=>{
@@ -130,6 +130,30 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const displayNowMin = nowTz.minutes
   const isToday = fmtYMD(date)===nowTz.ymd
   const nowLeft=(displayNowMin/totalMins)*100
+  // Theme flags and on-theme accent colors for "now" line/tag
+  const isNight = theme==='night'
+  const isNoir = theme==='noir'
+  const isPrism = theme==='prism'
+  const isSubtle = theme==='subtle'
+  const isSpring = theme==='spring'
+  const isSummer = theme==='summer'
+  const isAutumn = theme==='autumn'
+  const isWinter = theme==='winter'
+  const nowTagBg = (()=>{
+    if(isSpring) return dark? '#22c55e' : '#16a34a'     // green
+  if(isSummer) return dark? '#22d3ee' : '#06b6d4'     // cyan
+  if(isAutumn) return '#f59e0b'                       // amber
+  if(isWinter) return dark? '#a5b4fc' : '#6366f1'     // indigo
+    if(isSubtle) return dark? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.85)'
+    // Night/Noir keep red accents for strong contrast; default also red
+    return dark? '#ef4444' : '#ef4444'
+  })()
+  const nowTagText = (()=>{
+    // Ensure readable contrast on bright backgrounds
+    if(isSpring || isSummer || isAutumn || isWinter) return '#fff'
+    if(isSubtle) return dark? '#000' : '#fff'
+    return dark? '#000' : '#fff'
+  })()
   const NAME_COL = `${NAME_COL_PX}px`
   // Tighter spacing for hour labels
   const LABEL_BOTTOM = Math.max(2, Math.round(4*scale))
@@ -182,8 +206,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
           {isToday && (
             <div className="absolute inset-y-0 left-2 right-2 pointer-events-none" style={{ paddingTop: Math.max(1, Math.round(1*scale)) }}>
               <div
-                className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
-                style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}
+                className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded-md shadow-sm"].join(' ')}
+                style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX, backgroundColor: nowTagBg, color: nowTagText }}
               >
                 {minToHHMM(displayNowMin)}
               </div>
@@ -238,7 +262,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   >
         {isToday && (
           <div className="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none">
-            <div className={["absolute -translate-x-1/2 inset-y-0 w-px", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%` }} />
+            <div className="absolute -translate-x-1/2 inset-y-0 w-px" style={{ left: `${nowLeft}%`, background: nowTagBg }} />
           </div>
         )}
 
@@ -277,8 +301,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
 
                 const dur = eMin - sMin
                 // Theme-driven chip colors
-                const isNight = theme==='night'
-                const isNoir = theme==='noir'
+                // theme flags already computed above
                 // unicorn theme removed
                 let baseColor = hasPtoForDay ? grayBg : (dark?darkbg:light)
                 let baseBorder = hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`)
@@ -290,6 +313,18 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                   // Noir theme: chips go fully black; use a muted light border
                   baseColor = '#000'
                   baseBorder = 'rgba(255,255,255,0.35)'
+                } else if(!hasPtoForDay && !isPrism){
+                  // Subtle + seasonal themed chips (align with linear view) when not Prism
+                  if(isSubtle){
+                    // Use desaturated main-blue for fill, but keep main per-person hue for borders
+                    const S = 48
+                    baseColor = dark? `hsla(217, ${S}%, 60%, 0.22)` : `hsla(217, ${S}%, 60%, 0.18)`
+                    baseBorder = dark ? darkbd : `hsl(${H},65%,50%)`
+                  }
+                  else if(isSpring){ baseColor = dark? 'hsla(150, 60%, 40%, 0.45)' : 'hsla(150, 60%, 45%, 0.40)'; baseBorder = 'rgba(16,185,129,0.55)' }
+                  else if(isSummer){ baseColor = dark? 'hsla(190, 85%, 58%, 0.54)' : 'hsla(190, 90%, 65%, 0.46)'; baseBorder = 'rgba(6,182,212,0.55)' } // cyan
+                  else if(isAutumn){ baseColor = dark? 'hsla(28, 85%, 50%, 0.48)'  : 'hsla(28, 85%, 52%, 0.42)'; baseBorder = 'rgba(245,158,11,0.60)' }
+                  else if(isWinter){ baseColor = dark? 'hsla(228, 60%, 62%, 0.46)' : 'hsla(228, 62%, 64%, 0.40)'; baseBorder = 'rgba(99,102,241,0.60)' } // indigo
                 }
                 const segs = (Array.isArray(s.segments)? s.segments: []).slice().sort((a,b)=>a.startOffsetMin-b.startOffsetMin)
                 const chipTitleLines = segs.map(seg=>{
@@ -373,7 +408,15 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                             ? 'repeating-linear-gradient(135deg, rgba(239,68,68,0.28) 0 6px, transparent 6px 14px)'
                             : isNoir
                               ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 6px, transparent 6px 14px)'
-                              : `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
+                              : (
+                                  // Subtle + seasonal: bias stripes slightly toward theme color for coherence
+                                  isSubtle ? `repeating-linear-gradient(135deg, hsla(217, 48%, 60%, 0.25) 0 6px, transparent 6px 14px)` :
+                                  isSpring ? `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 35%, rgba(16,185,129,0.28) 65%) 0 6px, transparent 6px 14px)` :
+                                  isSummer ? `repeating-linear-gradient(135deg, hsla(190, 85%, 60%, 0.28) 0 6px, transparent 6px 14px)` :
+                                  isAutumn ? `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 35%, rgba(245,158,11,0.30) 65%) 0 6px, transparent 6px 14px)` :
+                                  isWinter ? `repeating-linear-gradient(135deg, hsla(228, 62%, 62%, 0.28) 0 6px, transparent 6px 14px)` :
+                                  `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
+                                )
                       )
                       const style: React.CSSProperties & { [k:string]: any } = {
                         left: `${segLeft}%`,

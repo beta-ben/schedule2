@@ -15,14 +15,16 @@ const SAMPLE = generateSample()
 
 export default function App(){
   // Site-wide gate when using dev proxy
-  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
+  // Read dev proxy base only in dev builds so the string is not emitted in prod bundles
+  const DEV_BASE = import.meta.env.DEV ? (import.meta.env.VITE_DEV_PROXY_BASE || '') : ''
+  const useDevProxy = !!DEV_BASE && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
   const [siteUnlocked, setSiteUnlocked] = useState<boolean>(!useDevProxy)
   const [sitePw, setSitePw] = useState('')
   const [siteMsg, setSiteMsg] = useState('')
   useEffect(()=>{ (async()=>{
     if(useDevProxy){
       try{
-        const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
+        const base = DEV_BASE.replace(/\/$/,'')
         const r = await fetch(`${base}/api/schedule`, { method: 'GET', credentials: 'include' })
         setSiteUnlocked(r.ok)
         if(r.ok){ try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
@@ -49,7 +51,7 @@ export default function App(){
   const [view,setView] = useState<'schedule'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
-  const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir"|"prism">(()=>{
+  const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir"|"prism"|"subtle"|"spring"|"summer"|"autumn"|"winter">(()=>{
     try{ return (localStorage.getItem('schedule_theme') as any) || 'system' }catch{ return 'system' }
   })
   const [dark,setDark] = useState(()=>{
@@ -64,12 +66,13 @@ export default function App(){
   })
   useEffect(()=>{
     const handler = (e: Event)=>{
-      const any = e as CustomEvent
-  const v = any?.detail?.value as 'light'|'dark'|'system'|'night'|'noir'|'prism' | undefined
+    const any = e as CustomEvent
+  const v = any?.detail?.value as 'light'|'dark'|'system'|'night'|'noir'|'prism'|'subtle'|'spring'|'summer'|'autumn'|'winter' | undefined
       if(!v) return
       setTheme(v)
-      if(v==='light') setDark(false)
+    if(v==='light') setDark(false)
   else if(v==='dark' || v==='night' || v==='noir' || v==='prism') setDark(true)
+  else if(v==='subtle' || v==='spring' || v==='summer' || v==='autumn' || v==='winter') setDark(false)
       else if(v==='system') setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
       try{ localStorage.setItem('schedule_theme', v) }catch{}
     }
@@ -93,9 +96,9 @@ export default function App(){
   },[])
   // Effective theme: restrict management views to light/dark only
   const effectiveTheme = useMemo(()=> {
-    let t = (view==='schedule' ? theme : (dark ? 'dark' : 'light')) as 'system'|'light'|'dark'|'night'|'noir'|'prism'|string
+    let t = (view==='schedule' ? theme : (dark ? 'dark' : 'light')) as 'system'|'light'|'dark'|'night'|'noir'|'prism'|'subtle'|'spring'|'summer'|'autumn'|'winter'|string
     if(t==='unicorn') t = 'system'
-    return t as 'system'|'light'|'dark'|'night'|'noir'|'prism'
+    return t as 'system'|'light'|'dark'|'night'|'noir'|'prism'|'subtle'|'spring'|'summer'|'autumn'|'winter'
   }, [view, theme, dark])
   // Compute root classes based on effective theme
   const rootCls = useMemo(()=>{
@@ -103,8 +106,15 @@ export default function App(){
     if(effectiveTheme==='night') return `${base} bg-black text-red-400`
   if(effectiveTheme==='noir') return `${base} bg-black text-white`
   if(effectiveTheme==='prism') return `${base} bg-black text-neutral-100`
+  if(effectiveTheme==='subtle') return `${base} bg-neutral-50 text-neutral-900`
+  if(effectiveTheme==='spring') return `${base} bg-emerald-50 text-neutral-900`
+  if(effectiveTheme==='summer') return `${base} bg-sky-50 text-neutral-900`
+  if(effectiveTheme==='autumn') return `${base} bg-amber-50 text-neutral-900`
+  if(effectiveTheme==='winter') return `${base} bg-blue-50 text-neutral-900`
     return dark? `${base} bg-neutral-950 text-neutral-100` : `${base} bg-neutral-100 text-neutral-900`
   }, [effectiveTheme, dark])
+  // Allow dark toggle only when: (a) Manage view, or (b) Schedule view with system theme
+  const allowDarkToggle = useMemo(()=> view==='manageV2' || (view==='schedule' && theme==='system'), [view, theme])
   const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
   const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
   const [tz, setTz] = useState(TZ_OPTS[0])
@@ -200,7 +210,7 @@ export default function App(){
     const now = new Date().toISOString()
     const shiftsWithIds = draft.data.shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
     const ptoWithIds = draft.data.pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
   const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs: draft.data.calendarSegs, agents: agentsPayload, updatedAt: now })
     if(ok){
       setShifts(shiftsWithIds)
@@ -264,7 +274,7 @@ export default function App(){
       setCanEdit(ok)
       if(ok){
         // Push current agents metadata (hidden flags, tz, names) so other users see changes
-        const payload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+  const payload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
         cloudPostAgents(payload)
       }
     }
@@ -348,7 +358,7 @@ export default function App(){
     const t=setTimeout(()=>{ 
       const shiftsWithIds = shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
       const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-      const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
       cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()}) 
     },600); 
     return ()=>clearTimeout(t) 
@@ -361,7 +371,7 @@ export default function App(){
     const t = setTimeout(()=>{
       // Prefer agents-only endpoint to avoid schedule conflicts
       cloudPostAgents(
-        agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+        agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
       )
     }, 600)
     return ()=> clearTimeout(t)
@@ -394,7 +404,7 @@ export default function App(){
     const id = setInterval(pull, 5 * 60 * 1000)
     // If using dev proxy, also subscribe to SSE for instant updates
     let es: EventSource | null = null
-  const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
+  const base = DEV_BASE.replace(/\/$/,'')
   if(useDevProxy && base){
       try{
         es = new EventSource(`${base}/api/events`, { withCredentials: true } as any)
@@ -465,6 +475,7 @@ export default function App(){
         <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
           <TopBar
           dark={dark} setDark={setDark}
+          allowDarkToggle={allowDarkToggle}
           view={view} setView={setView}
           weekStart={weekStart} setWeekStart={setWeekStart}
           tz={tz} setTz={setTz}
