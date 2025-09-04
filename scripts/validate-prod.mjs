@@ -27,19 +27,31 @@ try{
   if(/localhost|127\.0\.0\.1/.test(base)) warn('API base appears to be localhost; production site cannot reach it.')
 
   // Health check (optional but recommended)
-  const healthUrl = `${base.replace(/\/$/, '')}/health`
+  const baseNoSlash = base.replace(/\/$/, '')
+  const healthCandidates = [
+    `${baseNoSlash}/health`,
+    `${baseNoSlash}/api/_health`
+  ]
   try{
     const ctrl = new AbortController()
     const t = setTimeout(()=>ctrl.abort(), 4000)
-    const res = await fetch(healthUrl, { signal: ctrl.signal })
+    let res
+    let lastErr
+    for(const url of healthCandidates){
+      try{
+        res = await fetch(url, { signal: ctrl.signal })
+        if(res.ok || res.status!==404){
+          break
+        }
+      }catch(e){ lastErr = e }
+    }
     clearTimeout(t)
-    if(!res.ok) warn(`Health endpoint returned ${res.status}`)
+    if(!res || !res.ok) warn(`Health endpoint returned ${res?.status||'n/a'} (tried ${healthCandidates.join(', ')})`)
     else ok('Health endpoint responded OK')
   }catch(err){
     warn(`Health check failed: ${err?.message || String(err)} (add /health to your API for better CI catches)`) 
   }
 
-  const baseNoSlash = base.replace(/\/$/, '')
   console.log('\nNext steps to verify API:')
   console.log(`1) Login: curl -i -X POST -H "content-type: application/json" --data "{\\"password\\":\\"<pw>\\"}" ${baseNoSlash}/api/login`)
   console.log('   - Expect Set-Cookie for sid and csrf; SameSite=Lax; Secure; Domain=.teamschedule.cc')

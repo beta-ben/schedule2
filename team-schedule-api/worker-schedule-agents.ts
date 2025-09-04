@@ -79,17 +79,26 @@ export default {
 
   // Lightweight diagnostics during KV -> D1 migration
   if (req.method === 'GET' && path === '/api/_health') return health(req, env, cors)
+  // Back-compat health aliases
+  if (req.method === 'GET' && path === '/health') return health(req, env, cors)
+  if (req.method === 'GET' && path === '/api/health') return health(req, env, cors)
   if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
+  // Back-compat v1 aliases
+  if (req.method === 'GET' && path === '/v1/schedule') return getSchedule(req, env, cors)
+  if (req.method === 'POST' && path === '/v1/schedule') return postSchedule(req, env, cors)
   // v2 (D1) read-only endpoints for canary/parity
   if (req.method === 'GET' && path === '/api/v2/agents') return getAgentsV2(req, env, cors)
   if (req.method === 'GET' && path === '/api/v2/shifts') return getShiftsV2(req, env, cors)
   // Agents-only endpoints to persist metadata (like hidden) without schedule conflicts
   if (req.method === 'GET' && path === '/api/agents') return getAgents(req, env, cors)
   if (req.method === 'POST' && path === '/api/agents') return postAgents(req, env, cors)
+  // Back-compat v1 aliases for agents
+  if (req.method === 'GET' && path === '/v1/agents') return getAgents(req, env, cors)
+  if (req.method === 'POST' && path === '/v1/agents') return postAgents(req, env, cors)
 
       return json({ error: 'not_found' }, 404, cors)
     } catch (e: any) {
