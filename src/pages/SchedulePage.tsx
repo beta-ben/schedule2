@@ -11,6 +11,87 @@ import AgentWeek from '../components/AgentWeek'
 import AgentWeekGrid from '../components/AgentWeekGrid'
 // Legend removed from Schedule page
 
+// Standalone ThemePicker component (tiny preview chips)
+const THEME_KEYS = ['system','light','dark','night','noir','prism','subtle','spring','summer','autumn','winter'] as const
+type ThemeKey = typeof THEME_KEYS[number]
+
+function ThemePicker({ dark }: { dark: boolean }){
+  const getStored = (): ThemeKey => {
+    try {
+      const v = (localStorage.getItem('schedule_theme') || 'system') as ThemeKey
+      return (THEME_KEYS as readonly string[]).includes(v) ? v : 'system'
+    } catch {
+      return 'system'
+    }
+  }
+  const [cur, setCur] = React.useState<ThemeKey>(() => getStored())
+  useEffect(() => {
+    const onEvt = (e: Event) => {
+      const ce = e as CustomEvent
+      const v = (ce.detail?.value || 'system') as ThemeKey
+      setCur(v)
+    }
+    window.addEventListener('schedule:set-theme', onEvt as any)
+    return () => window.removeEventListener('schedule:set-theme', onEvt as any)
+  }, [])
+  const setTheme = (v: ThemeKey) => {
+    try { localStorage.setItem('schedule_theme', v) } catch {}
+    setCur(v)
+    window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: v } }))
+  }
+  const swatch = (t: ThemeKey): React.CSSProperties => {
+    const common = { borderRadius: 6, height: 16 } as const
+    switch (t) {
+      case 'system': return { ...common, background: 'linear-gradient(90deg, #e5e7eb, #93c5fd 70%)' }
+      case 'light':  return { ...common, background: 'linear-gradient(90deg, #ffffff, #e5e7eb)' }
+      case 'dark':   return { ...common, background: 'linear-gradient(90deg, #0f172a, #1f2937)' }
+      case 'night':  return { ...common, background: '#000' }
+      case 'noir':   return { ...common, background: 'linear-gradient(90deg, #000, #111)' }
+      case 'prism':  return { ...common, background: 'linear-gradient(270deg, #ff0080, #ff8c00, #ffd300, #21d19f, #00c3ff, #7f00ff, #ff0080)', backgroundSize: '600% 100%', animation: 'unicornShift 8s linear infinite' }
+  case 'subtle': return { ...common, background: 'linear-gradient(90deg, #f3f4f6, hsla(217,48%,60%,0.26))' }
+      case 'spring': return { ...common, background: 'linear-gradient(90deg, #ecfdf5, #34d399)' }
+  case 'summer': return { ...common, background: 'linear-gradient(90deg, #ecfeff, #06b6d4)' }
+      case 'autumn': return { ...common, background: 'linear-gradient(90deg, #fffbeb, #f59e0b)' }
+  case 'winter': return { ...common, background: 'linear-gradient(90deg, #e0e7ff, #6366f1)' }
+    }
+  }
+  const opts: Array<{ id: ThemeKey; label: string }> = [
+    { id: 'system', label: 'System' },
+    { id: 'light', label: 'Light' },
+    { id: 'dark', label: 'Dark' },
+    { id: 'subtle', label: 'Subtle' },
+    { id: 'spring', label: 'Spring' },
+    { id: 'summer', label: 'Summer' },
+    { id: 'autumn', label: 'Autumn' },
+    { id: 'winter', label: 'Winter' },
+    { id: 'night', label: 'Night' },
+    { id: 'noir', label: 'Noir' },
+    { id: 'prism', label: 'Prism' },
+  ]
+  return (
+    <div className="py-1">
+      <div className="text-sm mb-1">Theme</div>
+      <div className="grid grid-cols-3 gap-2">
+        {opts.map(o => (
+          <button key={o.id}
+            onClick={() => setTheme(o.id)}
+            className={[
+              'flex flex-col items-center justify-start gap-1 border rounded-md px-2 py-2 text-xs',
+              (cur === o.id ? (dark ? 'border-neutral-400' : 'border-blue-500') : (dark ? 'border-neutral-700' : 'border-neutral-300')),
+              dark ? 'bg-neutral-900 text-neutral-100' : 'bg-white text-neutral-900'
+            ].join(' ')}
+            aria-pressed={cur === o.id}
+            title={o.label}
+          >
+            <span className="inline-block w-full" style={swatch(o.id)} />
+            <span className="leading-tight text-[11px]">{o.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents, slimline }:{ 
   dark: boolean
   weekStart: string
@@ -98,19 +179,21 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   const [nowClock, setNowClock] = useState(()=>{
     const n = nowInTZ(tz.id)
     const h12 = ((n.h % 12) || 12)
-    const hhmm = `${String(h12).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
+    const hh = String(h12) // no leading zero for hour
+    const mm = String(n.m).padStart(2,'0')
     const ampm = n.h >= 12 ? 'PM' : 'AM'
-    return { hhmm, ampm }
+    return { text: `${hh}:${mm} ${ampm}` }
   })
   useEffect(()=>{
     let to: number | undefined
     let iv: number | undefined
     const tick = ()=>{
       const n = nowInTZ(tz.id)
-      const h12 = ((n.h % 12) || 12)
-      const hhmm = `${String(h12).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
-      const ampm = n.h >= 12 ? 'PM' : 'AM'
-      setNowClock({ hhmm, ampm })
+  const h12 = ((n.h % 12) || 12)
+  const hh = String(h12)
+  const mm = String(n.m).padStart(2,'0')
+  const ampm = n.h >= 12 ? 'PM' : 'AM'
+  setNowClock({ text: `${hh}:${mm} ${ampm}` })
     }
     const schedule = ()=>{
       if(iv) { clearInterval(iv) }
@@ -138,21 +221,21 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     <section className={["rounded-2xl p-2 prism-surface-1", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
-        {/* Left: date (always) + live clock + tz */}
-  <div className="flex items-end gap-3 pl-2 order-1">
+        {/* Left: date + tz */}
+        <div className="flex items-end gap-3 pl-2 order-1">
           <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
             {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
           </div>
-          <div className={["font-bold tabular-nums", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
-            {nowClock.hhmm}
-          </div>
           <div className="flex flex-col items-start leading-tight text-left">
             <div className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
-              {nowClock.ampm}
-            </div>
-            <div className={["uppercase tracking-wide", dark?"text-neutral-500":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
               {tzAbbrev(tz.id)}
             </div>
+          </div>
+        </div>
+        {/* Right (on narrow): live clock */}
+        <div className="order-2 ml-auto mr-2">
+          <div className={["font-bold tabular-nums text-right", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
+            {nowClock.text}
           </div>
         </div>
         {/* Middle: agent week title (only in agent view) */}
@@ -240,26 +323,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                     </button>
                   </div>
 
-                  {/* Theme select */}
-                  <label className="flex items-center justify-between gap-3 text-sm py-1">
-                    <span className="flex-1">Theme</span>
-                    <select
-                      className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-900"].join(' ')}
-                      defaultValue={(()=>{ try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : (v || 'system') }catch{ return 'system' }})()}
-                      onChange={(e)=>{
-                        const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir'|'prism'
-                        try{ localStorage.setItem('schedule_theme', val) }catch{}
-                        window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
-                      }}
-                    >
-                      <option value="system">System</option>
-                      <option value="light">Light</option>
-                      <option value="dark">Dark</option>
-                      <option value="night">Night</option>
-                      <option value="noir">Noir</option>
-                      <option value="prism">Prism</option>
-                    </select>
-                  </label>
+                  <ThemePicker dark={dark} />
                 </div>
               )}
             </div>
