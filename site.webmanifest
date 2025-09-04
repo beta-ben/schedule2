@@ -7,7 +7,7 @@
   "theme_color": "#0ea5e9",
   "description": "Weekly team scheduling with shifts, PTO, and postures.",
   "icons": [
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+    { "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
   ]
 }
