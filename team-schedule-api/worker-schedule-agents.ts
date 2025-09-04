@@ -84,6 +84,7 @@ export default {
   if (req.method === 'GET' && path === '/api/health') return health(req, env, cors)
   if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
+  if (req.method === 'GET' && path === '/api/_bindings') return bindingsEndpoint(req, env, cors)
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
@@ -108,7 +109,11 @@ export default {
 }
 
 // -------- Helpers
-function json(body: any, status = 200, extra?: HeadersInit) { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...(extra||{}) } }) }
+function json(body: any, status = 200, extra?: HeadersInit) {
+  const headers = new Headers(extra || {})
+  headers.set('content-type', 'application/json')
+  return new Response(JSON.stringify(body), { status, headers })
+}
 function nowIso(){ return new Date().toISOString() }
 function nanoid(len=22){ const chars='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'; let s=''; const arr=new Uint8Array(len); crypto.getRandomValues(arr); for(const b of arr){ s += chars[b%chars.length] } return s }
 function getCookieMap(req: Request){ const h=req.headers.get('cookie')||''; const m=new Map<string,string>(); h.split(';').map(s=>s.trim()).filter(Boolean).forEach(p=>{ const i=p.indexOf('='); if(i>0){ m.set(p.slice(0,i), decodeURIComponent(p.slice(i+1))) } }); return m }
@@ -147,8 +152,12 @@ function corsHeaders(req: Request, env: Env){
     'Access-Control-Allow-Headers': 'content-type,x-csrf-token',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
-  // Safer default: only echo Origin when explicitly allowlisted.
+  // Preferred: echo allowlisted origin
   if (origin && allowed.length > 0 && allowlist.has(origin)) {
+    h['Access-Control-Allow-Origin'] = origin
+    h['Vary'] = 'Origin'
+  } else if (origin && allowed.length === 0) {
+    // Fallback: reflect Origin when no allowlist configured (prevents lockout)
     h['Access-Control-Allow-Origin'] = origin
     h['Vary'] = 'Origin'
   }
@@ -194,8 +203,14 @@ async function logoutAdmin(req: Request, env: Env, cors: Headers){
 async function loginSite(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
   const { password } = await safeJson<{ password?: string }>(req)
-  if(typeof password !== 'string' || password.length < 3) return json({ error:'invalid_input' }, 400, cors)
-  if(password !== env.SITE_PASSWORD) return json({ error:'bad_password' }, 401, cors)
+  const expected = env.SITE_PASSWORD || ''
+  // If no SITE_PASSWORD is configured, accept empty string as public view login
+  if(expected === ''){
+    if(typeof password !== 'string') return json({ error:'invalid_input' }, 400, cors)
+  }else{
+    if(typeof password !== 'string' || password.length < 1) return json({ error:'invalid_input' }, 400, cors)
+    if(password !== expected) return json({ error:'bad_password' }, 401, cors)
+  }
   const sid = nanoid(24)
   await putSession(env,'site',sid,{})
   const headers = new Headers(cors)
@@ -216,11 +231,13 @@ async function logoutSite(req: Request, env: Env, cors: Headers){
 async function requireSite(req: Request, env: Env){
   if((env.REQUIRE_SITE_SESSION||'true').toLowerCase() !== 'true') return { ok:true }
   const cookies = getCookieMap(req)
-  const sid = cookies.get('site_sid')
-  if(!sid) return { ok:false, status: 401, body: { error:'missing_site_session' } }
-  const sess = await getSession(env,'site',sid)
-  if(!sess) return { ok:false, status: 401, body: { error:'expired_site_session' } }
-  return { ok:true }
+  // 1) Site session
+  const siteSid = cookies.get('site_sid')
+  if(siteSid){ const sess = await getSession(env,'site',siteSid); if(sess) return { ok:true } }
+  // 2) Admin session can read as well (no CSRF required for GET)
+  const adminSid = cookies.get('sid')
+  if(adminSid){ const as = await getSession(env,'admin',adminSid); if(as) return { ok:true } }
+  return { ok:false, status: 401, body: { error:'missing_site_session' } }
 }
 async function requireAdmin(req: Request, env: Env){
   const cookies = getCookieMap(req)
@@ -433,11 +450,12 @@ async function health(req: Request, env: Env, cors: Headers){
   // KV probe
   let kvOk = false
   let kvUpdatedAt: string | undefined
+  let kvMessage: string | undefined
   try{
     const raw = await env.SCHEDULE_KV.get(dataKey(env))
     if(raw){ try{ const j = JSON.parse(raw as string); if(j && typeof j.updatedAt === 'string') kvUpdatedAt = j.updatedAt }catch{} }
     kvOk = true
-  }catch{ kvOk = false }
+  }catch(e:any){ kvOk = false; kvMessage = e?.message || String(e) }
   // D1 probe
   let d1Ok = false
   let d1Message: string | undefined
@@ -451,8 +469,18 @@ async function health(req: Request, env: Env, cors: Headers){
     }
   }catch(e:any){ d1Ok = false; d1Message = e?.message || String(e) }
 
-  const body = { ok: true, kv: { ok: kvOk, updatedAt: kvUpdatedAt }, d1: { ok: d1Ok, message: d1Message }, use_d1: (env.USE_D1||'0') }
+  const body = { ok: true, kv: { ok: kvOk, updatedAt: kvUpdatedAt, message: kvMessage }, d1: { ok: d1Ok, message: d1Message }, use_d1: (env.USE_D1||'0') }
   return json(body, 200, cors)
+}
+
+// ---- Debug: list available env binding names
+async function bindingsEndpoint(req: Request, env: Env, cors: Headers){
+  try{
+    const names = Object.keys(env || {})
+    return json({ names }, 200, cors)
+  }catch(e:any){
+    return json({ error: 'bindings_error', message: e?.message || String(e) }, 500, cors)
+  }
 }
 
 // ---- v2 read endpoints (D1-backed, canary-friendly)
