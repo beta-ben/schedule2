@@ -4,8 +4,9 @@ import type { CalendarSegment } from './utils'
 // Auth model: cookie session + CSRF only.
 // - Dev: VITE_DEV_PROXY_BASE provides /api/login, /api/logout, /api/schedule with cookies and x-csrf-token.
 // - Prod: expect a server with the same contract. Legacy password header is removed.
-// Safety: even if VITE_DEV_PROXY_BASE leaks into a prod build, only use it on localhost.
-const DEV_PROXY_RAW = import.meta.env.VITE_DEV_PROXY_BASE || '' // e.g., http://localhost:8787
+// Safety: prevent dev proxy URL from appearing in production bundles.
+// In dev, read VITE_DEV_PROXY_BASE; in prod, force empty so the string is tree-shaken.
+const DEV_PROXY_RAW = import.meta.env.DEV ? (import.meta.env.VITE_DEV_PROXY_BASE || '') : '' // e.g., http://localhost:8787
 const IS_LOCALHOST = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
 const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
 // Default to the production custom domain; CI can override via VITE_SCHEDULE_API_BASE
@@ -133,7 +134,7 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; calendarSegs
 }
 
 // Agents-only write to avoid schedule conflicts when toggling hidden or renaming agents
-export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>): Promise<boolean>{
+export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }>): Promise<boolean>{
   try{
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }

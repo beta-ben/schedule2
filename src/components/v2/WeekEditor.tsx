@@ -7,7 +7,7 @@ import AgentWeekLinear from '../AgentWeekLinear'
 import type { PTO, Shift, Task } from '../../types'
 import type { CalendarSegment } from '../../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }
 
 function tzFullName(id?: string){
 	switch(id){
@@ -39,7 +39,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 			setEt(a.tzId || TZ_OPTS[0]?.id || 'UTC')
 	}
 	function cancelEdit(){ setEditingIdx(null) }
-		function saveEdit(){ if(editingIdx==null) return; onUpdateAgent?.(editingIdx, { firstName: ef.trim(), lastName: el.trim(), tzId: et, hidden: agents[editingIdx]?.hidden }); setEditingIdx(null) }
+		function saveEdit(){ if(editingIdx==null) return; onUpdateAgent?.(editingIdx, { firstName: ef.trim(), lastName: el.trim(), tzId: et, hidden: agents[editingIdx]?.hidden, isSupervisor: !!agents[editingIdx]?.isSupervisor, supervisorId: agents[editingIdx]?.supervisorId }); setEditingIdx(null) }
 
 	// Track last added agent to scroll into view
 	const [lastAddedAgentName, setLastAddedAgentName] = React.useState<string | null>(null)
@@ -77,8 +77,10 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const [selectedIdxLocal, setSelectedIdxLocal] = React.useState<number|null>(null)
 	const selectedIdx = (selectedIdxProp!=null ? selectedIdxProp : selectedIdxLocal) as number | null
 	const setSelectedIdx = (idx:number)=>{ onSelectIdx ? onSelectIdx(idx) : setSelectedIdxLocal(idx) }
-	const selectedAgent = selectedIdx!=null ? agents[selectedIdx] : null
-	const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
+		const selectedAgent = selectedIdx!=null ? agents[selectedIdx] : null
+		const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
+		const withIds = React.useMemo(()=> agents.map((a,i)=> ({ i, id: (a as any).id as string|undefined, name: [a.firstName,a.lastName].filter(Boolean).join(' '), isSupervisor: !!a.isSupervisor })), [agents])
+		const supervisors = React.useMemo(()=> withIds.filter(x=> x.isSupervisor && !!x.id), [withIds])
 
 	// Local editable shifts for selected agent (prototype; not persisted upstream)
 	const [agentShiftsLocal, setAgentShiftsLocal] = React.useState<Shift[]>([])
@@ -135,12 +137,12 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		return ()=> window.removeEventListener('keydown', onKey)
 	}, [undoLast])
 
-	// Compose timeline shifts so bottom panel reflects local edits immediately
-	const timelineShifts = React.useMemo(()=>{
-		if(!selectedName) return shifts
-		const others = shifts.filter(s=> s.person!==selectedName)
-		return others.concat(agentShiftsLocal)
-	}, [shifts, selectedName, agentShiftsLocal])
+		// Compose timeline shifts so bottom panel reflects local edits immediately
+		const timelineShifts = React.useMemo(()=>{
+			if(!selectedName) return shifts
+			const others = shifts.filter(s=> s.person!==selectedName)
+			return others.concat(agentShiftsLocal)
+		}, [shifts, selectedName, agentShiftsLocal])
 
 	// Helpers to apply a minute delta to a shift (updates day/start/end/endDay)
 	const addMin = (hhmm:string, delta:number)=>{
@@ -405,8 +407,23 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.firstName || '—'}</div>
 																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.lastName || '—'}</div>
 																				<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
-																																																												<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
-																					<div className="inline-flex items-center gap-1">
+																																																																																<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
+																																																																																		<div className="inline-flex items-center gap-2">
+																																																																																				<label className="inline-flex items-center gap-1 text-[11px]">
+																																																																																						<input type="checkbox" checked={!!a.isSupervisor} onChange={(e)=> onUpdateAgent?.(i, { ...a, isSupervisor: e.target.checked })} />
+																																																																																						<span className={dark?"text-neutral-300":"text-neutral-700"}>Supervisor</span>
+																																																																																				</label>
+																																																																																				<select
+																																																																																					title="Assign supervisor"
+																																																																																					className={["text-[11px] border rounded px-1 py-0.5", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+																																																																																					value={a.supervisorId||''}
+																																																																																					onChange={(e)=> onUpdateAgent?.(i, { ...a, supervisorId: e.target.value || undefined })}
+																																																																																				>
+																																																																																					<option value="">No supervisor</option>
+																																																																																					{supervisors.filter(x=> x.i!==i).map(x=> (
+																																																																																						<option key={x.i} value={x.id!}>{x.name||`Agent ${x.i+1}`}</option>
+																																																																																					))}
+																																																																																				</select>
 																																																																		<button
 																																																																			title={a.hidden?"Show in schedule":"Hide from schedule"}
 																																																																			aria-label={a.hidden?"Show in schedule":"Hide from schedule"}

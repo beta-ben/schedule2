@@ -70,7 +70,7 @@ export default function AgentWeekLinear({
   avoidLabelOverlap?: boolean
 }){
   // Detect theme from root [data-theme] for Night/Noir/Prism adjustments
-  const theme: 'system'|'light'|'dark'|'night'|'noir'|'prism' = (()=>{
+  const theme: 'system'|'light'|'dark'|'night'|'noir'|'prism'|'subtle'|'spring'|'summer'|'autumn'|'winter' = (()=>{
     try{
       const el = document.querySelector('[data-theme]') as HTMLElement | null
       const v = (el?.getAttribute('data-theme') as any) || 'system'
@@ -80,6 +80,11 @@ export default function AgentWeekLinear({
   const isNight = theme==='night'
   const isNoir = theme==='noir'
   const isPrism = theme==='prism'
+  const isSubtle = theme==='subtle'
+  const isSpring = theme==='spring'
+  const isSummer = theme==='summer'
+  const isAutumn = theme==='autumn'
+  const isWinter = theme==='winter'
   // Simple string hash to 0..359 for per-chip hue variance
   function hashStr(s: string) { 
     let h = 0; 
@@ -412,7 +417,19 @@ export default function AgentWeekLinear({
             const isMultiDragMember = drag && drag.mode==='single' && drag.selectedIds && drag.selectedIds.has(g.id)
             const delta = (isAllDragging || isThisDragging || isMultiDragMember) ? drag!.delta : 0
             const border = dark?'#52525b':'#94a3b8'
-            const bg = dark? 'rgba(59,130,246,0.64)' : 'rgba(59,130,246,0.625)'
+            // Theme chip base color: keep borders/hover rings unchanged; adjust fill only
+            const themeChip = (function(){
+              if(isNight || isNoir) return '#000'
+              if(isSubtle){
+                const S = 48
+                return dark ? `hsla(217, ${S}%, 60%, 0.22)` : `hsla(217, ${S}%, 60%, 0.18)`
+              }
+              if(isSpring){ return dark ? 'hsla(150, 60%, 40%, 0.45)' : 'hsla(150, 60%, 45%, 0.40)' } // mint/green
+              if(isSummer){ return dark ? 'hsla(200, 80%, 50%, 0.50)' : 'hsla(200, 85%, 55%, 0.44)' } // sky/azure
+              if(isAutumn){ return dark ? 'hsla(28, 85%, 50%, 0.48)'  : 'hsla(28, 85%, 52%, 0.42)' } // amber/orange
+              if(isWinter){ return dark ? 'hsla(220, 50%, 60%, 0.46)' : 'hsla(220, 55%, 62%, 0.40)' } // icy blue
+              return dark? 'rgba(59,130,246,0.64)' : 'rgba(59,130,246,0.625)'
+            })()
             // Label times based on original shift minutes-of-day, adjusted by delta
             const mod1440 = (v:number)=> ((v % 1440) + 1440) % 1440
             const groupStartMin = mod1440(g.startMin + delta)
@@ -437,7 +454,11 @@ export default function AgentWeekLinear({
                     : (highlightIds as string[]).includes(g.id)
                 )
   // Night/Noir: force chips to black
-  const chipBg = (isNight || isNoir) ? '#000' : (isHi ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)') : bg)
+  const chipBg = (isNight || isNoir)
+                  ? '#000'
+                  : (isHi
+                      ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)')
+                      : themeChip)
                 const isSel = !!selectedIds && (
                   selectedIds instanceof Set
                     ? selectedIds.has(g.id)
@@ -570,11 +591,17 @@ export default function AgentWeekLinear({
                       const widthInPart = ((b - a) / (pRight - pLeft)) * 100
                       const t = (tasks||[]).find(t=>t.id===sub.taskId)
                       // Subtle overlay normally; in Prism use animated gradient derived from task color
-                      const color = isNight
-                        ? 'rgba(239,68,68,0.28)'
-                        : isNoir
-                          ? 'rgba(255,255,255,0.16)'
-                          : (t?.color || (dark? 'rgba(59,130,246,0.85)':'rgba(59,130,246,0.85)'))
+                      const color = (function(){
+                        if(isNight) return 'rgba(239,68,68,0.28)'
+                        if(isNoir) return 'rgba(255,255,255,0.16)'
+                        if(t?.color) return t.color
+                        if(isSubtle){ const S = 48; return dark? `hsla(217, ${S}%, 60%, 0.30)` : `hsla(217, ${S}%, 60%, 0.26)` }
+                        if(isSpring) return dark? 'hsla(150, 60%, 45%, 0.55)' : 'hsla(150, 60%, 55%, 0.50)'
+                        if(isSummer) return dark? 'hsla(190, 85%, 60%, 0.60)' : 'hsla(190, 90%, 65%, 0.55)'
+                        if(isAutumn) return dark? 'hsla(28, 85%, 55%, 0.58)'  : 'hsla(28, 90%, 58%, 0.52)'
+                        if(isWinter) return dark? 'hsla(228, 62%, 68%, 0.56)' : 'hsla(228, 62%, 68%, 0.50)'
+                        return 'rgba(59,130,246,0.85)'
+                      })()
                       const prismImage = t?.color
                         ? `linear-gradient(90deg,
                             color-mix(in oklab, ${t.color} 85%, #000 15%) 0%,
@@ -649,17 +676,38 @@ export default function AgentWeekLinear({
           )}
 
           {/* Now line and optional label */}
-          {showNow && showNowLine && (
-            <div className={["absolute -translate-x-1/2 inset-y-0", dark?"bg-red-400":"bg-red-500"].join(' ')} style={{ left: `${nowLeft}%`, width: 1 }} />
-          )}
-          {showNow && showNowLabel && (
-            <div
-              className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded text-white whitespace-nowrap", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
-              style={{ left: `${nowLeft}%`, fontSize: NOW_TAG_F }}
-            >
-              {minToHHMM(now.minutes)}
-            </div>
-          )}
+          {showNow && (function(){
+            const line = (function(){
+              if(isSpring) return dark? '#22c55e' : '#16a34a'
+              if(isSummer) return dark? '#22d3ee' : '#06b6d4'
+              if(isAutumn) return dark? '#f59e0b' : '#f59e0b'
+              if(isWinter) return dark? '#a5b4fc' : '#6366f1'
+              if(isSubtle) return dark? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
+              return dark? '#f87171' : '#ef4444'
+            })()
+            const tagBg = (function(){
+              if(isSpring) return dark? 'rgba(34,197,94,0.9)' : 'rgba(22,163,74,0.95)'
+              if(isSummer) return dark? 'rgba(34,211,238,0.9)' : 'rgba(6,182,212,0.95)'
+              if(isAutumn) return dark? 'rgba(245,158,11,0.9)' : 'rgba(245,158,11,0.95)'
+              if(isWinter) return dark? 'rgba(165,180,252,0.9)' : 'rgba(99,102,241,0.95)'
+              if(isSubtle) return dark? 'rgba(0,0,0,0.70)' : 'rgba(0,0,0,0.70)'
+              return dark? 'rgba(248,113,113,0.95)' : 'rgba(239,68,68,0.95)'
+            })()
+            const tagText = (isWinter && !dark) ? '#fff' : '#fff'
+            return (
+              <>
+                {showNowLine && (
+                  <div className="absolute -translate-x-1/2 inset-y-0" style={{ left: `${nowLeft}%`, width: 1, background: line }} />
+                )}
+                {showNowLabel && (
+                  <div className="absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded whitespace-nowrap"
+                       style={{ left: `${nowLeft}%`, fontSize: NOW_TAG_F, background: tagBg, color: tagText }}>
+                    {minToHHMM(now.minutes)}
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
       </div>
 
