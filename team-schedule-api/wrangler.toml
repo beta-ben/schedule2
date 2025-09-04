@@ -10,10 +10,10 @@ compatibility_date = "2025-08-28"
 # For local dev with `wrangler dev`, you can optionally uncomment and provide
 # a preview-only binding or your real KV id:
 #
-# [[kv_namespaces]]
-# binding = "SCHEDULE_KV"
-# preview_id = "local-dev"
-# # id = "<your-production-kv-id>"  # only if you deploy with `wrangler deploy`
+
+[[kv_namespaces]]
+# Declare the binding name so Versions know to inject the dashboard-managed namespace.
+binding = "SCHEDULE_KV"
 
 [vars]
 # These can be overridden in Cloudflare dashboard (Settings > Variables).
