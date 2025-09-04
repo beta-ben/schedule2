@@ -11,9 +11,8 @@ compatibility_date = "2025-08-28"
 # a preview-only binding or your real KV id:
 #
 
-[[kv_namespaces]]
-# Declare the binding name so Versions know to inject the dashboard-managed namespace.
-binding = "SCHEDULE_KV"
+## Note: For Workers Builds via Versions, bindings are managed in the dashboard.
+## Do not declare kv_namespaces here unless you also provide an id; Wrangler v3 requires it.
 
 [vars]
 # These can be overridden in Cloudflare dashboard (Settings > Variables).
