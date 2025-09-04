@@ -48,12 +48,25 @@ curl -i http://localhost:8787/api/schedule \
 ```
 
 ## Git-based deploy via Cloudflare dashboard
-- In Workers > Your Worker > Settings > Build, connect repo to this folder.
+Two supported flows; choose one and align `wrangler.toml` accordingly.
+
+1) Workers Builds (recommended for versions upload)
+- In Cloudflare Dashboard → Workers → Your Worker → Settings → Build:
   - Root directory: `team-schedule-api`
-  - Deploy command: `npx wrangler deploy`
-  - Build command: leave empty (Wrangler builds directly)
-- Ensure KV binding exists on the Worker: `SCHEDULE_KV`
-- Set variables: `ADMIN_PASSWORD`, `SITE_PASSWORD`, optionally `ALLOWED_ORIGINS` (or `CORS_ORIGINS`), `COOKIE_DOMAIN`.
+  - Deploy command: `npx wrangler versions upload`
+  - Build command: leave empty
+- Under Settings → Bindings, add KV Namespace binding:
+  - Variable name: `SCHEDULE_KV`
+  - Select your existing KV namespace (do not hard-code its id in wrangler.toml)
+- Under Settings → Variables, set required env vars: `ADMIN_PASSWORD`, `SITE_PASSWORD`, and optionally `ALLOWED_ORIGINS` (or `CORS_ORIGINS`), `COOKIE_DOMAIN`, `COOKIE_SECURE`, etc.
+- Note: wrangler.toml should NOT specify a concrete `id` under `[[kv_namespaces]]` for this flow.
+
+2) Direct Wrangler deploy (CI or local)
+- Command: `npx wrangler deploy`
+- In this case, `wrangler.toml` may include:
+  - `[[kv_namespaces]]` with an `id` for production
+  - Optional `preview_id` for local dev
+- Secrets/vars can be set via `wrangler secret put` and `wrangler kv namespace` commands, or in the dashboard.
 
 ## Notes
 - The worker enforces schemaVersion >= 2 and persists `agents[]` (with `hidden`) so all clients see the same hidden state.

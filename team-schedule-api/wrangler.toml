@@ -2,14 +2,18 @@ name = "team-schedule-api"
 main = "worker-schedule-agents.ts"
 compatibility_date = "2025-08-28"
 
-# If you want to test via `npm run dev`, Wrangler will use these bindings locally.
-# Put secrets in `.dev.vars` (not committed) or set via `wrangler secret put`.
-
-[[kv_namespaces]]
-binding = "SCHEDULE_KV"
-# Replace with your real KV id before deploy (from Cloudflare dashboard)
-# e.g., id = "abcdef1234567890abcdef1234567890"
-id = "00000000000000000000000000000000" # dev placeholder; replace in prod
+# When deploying via Cloudflare “Workers Builds” (Git integration with
+# `npx wrangler versions upload`), configure the KV binding in the Cloudflare
+# dashboard (Worker > Settings > Bindings) and DO NOT hard-code an `id` here.
+# This avoids build-time failures when placeholder IDs are present.
+#
+# For local dev with `wrangler dev`, you can optionally uncomment and provide
+# a preview-only binding or your real KV id:
+#
+# [[kv_namespaces]]
+# binding = "SCHEDULE_KV"
+# preview_id = "local-dev"
+# # id = "<your-production-kv-id>"  # only if you deploy with `wrangler deploy`
 
 [vars]
 # These can be overridden in Cloudflare dashboard (Settings > Variables).
