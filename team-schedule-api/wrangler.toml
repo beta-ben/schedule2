@@ -2,37 +2,47 @@ name = "team-schedule-api"
 main = "worker-schedule-agents.ts"
 compatibility_date = "2025-08-28"
 
-# When deploying via Cloudflare “Workers Builds” (Git integration with
-# `npx wrangler versions upload`), configure the KV binding in the Cloudflare
-# dashboard (Worker > Settings > Bindings) and DO NOT hard-code an `id` here.
-# This avoids build-time failures when placeholder IDs are present.
-#
-# For local dev with `wrangler dev`, you can optionally uncomment and provide
-# a preview-only binding or your real KV id:
-#
-
-## Note: For Workers Builds via Versions, bindings are managed in the dashboard.
-## Do not declare kv_namespaces here unless you also provide an id; Wrangler v3 requires it.
+# Wrangler-first deploys: wrangler.toml is the source of truth for bindings.
+# We bind KV here (with a concrete id) and deploy via `wrangler deploy`.
 
 [vars]
-# These can be overridden in Cloudflare dashboard (Settings > Variables).
-# ADMIN_PASSWORD = ""
-# SITE_PASSWORD = ""
-# ALLOWED_ORIGINS = "https://teamschedule.cc,https://schedule.your-dev-domain"
+# Secrets like ADMIN_PASSWORD and SITE_PASSWORD should be set via:
+#   wrangler secret put ADMIN_PASSWORD
+#   wrangler secret put SITE_PASSWORD
+# Non-secret vars can live here and be overridden per-environment if needed.
 ALLOWED_ORIGINS = "https://teamschedule.cc"
-# COOKIE_DOMAIN = ".teamschedule.cc"
-# COOKIE_SECURE = "true"
-# COOKIE_SAMESITE = "Lax"
-# REQUIRE_SITE_SESSION = "true"
+COOKIE_DOMAIN = ".teamschedule.cc"
+COOKIE_SECURE = "true"
+COOKIE_SAMESITE = "Lax"
+REQUIRE_SITE_SESSION = "true"
+# Optional: override the KV key name for the schedule document
 # DATA_KEY = "schedule.json"
-# Prefer KV by default; we’ll flip this during cutover
+
+# Freeze storage to KV (D1 optional endpoints will 503 without a DB binding)
 USE_D1 = "0"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "schedule2"
-database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"
-
+# KV namespace binding (prod). For previews/local, you may also set preview_id.
 [[kv_namespaces]]
 binding = "SCHEDULE_KV"
 id = "b3cf4bb860cb4e49a79f70f6b79e4606"
+# preview_id = "<your-preview-namespace-id>"
+
+# If you later want separate environments, add [env.staging] / [env.prod]
+# blocks with their own kv_namespaces arrays and vars.
+
+# -----------------
+# Staging environment
+[env.staging]
+name = "team-schedule-api-staging"
+
+[env.staging.vars]
+ALLOWED_ORIGINS = "https://staging.teamschedule.cc"
+COOKIE_DOMAIN = ".teamschedule.cc"
+COOKIE_SECURE = "true"
+COOKIE_SAMESITE = "Lax"
+REQUIRE_SITE_SESSION = "true"
+USE_D1 = "0"
+
+[[env.staging.kv_namespaces]]
+binding = "SCHEDULE_KV"
+id = "83ab5fcb1c2e4a3b8ae75ea5240f31eb"

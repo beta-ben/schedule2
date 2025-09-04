@@ -12,6 +12,42 @@ Two options:
 - If using the same repo Pages, you’ll need a separate project for staging (so CNAMEs don’t collide), or host via Cloudflare Pages.
 
 API for staging:
-- Deploy a staging Worker/API route (e.g., `https://staging-api.teamschedule.cc`).
-- Add `.env.production.staging` with `VITE_SCHEDULE_API_BASE=https://staging-api.teamschedule.cc`.
-- In staging workflow, add a step to copy that env file to `.env.production` before build.
+Wrangler-first, KV-only staging API:
+
+1) Create a staging KV namespace and capture its id
+```
+wrangler kv namespace create SCHEDULE_KV --env staging --config team-schedule-api/wrangler.toml
+```
+- Replace `<replace-with-staging-kv-id>` in `team-schedule-api/wrangler.toml` under `[env.staging].kv_namespaces` with the printed id.
+
+2) Set staging secrets
+```
+cd team-schedule-api
+wrangler secret put ADMIN_PASSWORD --env staging
+wrangler secret put SITE_PASSWORD --env staging
+```
+
+3) (Optional) Adjust staging vars
+- In wrangler.toml `[env.staging.vars]`, set `ALLOWED_ORIGINS` to your staging site origin, keep cookies secure and domain to `.teamschedule.cc`.
+
+4) Deploy staging API
+```
+cd team-schedule-api
+wrangler deploy --env staging
+```
+
+5) Verify staging API
+- GET `https://<staging-worker-subdomain>/api/_bindings` → shows `SCHEDULE_KV`.
+- GET `https://<staging-worker-subdomain>/api/_health` → KV ok, D1 off (use_d1: "0").
+- POST `/api/login` → set cookies; then POST `/api/schedule` and GET `/api/schedule`.
+
+6) Point web app to staging API
+- Create `.env.production.staging` at repo root with:
+```
+VITE_SCHEDULE_API_BASE=https://<staging-worker-subdomain>
+```
+- In your staging build workflow, copy it to `.env.production` before build:
+```
+cp .env.production.staging .env.production
+```
+- Deploy the staging site to `https://staging.teamschedule.cc`.

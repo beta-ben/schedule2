@@ -47,26 +47,27 @@ curl -i http://localhost:8787/api/schedule \
   --data '{"schemaVersion":2,"shifts":[],"pto":[],"calendarSegs":[],"agents":[],"updatedAt":"2020-01-01T00:00:00Z"}'
 ```
 
-## Git-based deploy via Cloudflare dashboard
-Two supported flows; choose one and align `wrangler.toml` accordingly.
+## Wrangler-first deploy (recommended)
+Let Wrangler own bindings and deploys to avoid drift.
 
-1) Workers Builds (recommended for versions upload)
-- In Cloudflare Dashboard → Workers → Your Worker → Settings → Build:
-  - Root directory: `team-schedule-api`
-  - Deploy command: `npx wrangler versions upload`
-  - Build command: leave empty
-- Under Settings → Bindings, add KV Namespace binding:
-  - Variable name: `SCHEDULE_KV`
-  - Select your existing KV namespace (do not hard-code its id in wrangler.toml)
-- Under Settings → Variables, set required env vars: `ADMIN_PASSWORD`, `SITE_PASSWORD`, and optionally `ALLOWED_ORIGINS` (or `CORS_ORIGINS`), `COOKIE_DOMAIN`, `COOKIE_SECURE`, etc.
-- Note: wrangler.toml should NOT specify a concrete `id` under `[[kv_namespaces]]` for this flow.
+1) Configure secrets and vars
+- Secrets (prompted, not stored in repo):
+  - ADMIN_PASSWORD → `wrangler secret put ADMIN_PASSWORD`
+  - SITE_PASSWORD  → `wrangler secret put SITE_PASSWORD`
+- Vars (in wrangler.toml by default; override if needed):
+  - ALLOWED_ORIGINS, COOKIE_DOMAIN, COOKIE_SECURE, COOKIE_SAMESITE, REQUIRE_SITE_SESSION, USE_D1=0
 
-2) Direct Wrangler deploy (CI or local)
-- Command: `npx wrangler deploy`
-- In this case, `wrangler.toml` may include:
-  - `[[kv_namespaces]]` with an `id` for production
-  - Optional `preview_id` for local dev
-- Secrets/vars can be set via `wrangler secret put` and `wrangler kv namespace` commands, or in the dashboard.
+2) KV namespace
+- `wrangler.toml` already binds `SCHEDULE_KV` with a concrete `id` for production.
+- Optionally add `preview_id` for local previews.
+
+3) Deploy
+- `npm run deploy` (equivalent to `wrangler deploy`).
+
+4) Verify
+- GET `/api/_bindings` → includes `SCHEDULE_KV`.
+- GET `/api/_health`   → `{ kv: { ok: true }, d1: { ok: false|no_binding }, use_d1: "0" }`.
+- POST `/api/login` → receive `sid` + `csrf` cookies; then POST `/api/schedule` and GET `/api/schedule`.
 
 ## Notes
 - The worker enforces schemaVersion >= 2 and persists `agents[]` (with `hidden`) so all clients see the same hidden state.
