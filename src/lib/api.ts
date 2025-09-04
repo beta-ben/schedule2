@@ -22,18 +22,21 @@ export function getApiPrefix(){ return API_PREFIX }
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
 // We keep a memory copy captured from the login response body (when available).
 let CSRF_TOKEN_MEM: string | null = null
+// IMPORTANT: Only treat the in-memory token (set by a successful login in this tab)
+// as proof that writes are allowed. The csrf cookie may linger after the admin
+// session (sid) expires and would cause 401s if we relied on it.
 function getCsrfFromCookieOnly(): string | null {
   if (typeof document === 'undefined') return null
   const m = document.cookie.match(/(?:^|; )csrf=([^;]+)/)
   return m ? decodeURIComponent(m[1]) : null
 }
 function getCsrfToken(): string | null {
-  return CSRF_TOKEN_MEM || getCsrfFromCookieOnly()
+  return CSRF_TOKEN_MEM
 }
 export function hasCsrfCookie(){ return !!getCsrfFromCookieOnly() }
-export function hasCsrfToken(){ return !!getCsrfToken() }
+export function hasCsrfToken(){ return CSRF_TOKEN_MEM != null }
 export function getCsrfDiagnostics(){
-  return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: !!getCsrfToken() }
+  return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: hasCsrfToken() }
 }
 
 // Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
@@ -101,7 +104,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; cale
   // Expect prod server to implement /api/schedule with cookies+CSRF.
   // If cookie isn't readable due to HttpOnly or subdomain scope, we also accept a token captured from login response.
   const csrf = getCsrfToken()
-  if(!csrf && !DEV_PROXY){ console.warn('[cloudPost] CSRF token missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
+  if(!csrf && !DEV_PROXY){ console.info('[schedule2] Skipping write: not logged in (no CSRF token).'); return { ok:false, error:'missing_csrf' } }
   const url = `${API_BASE}${API_PREFIX}/schedule`
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
   if(csrf) headers['x-csrf-token'] = csrf
@@ -138,9 +141,13 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
   // Capability check: some prod deployments may not expose /api/agents yet.
   // We probe once via GET and cache. Treat 200/401/403 as "exists"; 404 => not supported.
   try{
+    const csrf = getCsrfToken()
+    if(!csrf && !DEV_PROXY){
+      try{ console.info('[schedule2] Skipping /api/agents write: not logged in (no CSRF token).') }catch{}
+      return false
+    }
     const okToUse = await agentsEndpointSupported()
     if(!okToUse){ return false }
-    const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
     const r = await fetch(`${API_BASE}${API_PREFIX}/agents`,{
