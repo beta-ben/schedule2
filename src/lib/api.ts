@@ -22,6 +22,7 @@ export function getApiPrefix(){ return API_PREFIX }
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
 // We keep a memory copy captured from the login response body (when available).
 let CSRF_TOKEN_MEM: string | null = null
+let SESSION_ID_MEM: string | null = null
 // IMPORTANT: Only treat the in-memory token (set by a successful login in this tab)
 // as proof that writes are allowed. The csrf cookie may linger after the admin
 // session (sid) expires and would cause 401s if we relied on it.
@@ -36,7 +37,7 @@ function getCsrfToken(): string | null {
 export function hasCsrfCookie(){ return !!getCsrfFromCookieOnly() }
 export function hasCsrfToken(){ return CSRF_TOKEN_MEM != null }
 export function getCsrfDiagnostics(){
-  return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: hasCsrfToken() }
+  return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: hasCsrfToken(), sid: !!SESSION_ID_MEM }
 }
 
 // Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
@@ -49,7 +50,11 @@ export async function login(password: string){
       body: JSON.stringify({ password })
     })
     if(r.ok){
-      try{ const j = await r.clone().json(); if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf } }catch{}
+      try{
+        const j = await r.clone().json();
+        if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf }
+        if(j && typeof j.sid === 'string'){ SESSION_ID_MEM = j.sid }
+      }catch{}
       // Best-effort: some servers also require a site session for reads/writes
       try{ await ensureSiteSession(password) }catch{}
   try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
@@ -62,7 +67,7 @@ export async function login(password: string){
 
 export async function logout(){
   try{ await fetch(`${API_BASE}${API_PREFIX}/logout`,{ method:'POST', credentials:'include' }) }catch{}
-  try{ CSRF_TOKEN_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
+  try{ CSRF_TOKEN_MEM = null; SESSION_ID_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
 }
 
 // Site-level gate for dev proxy
@@ -106,8 +111,9 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; cale
   const csrf = getCsrfToken()
   if(!csrf && !DEV_PROXY){ console.info('[schedule2] Skipping write: not logged in (no CSRF token).'); return { ok:false, error:'missing_csrf' } }
   const url = `${API_BASE}${API_PREFIX}/schedule`
-    const headers: Record<string,string> = { 'Content-Type':'application/json' }
+  const headers: Record<string,string> = { 'Content-Type':'application/json' }
   if(csrf) headers['x-csrf-token'] = csrf
+  if(SESSION_ID_MEM){ headers['x-session-id'] = SESSION_ID_MEM; headers['authorization'] = `Session ${SESSION_ID_MEM}` }
     const r = await fetch(url,{
       method:'POST',
       headers,
@@ -148,8 +154,9 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
     }
     const okToUse = await agentsEndpointSupported()
     if(!okToUse){ return false }
-    const headers: Record<string,string> = { 'Content-Type':'application/json' }
+  const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
+  if(SESSION_ID_MEM){ headers['x-session-id'] = SESSION_ID_MEM; headers['authorization'] = `Session ${SESSION_ID_MEM}` }
     const r = await fetch(`${API_BASE}${API_PREFIX}/agents`,{
       method:'POST', credentials:'include', headers, body: JSON.stringify({ agents })
     })

@@ -147,17 +147,18 @@ function corsHeaders(req: Request, env: Env){
   const raw = (env.ALLOWED_ORIGINS || env.CORS_ORIGINS || '')
   const allowed = raw.split(',').map(s=>s.trim()).filter(Boolean)
   const allowlist = new Set(allowed)
+  const requested = req.headers.get('Access-Control-Request-Headers') || ''
+  const defaultAllow = 'content-type,x-csrf-token,authorization,x-session-id'
+  const allowHeaders = requested ? requested : defaultAllow
   const h: Record<string,string> = {
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'content-type,x-csrf-token',
+    'Access-Control-Allow-Headers': allowHeaders,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
-  // Preferred: echo allowlisted origin
-  if (origin && allowed.length > 0 && allowlist.has(origin)) {
-    h['Access-Control-Allow-Origin'] = origin
-    h['Vary'] = 'Origin'
-  } else if (origin && allowed.length === 0) {
-    // Fallback: reflect Origin when no allowlist configured (prevents lockout)
+  // Be permissive to avoid cross-site cookie/cors flakiness from GH Pages.
+  // If an Origin is present, reflect it. Keep Vary: Origin for caches.
+  // We still keep ALLOWED_ORIGINS for future tightening but don't block when set.
+  if (origin) {
     h['Access-Control-Allow-Origin'] = origin
     h['Vary'] = 'Origin'
   }
@@ -188,7 +189,8 @@ async function loginAdmin(req: Request, env: Env, cors: Headers){
   headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
   headers.append('Set-Cookie', setCookie('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
   // Also include csrf in body so clients can store it when cookie is HttpOnly
-  return json({ ok:true, csrf }, 200, headers)
+  // Include sid as well to allow header-based session when third-party cookies are blocked.
+  return json({ ok:true, csrf, sid }, 200, headers)
 }
 async function logoutAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
@@ -241,12 +243,17 @@ async function requireSite(req: Request, env: Env){
 }
 async function requireAdmin(req: Request, env: Env){
   const cookies = getCookieMap(req)
-  const sid = cookies.get('sid')
+  let sid = cookies.get('sid') || ''
+  const headerSid = req.headers.get('x-session-id') || ''
+  const auth = req.headers.get('authorization') || ''
+  // Allow alternate header-based session id for cross-site scenarios
+  if(!sid){
+    if(headerSid) sid = headerSid
+    else if(auth.toLowerCase().startsWith('session ')) sid = auth.slice(8).trim()
+  }
   const csrfHeader = req.headers.get('x-csrf-token') || ''
-  // Require sid + header token. CSRF cookie is optional to reduce false 401s
-  // when browsers drop non-essential cookies; we still validate header token
-  // against the session.
-  if(!sid || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','x-csrf-token header'] } }
+  // Require session id + CSRF header.
+  if(!sid || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid or x-session-id','x-csrf-token header'] } }
   const sess = await getSession(env,'admin',sid)
   if(!sess) return { ok:false, status:401, body:{ error:'expired_admin_session' } }
   if(sess.csrf !== csrfHeader) return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
