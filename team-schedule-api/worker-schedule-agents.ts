@@ -242,12 +242,14 @@ async function requireSite(req: Request, env: Env){
 async function requireAdmin(req: Request, env: Env){
   const cookies = getCookieMap(req)
   const sid = cookies.get('sid')
-  const csrfCookie = cookies.get('csrf')
   const csrfHeader = req.headers.get('x-csrf-token') || ''
-  if(!sid || !csrfCookie || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','csrf cookie','x-csrf-token header'] } }
+  // Require sid + header token. CSRF cookie is optional to reduce false 401s
+  // when browsers drop non-essential cookies; we still validate header token
+  // against the session.
+  if(!sid || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','x-csrf-token header'] } }
   const sess = await getSession(env,'admin',sid)
   if(!sess) return { ok:false, status:401, body:{ error:'expired_admin_session' } }
-  if(sess.csrf !== csrfCookie || sess.csrf !== csrfHeader) return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
+  if(sess.csrf !== csrfHeader) return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
   return { ok:true }
 }
 
