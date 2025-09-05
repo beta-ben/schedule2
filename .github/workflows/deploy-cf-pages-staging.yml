@@ -1,0 +1,49 @@
+name: Deploy Staging to Cloudflare Pages
+
+on:
+  push:
+    branches: [ staging ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Prepare staging env
+        run: |
+          # If a repo-level override is provided, write it to .env.production
+          if [ -n "${{ secrets.VITE_SCHEDULE_API_BASE_STAGING }}" ]; then
+            echo "VITE_SCHEDULE_API_BASE=${{ secrets.VITE_SCHEDULE_API_BASE_STAGING }}" > .env.production
+          elif [ -f .env.production.staging ]; then
+            cp .env.production.staging .env.production
+          else
+            # Fallback to workers.dev default used in the repo
+            echo "VITE_SCHEDULE_API_BASE=https://team-schedule-api.phorbie.workers.dev" > .env.production
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to Cloudflare Pages (staging)
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: ${{ secrets.CF_PAGES_PROJECT_NAME }} # e.g. schedule2-staging
+          directory: ./dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: staging
