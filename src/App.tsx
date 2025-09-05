@@ -134,7 +134,7 @@ export default function App(){
   },[])
   // v2: dedicated agents list (temporary local persistence)
   // Include supervisor fields so UI toggles persist locally and to the cloud
-  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }
+  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string; notes?: string }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_agents_v2_v1')
@@ -211,7 +211,7 @@ export default function App(){
     const now = new Date().toISOString()
     const shiftsWithIds = draft.data.shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
     const ptoWithIds = draft.data.pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
+  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined, notes: (a as any).notes || undefined }))
   const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs: draft.data.calendarSegs, agents: agentsPayload, updatedAt: now })
     if(ok){
       setShifts(shiftsWithIds)
@@ -275,7 +275,7 @@ export default function App(){
       setCanEdit(ok)
       if(ok){
         // Push current agents metadata (hidden flags, tz, names) so other users see changes
-  const payload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
+  const payload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined, notes: (a as any).notes || undefined }))
         cloudPostAgents(payload)
       }
     }
@@ -359,7 +359,7 @@ export default function App(){
     const t=setTimeout(()=>{ 
       const shiftsWithIds = shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
       const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
+  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined, notes: (a as any).notes || undefined }))
       cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()}) 
     },600); 
     return ()=>clearTimeout(t) 
@@ -372,7 +372,7 @@ export default function App(){
     const t = setTimeout(()=>{
       // Prefer agents-only endpoint to avoid schedule conflicts
       cloudPostAgents(
-        agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined }))
+  agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId || undefined, notes: (a as any).notes || undefined }))
       )
     }, 600)
     return ()=> clearTimeout(t)
@@ -511,9 +511,9 @@ export default function App(){
                 if(!newFull){ alert('Enter a first and/or last name'); return }
                 const dup = agentsV2.some(row=> nameKey(fullNameOf(row))===nameKey(newFull))
                 if(dup){ alert('An agent with that name already exists.'); return }
-                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, isSupervisor: false, supervisorId: undefined }]))
+                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, isSupervisor: false, supervisorId: undefined, notes: '' }]))
               }}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string })=>{
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string; notes?: string })=>{
                 // Compute names and check duplicates (excluding self)
                 const cur = agentsV2[index]
                 if(!cur){ return }
@@ -546,6 +546,7 @@ export default function App(){
                     // Keep or set supervisor flags explicitly from the update payload
                     isSupervisor: (a as any).isSupervisor!=null ? !!(a as any).isSupervisor : (r as any).isSupervisor,
                     supervisorId: (a as any).supervisorId!==undefined ? (a as any).supervisorId : (r as any).supervisorId,
+                    notes: (a as any).notes!==undefined ? (a as any).notes : (r as any).notes,
                   }
                   return next
                 }))

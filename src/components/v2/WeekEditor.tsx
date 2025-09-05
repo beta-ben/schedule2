@@ -7,7 +7,7 @@ import AgentWeekLinear from '../AgentWeekLinear'
 import type { PTO, Shift, Task } from '../../types'
 import type { CalendarSegment } from '../../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string; notes?: string }
 
 function tzFullName(id?: string){
 	switch(id){
@@ -29,6 +29,8 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const [ef, setEf] = React.useState('')
 	const [el, setEl] = React.useState('')
 	const [et, setEt] = React.useState<string>(TZ_OPTS[0]?.id || 'UTC')
+
+  
 
 	function beginEdit(idx:number){
 		const a = agents[idx]
@@ -81,6 +83,17 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
 		const withIds = React.useMemo(()=> agents.map((a,i)=> ({ i, id: (a as any).id as string|undefined, name: [a.firstName,a.lastName].filter(Boolean).join(' '), isSupervisor: !!a.isSupervisor })), [agents])
 		const supervisors = React.useMemo(()=> withIds.filter(x=> x.isSupervisor && !!x.id), [withIds])
+
+	// Keep right-panel edit fields in sync when selecting a new agent
+	React.useEffect(()=>{
+		if(selectedIdx!=null){
+			const a = agents[selectedIdx]
+			if(a){ setEf(a.firstName||''); setEl(a.lastName||''); setEt(a.tzId || TZ_OPTS[0]?.id || 'UTC'); setEditingIdx(selectedIdx) }
+		} else {
+			setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEditingIdx(null)
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [selectedIdx])
 
 	// Local editable shifts for selected agent (prototype; not persisted upstream)
 	const [agentShiftsLocal, setAgentShiftsLocal] = React.useState<Shift[]>([])
@@ -382,54 +395,16 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 								<div className="text-right">Actions</div>
 							</div>
 										    <ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
-															    {sortedAgents.map(({ a, i }, sIdx)=> (
-																    <li key={`${a.firstName}-${a.lastName}-${i}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-4 gap-2 items-center cursor-pointer", selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(i)}>
-																		{editingIdx===i ? (
-																			<>
-																				<div>
-																					<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={ef} onChange={e=>setEf(e.target.value)} />
-																				</div>
-																				<div>
-																					<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={el} onChange={e=>setEl(e.target.value)} />
-																				</div>
-																				<div>
-																					<select className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={et} onChange={e=>setEt(e.target.value)}>
-																						{TZ_OPTS.map(o=> <option key={o.id} value={o.id}>{tzFullName(o.id)}</option>)}
-																					</select>
-																				</div>
-																				<div className="text-right space-x-1">
-																					<button onClick={saveEdit} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
-																					<button onClick={cancelEdit} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700"].join(' ')}>Cancel</button>
-																				</div>
-																			</>
-																		) : (
-																			<>
-																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.firstName || '—'}</div>
-																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.lastName || '—'}</div>
-																				<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
-																																																																																<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
-																																																																																	<div className="inline-flex items-center gap-1 flex-wrap justify-end min-w-0">
-																							<button title="Edit" aria-label="Edit agent" onClick={()=>beginEdit(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>
-																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-																								<path d="M12 20h9"/>
-																								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-																							</svg>
-																						</button>
-																							<button title="Delete" aria-label="Delete agent" onClick={()=>setDeleteIdx(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-red-300 hover:bg-neutral-800":"border-neutral-300 text-red-600 hover:bg-red-50"].join(' ')}>
-																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-																								<polyline points="3 6 5 6 21 6"/>
-																								<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-																								<path d="M10 11v6"/>
-																								<path d="M14 11v6"/>
-																								<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-																							</svg>
-																						</button>
-																					</div>
-																				</div>
-																			</>
-																		)}
-																	</li>
-																	))}
+																																{sortedAgents.map(({ a, i }, sIdx)=> (
+																																		<li key={`${a.firstName}-${a.lastName}-${i}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-4 gap-2 items-center cursor-pointer", selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(i)}>
+																																			<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.firstName || '—'}</div>
+																																			<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.lastName || '—'}</div>
+																																			<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
+																																			<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
+																																				{/* Controls moved to right panel; left actions intentionally empty */}
+																																			</div>
+																																		</li>
+																																))}
 											</ul>
 							</div>
 						)}
@@ -515,9 +490,9 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 							</div>
 						)}
 
-				{/* Right: selected agent shifts list (same height as agent list) */}
+				{/* Right: selected agent controls and shifts list */}
 								<section className={["rounded-lg p-3", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
-															<div className="flex items-center justify-between mb-2">
+					<div className="flex items-center justify-between mb-2">
 																<div className="text-sm font-medium">Shifts ({agentShiftsLocal.length}){agentShiftsLocal.length>0 && (
 																	<span className={"ml-2 opacity-70"}>
 																		• Total {fmtDuration(totalMinutesAll)} 
@@ -550,62 +525,57 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																	</button>
 																</div>
 															</div>
-										{!selectedAgent ? (
+															{!selectedAgent ? (
 						<div className="text-sm opacity-70">Select an agent on the left to view and edit their shifts.</div>
 										) : (
 						<div>
-							<div className={["text-2xl font-semibold mb-2", selectedAgent?.hidden ? (dark?"text-neutral-400":"text-neutral-500") : (dark?"text-neutral-100":"text-neutral-900")].join(' ')}>{selectedName}</div>
-								{/* Agent-level controls moved here (Supervisor, Assign supervisor, Hide) */}
-								{selectedAgent && (
-									<div className={["mb-2 rounded-md px-2 py-2 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
-										<div className="flex items-center gap-2 flex-wrap">
-											<label className="inline-flex items-center gap-2 text-sm" title="Supervisor">
-												<input
-													aria-label="Supervisor"
-													title="Supervisor"
-													type="checkbox"
-													className="w-4 h-4 align-middle"
-													checked={!!selectedAgent.isSupervisor}
-													onChange={(e)=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, isSupervisor: e.target.checked }) } }}
-												/>
-												<span>Supervisor</span>
-											</label>
-											<div className="min-w-[12rem]">
-												<select
-													title="Assign supervisor"
-													className={["text-sm border rounded px-2 py-1 h-9 leading-7 w-full", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-													value={selectedAgent.supervisorId||''}
-													onChange={(e)=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, supervisorId: e.target.value || undefined }) } }}
-												>
-													<option value="">No supervisor</option>
-													{supervisors.filter(x=> x.i!==selectedIdx).map(x=> (
-														<option key={x.i} value={x.id!}>{x.name||`Agent ${x.i+1}`}</option>
-													))}
-												</select>
-											</div>
-											<button
-												title={selectedAgent.hidden?"Show in schedule":"Hide from schedule"}
-												aria-label={selectedAgent.hidden?"Show in schedule":"Hide from schedule"}
-												onClick={()=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, hidden: !selectedAgent.hidden }) } }}
-												className={["inline-flex items-center justify-center px-3 h-9 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
-											>
-												{selectedAgent.hidden ? (
-													<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-														<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/>
-														<path d="M1 1l22 22"/>
-														<path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/>
-													</svg>
-												) : (
-													<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-														<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
-														<circle cx="12" cy="12" r="3"/>
-													</svg>
-												)}
-												<span className="ml-2 text-sm">{selectedAgent.hidden ? 'Hidden' : 'Visible'}</span>
-											</button>
-										</div>
-									</div>
-								)}
+																			<div className={["text-2xl font-semibold mb-2", selectedAgent?.hidden ? (dark?"text-neutral-400":"text-neutral-500") : (dark?"text-neutral-100":"text-neutral-900")].join(' ')}>{selectedName}</div>
+																			{/* Agent control panel */}
+																			<div className={["mb-3 rounded-md p-2 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+																				<div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+																					<label className="text-sm flex flex-col">
+																						<span className="mb-1">First</span>
+																						<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={ef || selectedAgent.firstName} onChange={e=>{ setEf(e.target.value); setEditingIdx(selectedIdx) }} />
+																					</label>
+																					<label className="text-sm flex flex-col">
+																						<span className="mb-1">Last</span>
+																						<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={el || selectedAgent.lastName} onChange={e=>{ setEl(e.target.value); setEditingIdx(selectedIdx) }} />
+																					</label>
+																					<label className="text-sm flex flex-col">
+																						<span className="mb-1">Timezone</span>
+																						<select className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={et || selectedAgent.tzId || TZ_OPTS[0]?.id} onChange={e=>{ setEt(e.target.value); setEditingIdx(selectedIdx) }}>
+																							{TZ_OPTS.map(o=> <option key={o.id} value={o.id}>{tzFullName(o.id)}</option>)}
+																						</select>
+																					</label>
+																					<div className="text-right flex items-end justify-end gap-2">
+																						<button onClick={()=>{ if(selectedIdx!=null){ setEf(''); setEl(''); setEt(selectedAgent.tzId||TZ_OPTS[0]?.id||'UTC'); onUpdateAgent?.(selectedIdx, { ...selectedAgent, firstName: selectedAgent.firstName, lastName: selectedAgent.lastName, tzId: selectedAgent.tzId }) } }} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
+																						<button onClick={()=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, firstName: (ef||selectedAgent.firstName).trim(), lastName: (el||selectedAgent.lastName).trim(), tzId: et || selectedAgent.tzId }) ; setEf(''); setEl('') } }} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
+																						<button onClick={()=> setDeleteIdx(selectedIdx!)} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
+																					</div>
+																				</div>
+																				<div className="mt-2 flex items-center gap-2 flex-wrap">
+																					<label className="inline-flex items-center gap-2 text-sm" title="Supervisor">
+																						<input aria-label="Supervisor" title="Supervisor" type="checkbox" className="w-4 h-4 align-middle" checked={!!selectedAgent.isSupervisor} onChange={(e)=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, isSupervisor: e.target.checked }) } }} />
+																						<span>Supervisor</span>
+																					</label>
+																					<div className="min-w-[12rem]">
+																						<select title="Assign supervisor" className={["text-sm border rounded px-2 py-1 h-9 leading-7 w-full", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={selectedAgent.supervisorId||''} onChange={(e)=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, supervisorId: e.target.value || undefined }) } }}>
+																							<option value="">No supervisor</option>
+																							{supervisors.filter(x=> x.i!==selectedIdx).map(x=> (
+																								<option key={x.i} value={x.id!}>{x.name||`Agent ${x.i+1}`}</option>
+																							))}
+																						</select>
+																					</div>
+																					<button title={selectedAgent.hidden?"Show in schedule":"Hide from schedule"} aria-label={selectedAgent.hidden?"Show in schedule":"Hide from schedule"} onClick={()=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, hidden: !selectedAgent.hidden }) } }} className={["inline-flex items-center justify-center px-3 h-9 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>
+																						{selectedAgent.hidden ? (
+																							<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/><path d="M1 1l22 22"/><path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/></svg>
+																						) : (
+																							<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+																						)}
+																						<span className="ml-2 text-sm">{selectedAgent.hidden ? 'Hidden' : 'Visible'}</span>
+																					</button>
+																				</div>
+																			</div>
 
 								<div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-6 gap-2">
 								<div>Start Day</div>
@@ -804,7 +774,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 					</div>
 				)}
 			</div>
-			{/* Bottom: full-width timeline for selected agent */}
+						{/* Bottom: full-width timeline for selected agent */}
 			<div className="mt-3">
 				<div className={["rounded-lg border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
 					{!selectedAgent ? (
@@ -838,6 +808,23 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 					)}
 				</div>
 			</div>
+						{/* Notes section */}
+						<div className="mt-3">
+							<div className={["rounded-lg p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
+								<div className="text-sm font-medium mb-2">Notes</div>
+								{!selectedAgent ? (
+									<div className="text-sm opacity-70">Select an agent to view notes.</div>
+								) : (
+									<textarea
+										className={["w-full min-h-[80px] border rounded-md p-2 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+										placeholder="Add notes about this agent..."
+										value={selectedAgent.notes || ''}
+										onChange={(e)=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, notes: e.target.value }) } }}
+									/>
+								)}
+								<div className="mt-1 text-[11px] opacity-70">Autosaves to backend.</div>
+							</div>
+						</div>
 		</div>
 	)
 }

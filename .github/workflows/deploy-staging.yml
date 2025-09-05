@@ -21,10 +21,8 @@ jobs:
         run: npm run validate:prod
       - name: Smoke test
         run: npm run smoke
-      - name: Build
-        run: npm run build
-      - name: Predeploy
-        run: npm run predeploy --if-present
+      - name: GH build + predeploy for staging (no CNAME)
+        run: npm run predeploy:gh
       - name: Deploy to gh-pages staging
         uses: peaceiris/actions-gh-pages@v3
         with:
