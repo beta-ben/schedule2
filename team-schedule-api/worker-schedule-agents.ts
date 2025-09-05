@@ -64,6 +64,21 @@ export type ScheduleDoc = { schemaVersion: number; agents?: Agent[]; shifts: Shi
 // Router
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // If this request is clearly for site content (not the API), let origin handle it (Pages/static).
+    // This avoids accidental 404 JSON when a wide Worker route matches a site hostname.
+    try{
+      const accept = req.headers.get('accept') || ''
+      const url0 = new URL(req.url)
+      const host = url0.hostname
+      const path0 = url0.pathname || '/'
+      const looksLikeHtml = accept.includes('text/html') || path0 === '/' || /\.(html|css|js|svg|png|jpg|jpeg|webp|ico|txt|json|map)$/i.test(path0)
+      const isApiPath = /^\/(api|v1)(\/|$)/.test(path0) || path0 === '/health'
+      // Only pass-through for GET/HEAD requests that look like site assets and aren't API paths.
+      if(!isApiPath && (req.method === 'GET' || req.method === 'HEAD') && looksLikeHtml){
+        return fetch(req)
+      }
+    }catch{ /* ignore and continue */ }
+
     // CORS
     const cors = corsHeaders(req, env)
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
@@ -101,7 +116,7 @@ export default {
   if (req.method === 'GET' && path === '/v1/agents') return getAgents(req, env, cors)
   if (req.method === 'POST' && path === '/v1/agents') return postAgents(req, env, cors)
 
-      return json({ error: 'not_found' }, 404, cors)
+  return json({ error: 'not_found' }, 404, cors)
     } catch (e: any) {
       return json({ error: 'server_error', message: e?.message || String(e) }, 500, cors)
     }
