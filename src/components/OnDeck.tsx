@@ -147,7 +147,9 @@ export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
               <li key={a.person} className="flex items-center justify-between text-sm rounded-md border px-2 py-1" style={containerStyle}>
                 <span className="font-medium">{a.person}</span>
                 <span className={(dark || isNight || isNoir || isPrism)?"text-neutral-300":"text-neutral-700"}>
-                  {a.window} <span className={(dark || isNight || isNoir || isPrism)?"text-neutral-400":"text-neutral-500"}>  {formatLeft(leftMins)} left</span>
+                  {a.window}
+                  <span className={(dark || isNight || isNoir || isPrism)?"text-neutral-400":"text-neutral-500"} aria-hidden="true"> • </span>
+                  <span className={(dark || isNight || isNoir || isPrism)?"text-neutral-400":"text-neutral-500"}>{formatLeft(leftMins)} left</span>
                 </span>
               </li>
             )

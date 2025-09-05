@@ -112,6 +112,13 @@ export default {
 function json(body: any, status = 200, extra?: HeadersInit) {
   const headers = new Headers(extra || {})
   headers.set('content-type', 'application/json')
+  // Lightweight security headers suitable for API responses
+  if(!headers.has('x-content-type-options')) headers.set('x-content-type-options', 'nosniff')
+  if(!headers.has('referrer-policy')) headers.set('referrer-policy', 'no-referrer')
+  if(!headers.has('x-frame-options')) headers.set('x-frame-options', 'DENY')
+  if(!headers.has('strict-transport-security')) headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains; preload')
+  // CSP for API JSON (does not block CORS); keeps filters happy by being explicit
+  if(!headers.has('content-security-policy')) headers.set('content-security-policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
   return new Response(JSON.stringify(body), { status, headers })
 }
 function nowIso(){ return new Date().toISOString() }
@@ -155,10 +162,14 @@ function corsHeaders(req: Request, env: Env){
     'Access-Control-Allow-Headers': allowHeaders,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
-  // Be permissive to avoid cross-site cookie/cors flakiness from GH Pages.
-  // If an Origin is present, reflect it. Keep Vary: Origin for caches.
-  // We still keep ALLOWED_ORIGINS for future tightening but don't block when set.
-  if (origin) {
+  // If an Origin is present and we have an allowlist, only echo when allowed.
+  if (origin && allowlist.size > 0) {
+    if (allowlist.has(origin)) {
+      h['Access-Control-Allow-Origin'] = origin
+      h['Vary'] = 'Origin'
+    }
+  } else if (origin && allowlist.size === 0) {
+    // No allowlist configured; reflect origin (dev convenience)
     h['Access-Control-Allow-Origin'] = origin
     h['Vary'] = 'Origin'
   }
@@ -359,17 +370,38 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
   for(const p of doc.pto){ if(!p.agentId){ const id=fillId(p.person); if(id) p.agentId=id } }
   for(const c of (doc.calendarSegs||[])){ if(!c.agentId){ const id=fillId(c.person); if(id) c.agentId=id } }
 
+  // If agentId is known, normalize person name to the canonical full name from agents[]
+  const idToFullName = new Map<string,string>()
+  for(const a of (doc.agents||[])){
+    const full = `${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim()
+    if(a.id && full) idToFullName.set(a.id, full)
+  }
+  const normalizeName = (rec: { person: string; agentId?: string })=>{
+    if(rec && rec.agentId){
+      const nm = idToFullName.get(rec.agentId)
+      if(nm && nm.trim()){
+        const cur = (rec.person||'').trim()
+        if(cur.toLowerCase() !== nm.toLowerCase()) rec.person = nm
+      }
+    }
+  }
+  for(const s of doc.shifts) normalizeName(s)
+  for(const p of doc.pto) normalizeName(p)
+  for(const c of (doc.calendarSegs||[])) normalizeName(c)
+
   // Normalize endDay for shifts
   for(const s of doc.shifts){ const sMin=hhmmToMin(s.start); const eMin=hhmmToMin(s.end); if(Number.isNaN(sMin)||Number.isNaN(eMin)) continue; if(eMin===1440){ if(!s.endDay) s.endDay=s.day } else if(eMin<=sMin){ s.endDay = s.endDay || nextDay(s.day) } else { s.endDay = s.endDay || s.day } }
 
   // Ensure unique shift ids
   const seen=new Set<string>(); for(const s of doc.shifts){ if(seen.has(s.id)) return { ok:false, error:'duplicate_shift_id', details:{ id:s.id } }; seen.add(s.id) }
 
-  // Build agentsIndex from current mapping (name->id), plus from provided agents[]
+  // Build agentsIndex from normalized records and agents list
   const idx: Record<string,string> = {}
-  for(const [k,v] of nameToId){ idx[k]=v }
-  // Also incorporate mapping from agents list
-  for(const a of (doc.agents||[])){ const full=`${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim().toLowerCase(); if(full && a.id && !idx[full]) idx[full]=a.id }
+  const addIdx = (name?: string, id?: string)=>{ const key=(name||'').trim().toLowerCase(); if(key && id) idx[key]=id }
+  for(const s of doc.shifts){ if(s.agentId) addIdx(s.person, s.agentId) }
+  for(const p of doc.pto){ if(p.agentId) addIdx(p.person, p.agentId) }
+  for(const c of (doc.calendarSegs||[])){ if(c.agentId) addIdx(c.person, c.agentId) }
+  for(const a of (doc.agents||[])){ const full=`${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim(); if(full && a.id && !idx[full.toLowerCase()]) idx[full.toLowerCase()] = a.id }
   doc.agentsIndex = idx
 
   // Final shape

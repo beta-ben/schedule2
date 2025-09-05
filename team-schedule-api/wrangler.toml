@@ -10,10 +10,14 @@ compatibility_date = "2025-08-28"
 #   wrangler secret put ADMIN_PASSWORD
 #   wrangler secret put SITE_PASSWORD
 # Non-secret vars can live here and be overridden per-environment if needed.
-ALLOWED_ORIGINS = "https://beta-ben.github.io,https://teamschedule.cc"
-COOKIE_DOMAIN = ""
+# When using the custom domain (api.teamschedule.cc + teamschedule.cc), keep origins first-party
+# to reduce SSO/VPN filtering false positives and allow credentialed requests.
+# First-party only
+ALLOWED_ORIGINS = "https://teamschedule.cc,https://www.teamschedule.cc"
+# Scope cookies to the apex so api + www share sessions when needed.
+COOKIE_DOMAIN = ".teamschedule.cc"
 COOKIE_SECURE = "true"
-COOKIE_SAMESITE = "None"
+COOKIE_SAMESITE = "Lax"
 REQUIRE_SITE_SESSION = "false"
 # Optional: override the KV key name for the schedule document
 # DATA_KEY = "schedule.json"

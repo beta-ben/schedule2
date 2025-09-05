@@ -9,8 +9,14 @@ import type { CalendarSegment } from './utils'
 const DEV_PROXY_RAW = import.meta.env.DEV ? (import.meta.env.VITE_DEV_PROXY_BASE || '') : '' // e.g., http://localhost:8787
 const IS_LOCALHOST = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
 const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
-// Default to the workers.dev URL; CI can override via VITE_SCHEDULE_API_BASE
-const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || 'https://team-schedule-api.phorbie.workers.dev'
+// Choose API base at runtime:
+// - If the app is served from teamschedule.cc, default to the custom API domain.
+// - Else fall back to workers.dev. CI can still override via VITE_SCHEDULE_API_BASE.
+const HOSTNAME = typeof location !== 'undefined' ? location.hostname : ''
+const RUNTIME_DEFAULT_BASE = /(^|\.)teamschedule\.cc$/.test(HOSTNAME)
+  ? 'https://api.teamschedule.cc'
+  : 'https://team-schedule-api.phorbie.workers.dev'
+const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || RUNTIME_DEFAULT_BASE
 const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
 
@@ -93,7 +99,7 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendar
     // Dev/prod servers should expose /api/schedule (cookie session aware).
     // Fallback to legacy public GET endpoint only for read without credentials.
   const url = `${API_BASE}${API_PREFIX}/schedule`
-    const init: RequestInit = { credentials: 'include' }
+    const init: RequestInit = { credentials: 'include', cache: 'no-store' }
     const r = await fetch(url, init)
     if(!r.ok) return null
     return await r.json()

@@ -5,7 +5,9 @@
 // Env:
 //   ADMIN_PASSWORD     - required, the admin password for /api/login
 //   API_BASE           - optional, defaults to https://team-schedule-api.phorbie.workers.dev
-//   SOURCE             - optional, path to JSON file; defaults to latest dev backup
+//   SOURCE             - optional, path to JSON file OR 'cloud' OR a full http(s) URL
+//                        - if 'cloud' or a URL, the script will fetch the JSON (cloud uses `${API_BASE}/api/schedule`)
+//                        - if omitted, defaults to latest dev backup file
 // Usage:
 //   npm run seed:api  # ensure ADMIN_PASSWORD is exported
 
@@ -27,6 +29,86 @@ function latestBackup(){
   if(files.length===0) return null
   files.sort() // lexicographic timestamp
   return path.join(dir, files[files.length-1])
+}
+
+function fullName(a){
+  const f = (a?.firstName||'').trim()
+  const l = (a?.lastName||'').trim()
+  return (f && l) ? `${f} ${l}` : (f || l)
+}
+
+function normalizeNamesAndIds(doc){
+  if(!doc || typeof doc !== 'object') return doc
+  const agents = Array.isArray(doc.agents) ? doc.agents : []
+  const shifts = Array.isArray(doc.shifts) ? doc.shifts : []
+  const pto = Array.isArray(doc.pto) ? doc.pto : []
+  const cal = Array.isArray(doc.calendarSegs) ? doc.calendarSegs : []
+  const index = (doc.agentsIndex && typeof doc.agentsIndex==='object') ? doc.agentsIndex : {}
+
+  // Build maps
+  const idToName = new Map()
+  const nameToId = new Map()
+  for(const a of agents){
+    if(!a || !a.id) continue
+    const name = fullName(a)
+    if(name){
+      idToName.set(a.id, name)
+      nameToId.set(name.trim().toLowerCase(), a.id)
+    }
+  }
+  for(const [k,v] of Object.entries(index)){
+    if(typeof v === 'string') nameToId.set(String(k).trim().toLowerCase(), v)
+  }
+
+  const fillId = (person)=>{ const key=(person||'').trim().toLowerCase(); return nameToId.get(key) }
+  const nameFor = (id)=> idToName.get(id)
+
+  const fixOne = (rec)=>{
+    if(!rec || typeof rec !== 'object') return
+    if(!rec.agentId){
+      const id = fillId(rec.person)
+      if(id) rec.agentId = id
+    }
+    if(rec.agentId){
+      const nm = nameFor(rec.agentId)
+      if(nm && typeof rec.person === 'string'){
+        const cur = rec.person.trim()
+        if(cur.toLowerCase() !== nm.trim().toLowerCase()){
+          rec.person = nm
+        }
+      }else if(nm){
+        rec.person = nm
+      }
+    }
+  }
+
+  for(const s of shifts) fixOne(s)
+  for(const p of pto) fixOne(p)
+  for(const c of cal) fixOne(c)
+
+  // Rebuild agentsIndex from agents (prefer real names)
+  const newIdx = {}
+  for(const a of agents){ const nm = fullName(a)?.trim().toLowerCase(); if(nm && a.id) newIdx[nm] = a.id }
+  doc.agentsIndex = newIdx
+  return doc
+}
+
+async function readSourceToDoc(source, apiBase){
+  if(/^https?:\/\//i.test(source)){
+    const r = await fetch(source)
+    if(!r.ok){ fail(`Fetch SOURCE failed: ${r.status} ${r.statusText}`) }
+    return await r.json()
+  }
+  if(source === 'cloud'){
+    const url = `${apiBase.replace(/\/$/, '')}/api/schedule`
+    const r = await fetch(url)
+    const text = await r.text()
+    if(!r.ok){ fail(`Fetch from cloud failed: ${r.status} ${r.statusText} -> ${text}`) }
+    try{ return JSON.parse(text) }catch(e){ fail('Cloud response is not JSON') }
+  }
+  if(!fs.existsSync(source)) fail(`SOURCE not found: ${source}`)
+  let raw = fs.readFileSync(source, 'utf8')
+  try{ return JSON.parse(raw) }catch(e){ fail(`Invalid JSON in ${source}: ${e?.message||e}`) }
 }
 
 async function login(base, password){
@@ -73,16 +155,19 @@ async function main(){
     const guess = latestBackup()
     if(guess){ source = guess; ok(`SOURCE not provided; using latest backup: ${source}`) }
   }
-  if(!source) fail('No SOURCE specified and no backups found. Set SOURCE=/path/to/schedule.json')
-  if(!fs.existsSync(source)) fail(`SOURCE not found: ${source}`)
+  if(!source) fail('No SOURCE specified and no backups found. Set SOURCE=/path/to/schedule.json or SOURCE=cloud')
 
-  let raw = fs.readFileSync(source, 'utf8')
-  let doc
-  try{ doc = JSON.parse(raw) }catch(e){ fail(`Invalid JSON in ${source}: ${e?.message||e}`) }
+  let doc = await readSourceToDoc(source, API_BASE)
   if(typeof doc !== 'object' || doc===null) fail('Top-level JSON must be an object')
   if(!Array.isArray(doc.shifts)) warn('shifts missing or not an array')
   if(!Array.isArray(doc.pto)) warn('pto missing or not an array')
   if(!Number.isFinite(Number(doc.schemaVersion))){ warn('schemaVersion missing; defaulting to 2'); doc.schemaVersion = 2 }
+
+  // Optional migration: rewrite placeholder names from agentId and fill missing ids
+  const MIGRATE = String(process.env.MIGRATE_NAMES||'true').toLowerCase() !== 'false'
+  if(MIGRATE){
+    doc = normalizeNamesAndIds(doc)
+  }
 
   // Always advance updatedAt to avoid conflict against any placeholder data
   doc.updatedAt = new Date().toISOString()

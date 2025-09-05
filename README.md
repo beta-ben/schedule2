@@ -126,3 +126,17 @@ Visual calendar
 —
 
 For developers: build/deploy and environment details are in STAGING.md and comments in the source. If you need the old README content, check the Git history.
+
+## Deployment quick notes (custom domain)
+
+- App: GH Pages with `CNAME` set to `teamschedule.cc` (and DNS CNAME from apex to GH Pages as needed).
+- API: Cloudflare Worker `team-schedule-api` with a custom domain like `api.teamschedule.cc`.
+- CORS allowlist: `wrangler.toml` uses `ALLOWED_ORIGINS = https://teamschedule.cc,https://www.teamschedule.cc`.
+- Cookies: `COOKIE_DOMAIN=.teamschedule.cc`, `COOKIE_SAMESITE=Lax`, TLS required.
+- Security headers: API sends nosniff, HSTS, frame-ancestors none, and a minimal JSON CSP.
+
+Build against the custom API domain and deploy to GH Pages:
+
+```bash
+npm run deploy:domain
+```
