@@ -58,7 +58,7 @@ export type Day = 'Sun'|'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'
 export type Shift = { id: string; person: string; agentId?: string; day: Day; start: string; end: string; endDay?: Day; segments?: Array<{ id: string; shiftId: string; taskId: string; startOffsetMin: number; durationMin: number; notes?: string }> }
 export type PTO = { id: string; person: string; agentId?: string; startDate: string; endDate: string; notes?: string }
 export type CalendarSegment = { person: string; agentId?: string; day: Day; start: string; end: string; taskId: string }
-export type Agent = { id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string }
+export type Agent = { id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string; notes?: string }
 export type ScheduleDoc = { schemaVersion: number; agents?: Agent[]; shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt?: string; agentsIndex?: Record<string,string> }
 
 // Router
@@ -347,8 +347,9 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
   for(const a of (doc.agents||[])){
     if(!a || typeof a.id!=='string' || !a.id) errors.push({ where:'agent', field:'id' })
     if(typeof a.firstName!=='string' || typeof a.lastName!=='string') errors.push({ where:'agent', id:a?.id, field:'name' })
-  if(a.supervisorId && typeof a.supervisorId !== 'string') errors.push({ where:'agent', id:a?.id, field:'supervisorId' })
-  if(a.isSupervisor!=null && typeof a.isSupervisor !== 'boolean') errors.push({ where:'agent', id:a?.id, field:'isSupervisor' })
+    if(a.supervisorId && typeof a.supervisorId !== 'string') errors.push({ where:'agent', id:a?.id, field:'supervisorId' })
+    if(a.isSupervisor!=null && typeof a.isSupervisor !== 'boolean') errors.push({ where:'agent', id:a?.id, field:'isSupervisor' })
+    if(a.notes!=null && typeof a.notes !== 'string') errors.push({ where:'agent', id:a?.id, field:'notes' })
   }
   if(errors.length>0) return { ok:false, error:'invalid_body', details: errors }
 
@@ -453,11 +454,12 @@ function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
     const hidden = !!a.hidden
     const isSupervisor = !!a.isSupervisor
     const supervisorId = a.supervisorId && typeof a.supervisorId==='string' ? a.supervisorId : undefined
+    const notes = (typeof a.notes === 'string') ? a.notes : (a.notes!=null ? String(a.notes) : undefined)
     const existing = byId.get(id)
     if(existing){
-      byId.set(id, { ...existing, firstName, lastName, tzId, hidden, isSupervisor, supervisorId })
+      byId.set(id, { ...existing, firstName, lastName, tzId, hidden, isSupervisor, supervisorId, notes })
     }else{
-      byId.set(id, { id, firstName, lastName, tzId, hidden, isSupervisor, supervisorId })
+      byId.set(id, { id, firstName, lastName, tzId, hidden, isSupervisor, supervisorId, notes })
     }
   }
   return Array.from(byId.values())
