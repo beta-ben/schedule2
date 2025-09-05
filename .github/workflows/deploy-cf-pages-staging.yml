@@ -46,6 +46,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
+      - name: Ensure custom domain attached (idempotent)
+        run: |
+          DOMAIN="staging.teamschedule.cc"
+          npx --yes wrangler@3 pages domain add "${{ secrets.CF_PAGES_PROJECT_NAME }}" "$DOMAIN" --no-interactive || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
       - name: Publish to Cloudflare Pages (staging)
         uses: cloudflare/pages-action@v1
         with:
