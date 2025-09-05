@@ -17,6 +17,14 @@ jobs:
           cache: npm
       - name: Install deps
         run: npm ci
+      - name: Prepare staging env
+        run: |
+          # Provide API base for validation/build on staging
+          if [ -n "${{ secrets.VITE_SCHEDULE_API_BASE_STAGING }}" ]; then
+            echo "VITE_SCHEDULE_API_BASE=${{ secrets.VITE_SCHEDULE_API_BASE_STAGING }}" > .env.production
+          else
+            echo "VITE_SCHEDULE_API_BASE=https://team-schedule-api.phorbie.workers.dev" > .env.production
+          fi
       - name: Validate production env
         run: npm run validate:prod
       - name: Smoke test
