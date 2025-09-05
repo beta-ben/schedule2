@@ -37,14 +37,17 @@ wrangler deploy --env staging
 ```
 
 5) Verify staging API
-- GET `https://<staging-worker-subdomain>/api/_bindings` → shows `SCHEDULE_KV`.
-- GET `https://<staging-worker-subdomain>/api/_health` → KV ok, D1 off (use_d1: "0").
+- workers.dev URL shape for environments is: `https://<env>-<service>.<account>.workers.dev`
+- Example: `https://staging-team-schedule-api.<your-account-subdomain>.workers.dev`
+- GET `https://staging-team-schedule-api.<your-account-subdomain>.workers.dev/api/_bindings` → shows `SCHEDULE_KV`.
+- GET `https://staging-team-schedule-api.<your-account-subdomain>.workers.dev/api/_health` → KV ok, D1 off (use_d1: "0").
 - POST `/api/login` → set cookies; then POST `/api/schedule` and GET `/api/schedule`.
 
 6) Point web app to staging API
-- Create `.env.production.staging` at repo root with:
+- Create `.env.production.staging` at repo root with the env-prefix workers.dev URL:
 ```
-VITE_SCHEDULE_API_BASE=https://<staging-worker-subdomain>
+VITE_SCHEDULE_API_BASE=https://staging-<service>.<your-account-subdomain>.workers.dev
+# e.g.: VITE_SCHEDULE_API_BASE=https://staging-team-schedule-api.phorbie.workers.dev
 ```
 - In your staging build workflow, copy it to `.env.production` before build:
 ```
@@ -62,7 +65,7 @@ What you'll need to add in GitHub repo Secrets:
 - `CF_API_TOKEN` (Cloudflare API token with Pages:Edit + Workers Scripts:Edit)
 - `CF_ACCOUNT_ID` (Cloudflare account id)
 - `CF_PAGES_PROJECT_NAME` (Cloudflare Pages project name, e.g. `schedule2-staging`)
-- Optional: `VITE_SCHEDULE_API_BASE_STAGING` (overrides `.env.production.staging`)
+- Optional: `VITE_SCHEDULE_API_BASE_STAGING` (overrides `.env.production.staging`). Use the env-prefix URL, e.g. `https://staging-team-schedule-api.phorbie.workers.dev`.
 
 Steps:
 1) API staging deploy
