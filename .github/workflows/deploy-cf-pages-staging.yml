@@ -55,11 +55,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
       - name: Publish to Cloudflare Pages (staging)
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          projectName: ${{ secrets.CF_PAGES_PROJECT_NAME }} # e.g. schedule2-staging
-          directory: ./dist
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          branch: staging
+        run: |
+          npx --yes wrangler@3 pages deploy ./dist --project-name "${{ secrets.CF_PAGES_PROJECT_NAME }}" --branch staging --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
