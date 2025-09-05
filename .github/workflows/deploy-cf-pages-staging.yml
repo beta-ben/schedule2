@@ -38,6 +38,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Ensure Cloudflare Pages project exists (idempotent)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          command: |
+            pages project create ${{ secrets.CF_PAGES_PROJECT_NAME }} --production-branch=staging --no-interactive || true
+
       - name: Publish to Cloudflare Pages (staging)
         uses: cloudflare/pages-action@v1
         with:
