@@ -1,7 +1,5 @@
-name: Deploy to Staging
+name: Deploy to Staging (GH Pages) [manual]
 on:
-  push:
-    branches: [ staging ]
   workflow_dispatch:
 
 permissions:
