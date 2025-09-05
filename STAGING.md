@@ -55,6 +55,8 @@ cp .env.production.staging .env.production
 ```
 - Deploy the staging site to `https://staging.teamschedule.cc`.
 
+Note: Staging secret VITE_SCHEDULE_API_BASE_STAGING configured; rebuilt on push.
+
 ## Cloudflare Pages (recommended for staging subdomain)
 
 This repo includes workflows to deploy:
