@@ -127,6 +127,7 @@ export default {
 function json(body: any, status = 200, extra?: HeadersInit) {
   const headers = new Headers(extra || {})
   headers.set('content-type', 'application/json')
+  if(!headers.has('cache-control')) headers.set('cache-control', 'no-store')
   // Lightweight security headers suitable for API responses
   if(!headers.has('x-content-type-options')) headers.set('x-content-type-options', 'nosniff')
   if(!headers.has('referrer-policy')) headers.set('referrer-policy', 'no-referrer')
@@ -176,6 +177,7 @@ function corsHeaders(req: Request, env: Env){
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': allowHeaders,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Max-Age': '600',
   }
 
   function originAllowed(originStr: string): boolean{

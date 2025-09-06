@@ -1,0 +1,3 @@
+Contact: mailto:security@teamschedule.cc
+Policy: https://teamschedule.cc/cookies.html
+Preferred-Languages: en

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Respect sensitive routes
+Disallow: /manage
+Disallow: /manage2
+Disallow: /api/
+Sitemap: https://teamschedule.cc/sitemap.txt
