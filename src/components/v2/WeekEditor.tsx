@@ -392,7 +392,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 								<div>First</div>
 								<div>Last</div>
 								<div>Timezone</div>
-								<div className="text-right">Actions</div>
+												<div>Notes</div>
 							</div>
 										    <ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
 																																{sortedAgents.map(({ a, i }, sIdx)=> (
@@ -400,8 +400,8 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																																			<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.firstName || '—'}</div>
 																																			<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.lastName || '—'}</div>
 																																			<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
-																																			<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
-																																				{/* Controls moved to right panel; left actions intentionally empty */}
+																																			<div className={["text-xs", dark?"text-neutral-400":"text-neutral-600", "truncate"].join(' ')} title={a.notes||''}>
+																																				{((a.notes||'').split(/\r?\n/)[0] || '—')}
 																																			</div>
 																																		</li>
 																																))}
@@ -548,9 +548,42 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 																						</select>
 																					</label>
 																					<div className="text-right flex items-end justify-end gap-2">
-																						<button onClick={()=>{ if(selectedIdx!=null){ setEf(''); setEl(''); setEt(selectedAgent.tzId||TZ_OPTS[0]?.id||'UTC'); onUpdateAgent?.(selectedIdx, { ...selectedAgent, firstName: selectedAgent.firstName, lastName: selectedAgent.lastName, tzId: selectedAgent.tzId }) } }} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
 																						<button onClick={()=>{ if(selectedIdx!=null){ onUpdateAgent?.(selectedIdx, { ...selectedAgent, firstName: (ef||selectedAgent.firstName).trim(), lastName: (el||selectedAgent.lastName).trim(), tzId: et || selectedAgent.tzId }) ; setEf(''); setEl('') } }} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
 																						<button onClick={()=> setDeleteIdx(selectedIdx!)} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
+																					</div>
+																				</div>
+																				{/* Shifts header moved below controls */}
+																				<div className="flex items-center justify-between mt-3 mb-2">
+																					<div className="text-sm font-medium">Shifts ({agentShiftsLocal.length}){agentShiftsLocal.length>0 && (
+																						<span className={"ml-2 opacity-70"}>
+																							• Total {fmtDuration(totalMinutesAll)} 
+																							<span aria-hidden>− {agentShiftsLocal.length}×30m = {fmtDuration(billableMinutesAll)} billable</span>
+																						</span>
+																					)}</div>
+																					<div className="inline-flex items-center gap-1">
+																						<button
+																							title="Delete all shifts"
+																							aria-label="Delete all shifts"
+																							disabled={!selectedAgent || agentShiftsLocal.length===0}
+																							onClick={()=> setDeleteAllStep(1)}
+																							className={["inline-flex items-center justify-center w-8 h-8 rounded border", dark?"border-neutral-800 text-red-300 hover:bg-neutral-900 disabled:opacity-50":"border-neutral-300 text-red-600 hover:bg-red-50 disabled:opacity-50"].join(' ')}
+																						>
+																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+																								<path d="M5 12h14"/>
+																							</svg>
+																						</button>
+																						<button
+																							title="Add shift"
+																							aria-label="Add shift"
+																							disabled={!selectedAgent}
+																							onClick={handleAddShift}
+																							className={["inline-flex items-center justify-center w-8 h-8 rounded border", dark?"border-neutral-800 text-neutral-200 hover:bg-neutral-900 disabled:opacity-50":"border-neutral-300 text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"].join(' ')}
+																						>
+																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+																								<path d="M12 5v14"/>
+																								<path d="M5 12h14"/>
+																							</svg>
+																						</button>
 																					</div>
 																				</div>
 																				<div className="mt-2 flex items-center gap-2 flex-wrap">
