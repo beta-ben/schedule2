@@ -12,9 +12,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: List repo (diagnostic)
+        run: |
+          pwd
+          ls -la
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Wrangler diagnostics
+        run: |
+          npx --yes wrangler@3 --version
+          npx --yes wrangler@3 whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
+      - name: Dry-run build with Wrangler (no deploy)
+        working-directory: team-schedule-api
+        run: |
+          ls -la
+          cat wrangler.toml
+          npx --yes wrangler@3 deploy --env staging --config wrangler.toml --dry-run --outdir .wrangler_tmp
+
       - name: Deploy with Wrangler (staging)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
+          wranglerVersion: '3.90.0'
           workingDirectory: team-schedule-api
           command: deploy --env staging --config wrangler.toml

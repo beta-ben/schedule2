@@ -1,3 +1,20 @@
+## Staging deploys via GitHub Actions
+
+The staging Worker is deployed by `.github/workflows/deploy-worker-staging.yml`.
+
+If the job fails at `wrangler-action` with a generic `npx failed with exit code 1`, verify:
+
+- CF_API_TOKEN has `Workers Scripts:Edit`, `Workers KV Storage:Edit` scopes and matches CF_ACCOUNT_ID.
+- `wrangler --version` prints 3.x, and `wrangler whoami` works in the job logs.
+- `wrangler.toml` has an `[env.staging]` with proper `kv_namespaces` and `vars`.
+
+You can also run a quick local check:
+
+```
+npx wrangler@3 whoami
+cd team-schedule-api && npx wrangler@3 deploy --env staging --dry-run
+```
+
 # team-schedule-api (Cloudflare Worker)
 
 Worker that serves /api/schedule with agents (including hidden) and cookie-based sessions.

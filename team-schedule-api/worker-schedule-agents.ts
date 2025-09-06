@@ -168,22 +168,41 @@ function corsHeaders(req: Request, env: Env){
   const origin = req.headers.get('Origin') || ''
   const raw = (env.ALLOWED_ORIGINS || env.CORS_ORIGINS || '')
   const allowed = raw.split(',').map(s=>s.trim()).filter(Boolean)
-  const allowlist = new Set(allowed)
   const requested = req.headers.get('Access-Control-Request-Headers') || ''
   const defaultAllow = 'content-type,x-csrf-token,authorization,x-session-id'
   const allowHeaders = requested ? requested : defaultAllow
+
   const h: Record<string,string> = {
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': allowHeaders,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   }
-  // If an Origin is present and we have an allowlist, only echo when allowed.
-  if (origin && allowlist.size > 0) {
-    if (allowlist.has(origin)) {
-      h['Access-Control-Allow-Origin'] = origin
-      h['Vary'] = 'Origin'
+
+  function originAllowed(originStr: string): boolean{
+    if(!originStr) return false
+    if(allowed.length === 0) return true
+    // Exact or wildcard match ("*.domain.tld")
+    try{
+      const u = new URL(originStr)
+      const host = u.hostname
+      for(const pat of allowed){
+        if(pat === originStr) return true
+        if(pat.startsWith('*.')){
+          const suffix = pat.slice(1) // remove leading '*'
+          if(host.endsWith(suffix)) return true
+        }
+      }
+    }catch{
+      // If origin isn't a valid URL, fall back to exact string compare
+      if(allowed.includes(originStr)) return true
     }
-  } else if (origin && allowlist.size === 0) {
+    return false
+  }
+
+  if (origin && originAllowed(origin)){
+    h['Access-Control-Allow-Origin'] = origin
+    h['Vary'] = 'Origin'
+  } else if (origin && allowed.length === 0) {
     // No allowlist configured; reflect origin (dev convenience)
     h['Access-Control-Allow-Origin'] = origin
     h['Vary'] = 'Origin'
