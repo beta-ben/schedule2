@@ -10,12 +10,17 @@ const DEV_PROXY_RAW = import.meta.env.DEV ? (import.meta.env.VITE_DEV_PROXY_BASE
 const IS_LOCALHOST = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
 const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
 // Choose API base at runtime:
-// - If the app is served from teamschedule.cc, default to the custom API domain.
-// - Else fall back to workers.dev. CI can still override via VITE_SCHEDULE_API_BASE.
+// - Staging domains -> staging Worker
+// - Production domains (teamschedule.cc) -> prod API
+// - Else -> public workers.dev fallback
 const HOSTNAME = typeof location !== 'undefined' ? location.hostname : ''
-const RUNTIME_DEFAULT_BASE = /(^|\.)teamschedule\.cc$/.test(HOSTNAME)
-  ? 'https://api.teamschedule.cc'
-  : 'https://team-schedule-api.phorbie.workers.dev'
+const IS_STAGING_HOST = HOSTNAME === 'staging.teamschedule.cc' || HOSTNAME === 'schedule2-staging.pages.dev'
+const IS_PROD_HOST = /(^|\.)teamschedule\.cc$/.test(HOSTNAME)
+const RUNTIME_DEFAULT_BASE = IS_STAGING_HOST
+  ? 'https://staging-team-schedule-api.phorbie.workers.dev'
+  : (IS_PROD_HOST
+      ? 'https://api.teamschedule.cc'
+      : 'https://team-schedule-api.phorbie.workers.dev')
 const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || RUNTIME_DEFAULT_BASE
 const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
