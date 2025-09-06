@@ -38,9 +38,9 @@ jobs:
           npx --yes wrangler@3 deploy --env staging --config wrangler.toml --dry-run --outdir .wrangler_tmp
 
       - name: Deploy with Wrangler (staging)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          wranglerVersion: '3.90.0'
-          workingDirectory: team-schedule-api
-          command: deploy --env staging --config wrangler.toml
+        working-directory: team-schedule-api
+        run: |
+          npx --yes wrangler@3.90.0 deploy --env staging --config wrangler.toml --verbose
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}

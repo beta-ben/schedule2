@@ -21,7 +21,7 @@ const IS_STAGING_HOST = (
 )
 const IS_PROD_HOST = /(^|\.)teamschedule\.cc$/.test(HOSTNAME)
 const RUNTIME_DEFAULT_BASE = IS_STAGING_HOST
-  ? 'https://staging-team-schedule-api.phorbie.workers.dev'
+  ? 'https://team-schedule-api-staging.phorbie.workers.dev'
   : (IS_PROD_HOST
       ? 'https://api.teamschedule.cc'
       : 'https://team-schedule-api.phorbie.workers.dev')

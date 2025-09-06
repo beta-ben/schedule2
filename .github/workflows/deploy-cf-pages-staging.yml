@@ -32,7 +32,7 @@ jobs:
             cp .env.production.staging .env.production
           else
             # Fallback to staging workers.dev API
-            echo "VITE_SCHEDULE_API_BASE=https://staging-team-schedule-api.phorbie.workers.dev" > .env.production
+            echo "VITE_SCHEDULE_API_BASE=https://team-schedule-api-staging.phorbie.workers.dev" > .env.production
           fi
           # Explicitly avoid forcing env base on staging unless we intentionally set VITE_FORCE_API_BASE=yes
           echo "VITE_FORCE_API_BASE=no" >> .env.production
