@@ -34,6 +34,16 @@ jobs:
             # Fallback to staging workers.dev API
             echo "VITE_SCHEDULE_API_BASE=https://staging-team-schedule-api.phorbie.workers.dev" > .env.production
           fi
+          # Explicitly avoid forcing env base on staging unless we intentionally set VITE_FORCE_API_BASE=yes
+          echo "VITE_FORCE_API_BASE=no" >> .env.production
+
+      - name: Validate Cloudflare env
+        run: |
+          [ -n "${{ secrets.CF_API_TOKEN }}" ] || { echo "CF_API_TOKEN missing"; exit 1; }
+          [ -n "${{ secrets.CF_ACCOUNT_ID }}" ] || { echo "CF_ACCOUNT_ID missing"; exit 1; }
+          PRJ="${{ secrets.CF_PAGES_PROJECT_NAME }}"; if [ -z "$PRJ" ]; then PRJ="schedule2-staging"; fi
+          echo "Using Pages project: $PRJ"
+          echo "PRJ=$PRJ" >> $GITHUB_ENV
 
       - name: Build
         run: npm run build
@@ -42,14 +52,14 @@ jobs:
         run: |
           npx --yes wrangler@3 --version
           npx --yes wrangler@3 whoami
-          npx --yes wrangler@3 pages project list | grep -E "^${{ secrets.CF_PAGES_PROJECT_NAME }}\b" || true
+          npx --yes wrangler@3 pages project list | grep -E "^${PRJ}\b" || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
       - name: Ensure Cloudflare Pages project exists (idempotent)
         run: |
-          npx --yes wrangler@3 pages project create "${{ secrets.CF_PAGES_PROJECT_NAME }}" \
+          npx --yes wrangler@3 pages project create "${PRJ}" \
             --production-branch=staging --no-interactive || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -57,7 +67,7 @@ jobs:
 
       - name: Ensure production branch is 'staging' (idempotent)
         run: |
-          npx --yes wrangler@3 pages project update "${{ secrets.CF_PAGES_PROJECT_NAME }}" \
+          npx --yes wrangler@3 pages project update "${PRJ}" \
             --production-branch=staging --no-interactive || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -66,36 +76,36 @@ jobs:
       - name: Ensure custom domain attached (idempotent)
         run: |
           DOMAIN="staging.teamschedule.cc"
-          npx --yes wrangler@3 pages domain add "${{ secrets.CF_PAGES_PROJECT_NAME }}" "$DOMAIN" --no-interactive || true
+          npx --yes wrangler@3 pages domain add "${PRJ}" "$DOMAIN" --no-interactive || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
       - name: "Publish to Cloudflare Pages (preview: branch=staging)"
         run: |
-          npx --yes wrangler@3 pages deploy ./dist --project-name "${{ secrets.CF_PAGES_PROJECT_NAME }}" --branch staging --commit-dirty=true
+          npx --yes wrangler@3 pages deploy ./dist --project-name "${PRJ}" --branch staging --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
       - name: Publish to Cloudflare Pages (production)
         run: |
-          npx --yes wrangler@3 pages deploy ./dist --project-name "${{ secrets.CF_PAGES_PROJECT_NAME }}" --production --commit-dirty=true
+          npx --yes wrangler@3 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
       - name: List Pages domains (diagnostic)
         run: |
-          npx --yes wrangler@3 pages domain list "${{ secrets.CF_PAGES_PROJECT_NAME }}"
+          npx --yes wrangler@3 pages domain list "${PRJ}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
       - name: List deployments (diagnostic)
         run: |
-          echo "Production deployments:" && npx --yes wrangler@3 pages deployment list "${{ secrets.CF_PAGES_PROJECT_NAME }}" --production || true
-          echo "Preview deployments:" && npx --yes wrangler@3 pages deployment list "${{ secrets.CF_PAGES_PROJECT_NAME }}" || true
+          echo "Production deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" --production || true
+          echo "Preview deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
