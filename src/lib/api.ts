@@ -14,7 +14,11 @@ const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
 // - Production domains (teamschedule.cc) -> prod API
 // - Else -> public workers.dev fallback
 const HOSTNAME = typeof location !== 'undefined' ? location.hostname : ''
-const IS_STAGING_HOST = HOSTNAME === 'staging.teamschedule.cc' || HOSTNAME === 'schedule2-staging.pages.dev'
+const IS_STAGING_HOST = (
+  HOSTNAME === 'staging.teamschedule.cc' ||
+  HOSTNAME === 'schedule2-staging.pages.dev' ||
+  HOSTNAME.endsWith('.schedule2-staging.pages.dev')
+)
 const IS_PROD_HOST = /(^|\.)teamschedule\.cc$/.test(HOSTNAME)
 const RUNTIME_DEFAULT_BASE = IS_STAGING_HOST
   ? 'https://staging-team-schedule-api.phorbie.workers.dev'
