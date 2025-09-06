@@ -48,6 +48,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Adjust CSP for staging (allow staging Worker)
+        run: |
+          if [ -f dist/_headers ]; then
+            echo "Patching dist/_headers connect-src for staging..."
+            sed -i "s#connect-src 'self' https://api\.teamschedule\.cc;#connect-src 'self' https://team-schedule-api-staging.phorbie.workers.dev https://api.teamschedule.cc;#" dist/_headers || true
+            echo '--- dist/_headers (head) ---'
+            head -n 20 dist/_headers || true
+          fi
+
       - name: Wrangler info (diagnostic)
         run: |
           npx --yes wrangler@3 --version
