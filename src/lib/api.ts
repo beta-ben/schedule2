@@ -21,7 +21,13 @@ const RUNTIME_DEFAULT_BASE = IS_STAGING_HOST
   : (IS_PROD_HOST
       ? 'https://api.teamschedule.cc'
       : 'https://team-schedule-api.phorbie.workers.dev')
-const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || RUNTIME_DEFAULT_BASE
+// IMPORTANT: On staging hosts, we ignore VITE_SCHEDULE_API_BASE to avoid accidentally pointing to prod
+// unless an explicit opt-in flag is provided (VITE_FORCE_API_BASE=yes).
+const ENV_BASE = import.meta.env.VITE_SCHEDULE_API_BASE as string | undefined
+const FORCE_ENV_BASE = (import.meta.env.VITE_FORCE_API_BASE as string | undefined)?.toLowerCase() === 'yes'
+const CLOUD_BASE = (IS_STAGING_HOST && !FORCE_ENV_BASE)
+  ? RUNTIME_DEFAULT_BASE
+  : (ENV_BASE || RUNTIME_DEFAULT_BASE)
 const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
 
