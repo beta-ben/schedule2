@@ -10,6 +10,7 @@ import ManageV2Page from './pages/ManageV2Page'
 import { generateSample } from './sample'
 // sha256Hex removed from App; keep local hashing only in components that need it
 import { TZ_OPTS } from './constants'
+import CookieConsent from './components/CookieConsent'
 
 const SAMPLE = generateSample()
 
@@ -566,7 +567,8 @@ export default function App(){
               setPto={setPtoRouted}
             />
           )}
-        </div>
+  </div>
+  <CookieConsent />
       </div>
     </ErrorCatcher>
   )
