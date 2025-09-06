@@ -55,6 +55,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
+      - name: Ensure production branch is 'staging' (idempotent)
+        run: |
+          npx --yes wrangler@3 pages project update "${{ secrets.CF_PAGES_PROJECT_NAME }}" \
+            --production-branch=staging --no-interactive || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
       - name: Ensure custom domain attached (idempotent)
         run: |
           DOMAIN="staging.teamschedule.cc"
@@ -63,10 +71,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
-      - name: Publish to Cloudflare Pages (staging project, production env)
+      - name: Publish to Cloudflare Pages (deploy branch=staging)
         run: |
-          # Deploy to the project's production environment (its production branch is set to 'staging').
-          npx --yes wrangler@3 pages deploy ./dist --project-name "${{ secrets.CF_PAGES_PROJECT_NAME }}" --production --commit-dirty=true
+          # When the production branch is 'staging', this deployment is Production.
+          npx --yes wrangler@3 pages deploy ./dist --project-name "${{ secrets.CF_PAGES_PROJECT_NAME }}" --branch staging --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
