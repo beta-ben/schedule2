@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CI: 'true'
+      SKIP_CF_VERIFY: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,36 +75,41 @@ jobs:
 
       - name: Wrangler info (diagnostic)
         run: |
-          npx --yes wrangler@3 --version
-          npx --yes wrangler@3 whoami
-          npx --yes wrangler@3 pages project list | grep -E "^${PRJ}\b" || true
+          npx --yes wrangler@3.90.0 --version
+          npx --yes wrangler@3.90.0 whoami --api-token "$CLOUDFLARE_API_TOKEN" || true
+          npx --yes wrangler@3.90.0 pages project list --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID" | grep -E "^${PRJ}\b" || true
 
       - name: Ensure Cloudflare Pages project exists (idempotent)
         run: |
-          npx --yes wrangler@3 pages project create "${PRJ}" \
-            --production-branch=staging --no-interactive || true
+          npx --yes wrangler@3.90.0 pages project create "${PRJ}" \
+            --production-branch=staging --no-interactive \
+            --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID" || true
 
       - name: Ensure production branch is 'staging' (idempotent)
         run: |
-          npx --yes wrangler@3 pages project update "${PRJ}" \
-            --production-branch=staging --no-interactive || true
+          npx --yes wrangler@3.90.0 pages project update "${PRJ}" \
+            --production-branch=staging --no-interactive \
+            --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID" || true
 
       - name: Ensure custom domain attached (idempotent)
         run: |
           DOMAIN="staging.teamschedule.cc"
-          npx --yes wrangler@3 pages domain add "${PRJ}" "$DOMAIN" --no-interactive || true
+          npx --yes wrangler@3.90.0 pages domain add "${PRJ}" "$DOMAIN" --no-interactive \
+            --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID" || true
 
       - name: "Publish to Cloudflare Pages (preview: branch=staging)"
         run: |
-          npx --yes wrangler@3 pages deploy ./dist --project-name "${PRJ}" --branch staging --commit-dirty=true
+          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --branch staging --commit-dirty=true \
+            --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID"
 
       - name: Publish to Cloudflare Pages (production)
         run: |
-          npx --yes wrangler@3 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true
+          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true \
+            --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID"
 
       - name: List Pages domains (diagnostic)
         run: |
-          npx --yes wrangler@3 pages domain list "${PRJ}"
+          npx --yes wrangler@3.90.0 pages domain list "${PRJ}" --api-token "$CLOUDFLARE_API_TOKEN" --account-id "$CLOUDFLARE_ACCOUNT_ID"
 
       - name: List deployments (diagnostic)
         run: |
