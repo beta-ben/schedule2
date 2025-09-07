@@ -1,8 +1,7 @@
 name: Deploy API (staging) to Cloudflare Workers
 
 on:
-  push:
-    branches: [ staging ]
+  # Disabled auto-deploys to stop failing runs; trigger manually from the Actions tab
   workflow_dispatch:
 
 jobs:
