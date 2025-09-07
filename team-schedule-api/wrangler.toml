@@ -47,7 +47,7 @@ id = "b3cf4bb860cb4e49a79f70f6b79e4606"
 name = "team-schedule-api-staging"
 
 [env.staging.vars]
-ALLOWED_ORIGINS = "https://staging.teamschedule.cc,https://next.teamschedule.cc,https://schedule2-staging.pages.dev,*.schedule2-staging.pages.dev"
+ALLOWED_ORIGINS = "https://staging.teamschedule.cc,https://next.teamschedule.cc,https://schedule2-staging.pages.dev,*.schedule2-staging.pages.dev,*.teamschedule.cc"
 COOKIE_DOMAIN = ""
 COOKIE_SECURE = "true"
 COOKIE_SAMESITE = "None"
