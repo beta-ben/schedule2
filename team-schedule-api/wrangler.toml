@@ -5,6 +5,13 @@ compatibility_date = "2025-08-28"
 # Wrangler-first deploys: wrangler.toml is the source of truth for bindings.
 # We bind KV here (with a concrete id) and deploy via `wrangler deploy`.
 
+# D1 database bindings (add your database_id values after creating D1)
+# NOTE: These are placeholders. Uncomment and set the correct database_id(s) when ready.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "team-schedule-prod"
+# database_id = "<YOUR-PROD-DATABASE-ID>"
+
 [vars]
 # Secrets like ADMIN_PASSWORD and SITE_PASSWORD should be set via:
 #   wrangler secret put ADMIN_PASSWORD
@@ -40,7 +47,7 @@ id = "b3cf4bb860cb4e49a79f70f6b79e4606"
 name = "team-schedule-api-staging"
 
 [env.staging.vars]
-ALLOWED_ORIGINS = "https://staging.teamschedule.cc,https://schedule2-staging.pages.dev,*.schedule2-staging.pages.dev"
+ALLOWED_ORIGINS = "https://staging.teamschedule.cc,https://next.teamschedule.cc,https://schedule2-staging.pages.dev,*.schedule2-staging.pages.dev"
 COOKIE_DOMAIN = ""
 COOKIE_SECURE = "true"
 COOKIE_SAMESITE = "None"
@@ -50,3 +57,9 @@ USE_D1 = "0"
 [[env.staging.kv_namespaces]]
 binding = "SCHEDULE_KV"
 id = "83ab5fcb1c2e4a3b8ae75ea5240f31eb"
+
+# Staging D1 binding (uncomment and fill once created)
+# [[env.staging.d1_databases]]
+# binding = "DB"
+# database_name = "team-schedule-staging"
+# database_id = "<YOUR-STAGING-DATABASE-ID>"

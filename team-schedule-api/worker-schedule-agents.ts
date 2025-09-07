@@ -100,6 +100,8 @@ export default {
   if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/api/_bindings') return bindingsEndpoint(req, env, cors)
+  // Admin-only migration helper: import agents metadata into D1 (no shifts yet)
+  if (req.method === 'POST' && path === '/api/_import_to_d1') return importToD1(req, env, cors)
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
@@ -474,6 +476,12 @@ async function postAgents(req: Request, env: Env, cors: Headers){
   for(const a of merged){ const full=`${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim().toLowerCase(); if(full) idx[full] = a.id }
   const next: ScheduleDoc = { ...prev, agents: merged, agentsIndex: idx, updatedAt: nowIso() }
   await writeDoc(env, next)
+  // Optional dual-write to D1 agents table for metadata parity during migration
+  try{
+    if(env.DB){
+      await upsertD1Agents(incomingAgents, env)
+    }
+  }catch{ /* ignore D1 errors here */ }
   return json({ ok:true, updatedAt: next.updatedAt, count: merged.length }, 200, cors)
 }
 
@@ -499,6 +507,49 @@ function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
     }
   }
   return Array.from(byId.values())
+}
+
+// ---- D1 helpers (migration + dual-write)
+async function upsertD1Agents(incoming: Agent[] | null, env: Env){
+  if(!incoming || !env.DB) return
+  for(const a of incoming){
+    try{
+      const fullName = `${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim()
+      if(!a.id || !fullName) continue
+      const active = a.hidden ? 0 : 1
+      // Preserve additional metadata in meta JSON
+      const meta: Record<string, unknown> = {}
+      if(a.tzId) meta.tzId = a.tzId
+      if(typeof a.hidden === 'boolean') meta.hidden = a.hidden
+      if(typeof a.isSupervisor === 'boolean') meta.isSupervisor = a.isSupervisor
+      if(a.supervisorId) meta.supervisorId = a.supervisorId
+      if(typeof a.notes === 'string') meta.notes = a.notes
+      await (env.DB as D1Database)
+        .prepare(
+          `INSERT INTO agents (id,name,color,active,meta)
+           VALUES (?1,?2,NULL,?3,?4)
+           ON CONFLICT(id) DO UPDATE SET
+             name=excluded.name,
+             color=excluded.color,
+             active=excluded.active,
+             meta=excluded.meta,
+             updated_at=unixepoch()`
+        )
+        .bind(a.id, fullName, active, Object.keys(meta).length ? JSON.stringify(meta) : null)
+        .run()
+    }catch{ /* ignore single-row failures */ }
+  }
+}
+
+// Admin-only: import agents from KV schedule doc into D1 (no shifts yet)
+async function importToD1(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  const doc = await readDoc(env)
+  if(!doc || !Array.isArray(doc.agents)) return json({ error:'no_agents_in_kv' }, 404, cors)
+  await upsertD1Agents(doc.agents as Agent[], env)
+  return json({ ok:true, imported: (doc.agents||[]).length }, 200, cors)
 }
 
 // ---- Store canary helpers

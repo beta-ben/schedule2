@@ -16,6 +16,7 @@ const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
 const HOSTNAME = typeof location !== 'undefined' ? location.hostname : ''
 const IS_STAGING_HOST = (
   HOSTNAME === 'staging.teamschedule.cc' ||
+  HOSTNAME === 'next.teamschedule.cc' ||
   HOSTNAME === 'schedule2-staging.pages.dev' ||
   HOSTNAME.endsWith('.schedule2-staging.pages.dev')
 )
