@@ -2,20 +2,18 @@ import type { PTO, Shift } from '../types'
 import type { CalendarSegment } from './utils'
 
 // Auth model: cookie session + CSRF only.
-// - Dev: VITE_DEV_PROXY_BASE provides /api/login, /api/logout, /api/schedule with cookies and x-csrf-token.
-// - Prod: expect a server with the same contract. Legacy password header is removed.
-// Safety: even if VITE_DEV_PROXY_BASE leaks into a prod build, only use it on localhost.
-const DEV_PROXY_RAW = import.meta.env.VITE_DEV_PROXY_BASE || '' // e.g., http://localhost:8787
-const IS_LOCALHOST = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
-const DEV_PROXY = IS_LOCALHOST ? DEV_PROXY_RAW : ''
-// Default to the production custom domain; CI can override via VITE_SCHEDULE_API_BASE
-const CLOUD_BASE = import.meta.env.VITE_SCHEDULE_API_BASE || 'https://api.teamschedule.cc'
-const API_BASE = (DEV_PROXY || CLOUD_BASE).replace(/\/$/,'')
+// Dev uses same-origin API via Vite proxy to wrangler dev (port 8787).
+// Prod points to VITE_SCHEDULE_API_BASE, validated in CI.
+const FORCE = (import.meta.env.VITE_FORCE_API_BASE || 'no').toLowerCase() === 'yes'
+const PROD = !!import.meta.env.PROD
+const API_BASE = (
+  (PROD || FORCE) ? (import.meta.env.VITE_SCHEDULE_API_BASE || '') : ''
+).replace(/\/$/,'')
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
 
 // Tiny diagnostics helpers (read-only)
 export function getApiBase(){ return API_BASE }
-export function isUsingDevProxy(){ return !!DEV_PROXY }
+export function isUsingDevProxy(){ return false }
 export function getApiPrefix(){ return API_PREFIX }
 
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
@@ -61,29 +59,24 @@ export async function logout(){
   try{ CSRF_TOKEN_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
 }
 
-// Site-level gate for dev proxy
-export async function devSiteLogin(password: string): Promise<{ ok: boolean; status?: number }>{
-  if(!DEV_PROXY) return { ok: true }
+// Site-level session (view gate)
+export async function loginSite(password: string): Promise<{ ok: boolean; status?: number }>{
   try{
     const r = await fetch(`${API_BASE}${API_PREFIX}/login-site`,{
       method:'POST', headers:{ 'content-type':'application/json' }, credentials:'include', body: JSON.stringify({ password })
     })
     return { ok: r.ok, status: r.status }
-  }catch{
-    return { ok: false }
-  }
+  }catch{ return { ok: false } }
 }
-export async function devSiteLogout(){
-  if(!DEV_PROXY) return
-  await fetch(`${API_BASE}${API_PREFIX}/logout-site`,{ method:'POST', credentials:'include' })
+export async function logoutSite(){
+  try{ await fetch(`${API_BASE}${API_PREFIX}/logout-site`,{ method:'POST', credentials:'include' }) }catch{}
 }
 
 export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; schemaVersion?: number} | null>{
   if(!API_BASE) return null
   try{
-    // Dev/prod servers should expose /api/schedule (cookie session aware).
-    // Fallback to legacy public GET endpoint only for read without credentials.
-  const url = `${API_BASE}${API_PREFIX}/schedule`
+    // Server exposes /api/schedule (cookie session aware).
+    const url = `${API_BASE}${API_PREFIX}/schedule`
     const init: RequestInit = { credentials: 'include' }
     const r = await fetch(url, init)
     if(!r.ok) return null
@@ -100,7 +93,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; cale
   // Expect prod server to implement /api/schedule with cookies+CSRF.
   // If cookie isn't readable due to HttpOnly or subdomain scope, we also accept a token captured from login response.
   const csrf = getCsrfToken()
-  if(!csrf && !DEV_PROXY){ console.warn('[cloudPost] CSRF token missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
+  if(!csrf){ console.warn('[cloudPost] CSRF token missing; writes are disabled without an authenticated session.'); return { ok:false, error:'missing_csrf' } }
   const url = `${API_BASE}${API_PREFIX}/schedule`
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
   if(csrf) headers['x-csrf-token'] = csrf
@@ -149,11 +142,11 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
 export async function ensureSiteSession(password?: string){
   try{
     // Quick probe: if schedule GET is allowed, nothing to do.
-  const ping = await fetch(`${API_BASE}${API_PREFIX}/schedule`, { method:'GET', credentials:'include' })
+    const ping = await fetch(`${API_BASE}${API_PREFIX}/schedule`, { method:'GET', credentials:'include' })
     if(ping.ok) return
   }catch{}
   try{
-  await fetch(`${API_BASE}${API_PREFIX}/login-site`, {
+    await fetch(`${API_BASE}${API_PREFIX}/login-site`, {
       method:'POST',
       headers:{ 'content-type':'application/json' },
       credentials:'include',

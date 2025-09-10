@@ -4,35 +4,39 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-  "dev": "vite",
-  "dev:proxy": "npm --prefix dev-server run dev",
-  "dev:all": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,proxy -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix dev-server run dev\"",
+    "dev": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,api -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix team-schedule-api run dev\"",
+    "dev:worker": "npm --prefix team-schedule-api run dev",
+    "dev:proxy": "npm --prefix dev-server run dev",
+    "dev:all-legacy": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,proxy -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix dev-server run dev\"",
     "build": "vite build",
     "preview": "vite preview",
-  "predeploy": "npm run build && cp -f public/CNAME dist/CNAME && mkdir -p dist/schedule2 && cp -a dist/assets dist/schedule2/ && cp -f dist/sw.js dist/schedule2/sw.js",
-  "deploy": "gh-pages -d dist",
-  "smoke": "node ./scripts/smoke.mjs",
-  "validate:prod": "node ./scripts/validate-prod.mjs",
-  "seed": "node ./scripts/seed-from-cloud.mjs",
-  "seed:v1": "node ./scripts/seed-v1-from-live.mjs",
-  "typecheck": "tsc --noEmit",
-  "validate:legacy": "node ./scripts/validate-legacy.mjs"
+    "predeploy": "npm run build && cp -f public/CNAME dist/CNAME && mkdir -p dist/schedule2 && cp -a dist/assets dist/schedule2/ && cp -f dist/sw.js dist/schedule2/sw.js",
+    "deploy": "gh-pages -d dist",
+    "smoke": "node ./scripts/smoke.mjs",
+    "validate:prod": "node ./scripts/validate-prod.mjs",
+    "seed": "node ./scripts/seed-from-cloud.mjs",
+    "seed:dev": "node ./scripts/seed-worker-from-url.mjs",
+    "seed:v1": "node ./scripts/seed-v1-from-live.mjs",
+    "typecheck": "tsc --noEmit",
+    "validate:legacy": "node ./scripts/validate-legacy.mjs",
+    "postinstall": "npm --prefix team-schedule-api ci || npm --prefix team-schedule-api i"
   },
   "dependencies": {
     "react": "^18.3.1",
-  "react-dom": "^18.3.1",
-  "zod": "^3.23.8"
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "concurrently": "^9.0.1",
     "gh-pages": "^6.1.1",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
-  "vite": "^5.4.2",
-  "concurrently": "^9.0.1"
+    "vite": "^5.4.2",
+    "wrangler": "^4.35.0"
   }
 }

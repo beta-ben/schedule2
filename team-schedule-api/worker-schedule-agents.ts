@@ -51,6 +51,8 @@ export interface Env {
   // Optional during migration to D1
   DB?: D1Database
   USE_D1?: string
+  // Dev convenience: include sid in login body for tooling
+  RETURN_SID_IN_BODY?: string
 }
 
 // Types
@@ -79,6 +81,7 @@ export default {
 
   // Lightweight diagnostics during KV -> D1 migration
   if (req.method === 'GET' && path === '/api/_health') return health(req, env, cors)
+  if (req.method === 'GET' && path === '/health') return health(req, env, cors) // alias for CI tooling
   if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
 
@@ -146,16 +149,90 @@ function corsHeaders(req: Request, env: Env){
   return new Headers(h)
 }
 
-// Sessions in KV
+// Sessions (D1 when enabled, otherwise KV)
 const TTL_MS = 8 * 60 * 60 * 1000
-async function putSession(env: Env, kind: 'admin'|'site', sid: string, data: any){ await env.SCHEDULE_KV.put(`${kind}:${sid}`, JSON.stringify({ ...data, exp: Date.now()+TTL_MS }), { expirationTtl: Math.ceil(TTL_MS/1000) }) }
-async function getSession(env: Env, kind: 'admin'|'site', sid: string){ const raw = await env.SCHEDULE_KV.get(`${kind}:${sid}`); if(!raw) return null; try{ const j = JSON.parse(raw); if(j.exp && j.exp < Date.now()){ await env.SCHEDULE_KV.delete(`${kind}:${sid}`); return null } return j }catch{ return null } }
-async function delSession(env: Env, kind: 'admin'|'site', sid: string){ await env.SCHEDULE_KV.delete(`${kind}:${sid}`) }
+async function putSession(env: Env, kind: 'admin'|'site', sid: string, data: any){
+  if(useD1(env)) return putSessionD1(env, kind, sid, data)
+  await env.SCHEDULE_KV.put(`${kind}:${sid}`, JSON.stringify({ ...data, exp: Date.now()+TTL_MS }), { expirationTtl: Math.ceil(TTL_MS/1000) })
+}
+async function getSession(env: Env, kind: 'admin'|'site', sid: string){
+  if(useD1(env)) return getSessionD1(env, kind, sid)
+  const raw = await env.SCHEDULE_KV.get(`${kind}:${sid}`); if(!raw) return null; try{ const j = JSON.parse(raw); if(j.exp && j.exp < Date.now()){ await env.SCHEDULE_KV.delete(`${kind}:${sid}`); return null } return j }catch{ return null }
+}
+async function delSession(env: Env, kind: 'admin'|'site', sid: string){
+  if(useD1(env)) return delSessionD1(env, kind, sid)
+  await env.SCHEDULE_KV.delete(`${kind}:${sid}`)
+}
 
-// Data storage in KV
+async function putSessionD1(env: Env, kind: 'admin'|'site', sid: string, data: any){
+  if(!env.DB) throw new Error('d1_unavailable')
+  const exp = Math.floor((Date.now()+TTL_MS)/1000)
+  await ensureD1Schema(env)
+  await env.DB.prepare(
+    `INSERT INTO sessions (id,kind,csrf,exp_ts,updated_at,created_at)
+     VALUES (?1,?2,?3,?4,unixepoch(),unixepoch())
+     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, csrf=excluded.csrf, exp_ts=excluded.exp_ts, updated_at=unixepoch()`
+  ).bind(sid, kind, (data?.csrf||null), exp).run()
+}
+async function getSessionD1(env: Env, kind: 'admin'|'site', sid: string){
+  if(!env.DB) return null
+  try{
+    await ensureD1Schema(env)
+    const row = await env.DB.prepare('SELECT csrf, exp_ts FROM sessions WHERE id=?1 AND kind=?2').bind(sid, kind).first<{ csrf?: string; exp_ts: number }>()
+    if(!row) return null
+    const now = Math.floor(Date.now()/1000)
+    if(!row.exp_ts || row.exp_ts < now){ await env.DB.prepare('DELETE FROM sessions WHERE id=?1').bind(sid).run(); return null }
+    const out: any = {}
+    if(typeof row.csrf === 'string') out.csrf = row.csrf
+    out.exp = row.exp_ts * 1000
+    return out
+  }catch{ return null }
+}
+async function delSessionD1(env: Env, kind: 'admin'|'site', sid: string){
+  if(!env.DB) return
+  await env.DB.prepare('DELETE FROM sessions WHERE id=?1').bind(sid).run()
+}
+
+// Data storage in KV or D1 (settings)
 function dataKey(env: Env){ return env.DATA_KEY || 'schedule.json' }
-async function readDoc(env: Env): Promise<ScheduleDoc | null>{ const raw = await env.SCHEDULE_KV.get(dataKey(env)); if(!raw) return null; try{ return JSON.parse(raw) }catch{ return null } }
-async function writeDoc(env: Env, doc: ScheduleDoc){ await env.SCHEDULE_KV.put(dataKey(env), JSON.stringify(doc, null, 2)) }
+function useD1(env: Env){ return (env.USE_D1||'0') === '1' && !!env.DB }
+// Dev convenience: auto-create required tables if missing
+async function ensureD1Schema(env: Env){
+  if(!env.DB) return
+  try{
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT NOT NULL, updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
+  }catch{}
+  try{
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, kind TEXT NOT NULL, csrf TEXT, exp_ts INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_kind_exp ON sessions(kind, exp_ts)').run()
+  }catch{}
+}
+async function readDocD1(env: Env): Promise<ScheduleDoc | null>{
+  if(!env.DB) return null
+  try{
+    await ensureD1Schema(env)
+    const row = await env.DB.prepare('SELECT val FROM settings WHERE key=?1').bind(dataKey(env)).first<{ val: string }>()
+    if(!row || row.val == null) return null
+    try { return JSON.parse(String(row.val)) as ScheduleDoc } catch { return null }
+  }catch{ return null }
+}
+async function writeDocD1(env: Env, doc: ScheduleDoc){
+  if(!env.DB) throw new Error('d1_unavailable')
+  const json = JSON.stringify(doc, null, 2)
+  await ensureD1Schema(env)
+  await env.DB.prepare(
+    `INSERT INTO settings (key,val,updated_at) VALUES (?1,?2,unixepoch())
+     ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=unixepoch()`
+  ).bind(dataKey(env), json).run()
+}
+async function readDoc(env: Env): Promise<ScheduleDoc | null>{
+  if(useD1(env)) return await readDocD1(env)
+  const raw = await env.SCHEDULE_KV.get(dataKey(env)); if(!raw) return null; try{ return JSON.parse(raw) }catch{ return null }
+}
+async function writeDoc(env: Env, doc: ScheduleDoc){
+  if(useD1(env)) return await writeDocD1(env, doc)
+  await env.SCHEDULE_KV.put(dataKey(env), JSON.stringify(doc, null, 2))
+}
 
 // Auth handlers
 async function loginAdmin(req: Request, env: Env, cors: Headers){
@@ -170,7 +247,8 @@ async function loginAdmin(req: Request, env: Env, cors: Headers){
   headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
   headers.append('Set-Cookie', setCookie('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
   // Also include csrf in body so clients can store it when cookie is HttpOnly
-  return json({ ok:true, csrf }, 200, headers)
+  const includeSid = (env.RETURN_SID_IN_BODY||'').toLowerCase() === 'true' || (env.RETURN_SID_IN_BODY||'') === '1'
+  return json(includeSid ? { ok:true, csrf, sid } : { ok:true, csrf }, 200, headers)
 }
 async function logoutAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)

@@ -14,32 +14,16 @@ import { TZ_OPTS } from './constants'
 const SAMPLE = generateSample()
 
 export default function App(){
-  // Site-wide gate when using dev proxy
-  const useDevProxy = !!import.meta.env.VITE_DEV_PROXY_BASE && /^(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)$/.test(location.hostname)
-  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(!useDevProxy)
+  // Site-wide gate: if /api/schedule requires a site session, prompt for password.
+  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(true)
   const [sitePw, setSitePw] = useState('')
   const [siteMsg, setSiteMsg] = useState('')
   useEffect(()=>{ (async()=>{
-    if(useDevProxy){
-      try{
-        const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
-        const r = await fetch(`${base}/api/schedule`, { method: 'GET', credentials: 'include' })
-        setSiteUnlocked(r.ok)
-        if(r.ok){ try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
-      }catch{ setSiteUnlocked(false) }
-    } else {
-      setSiteUnlocked(true)
-    }
-  })() }, [useDevProxy])
-  useEffect(()=>{
-    if(useDevProxy){
-      try{
-        const hint = localStorage.getItem('site_unlocked_hint')
-        if(hint==='1' && !siteUnlocked){ setSiteUnlocked(true) }
-      }catch{}
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    try{
+      const r = await fetch(`/api/schedule`, { method: 'GET', credentials: 'include' })
+      setSiteUnlocked(r.ok)
+    }catch{ setSiteUnlocked(false) }
+  })() }, [])
   const hashToView = (hash:string): 'schedule'|'manageV2' => {
     const h = (hash||'').toLowerCase()
     if(h.includes('manage2')) return 'manageV2'
@@ -273,7 +257,7 @@ export default function App(){
   }, [agentsV2])
 
   useEffect(()=>{ (async()=>{
-    if(useDevProxy && !siteUnlocked) return
+    if(!siteUnlocked) return
     const data=await cloudGet();
     if(data){
       setShifts(data.shifts);
@@ -287,7 +271,7 @@ export default function App(){
       }
     }
     setLoadedFromCloud(true)
-  })() },[useDevProxy, siteUnlocked])
+  })() },[siteUnlocked])
   // Keep view in sync with URL hash and vice versa
   useEffect(()=>{
     const handler = ()=> setView(hashToView(window.location.hash))
@@ -372,7 +356,7 @@ export default function App(){
   const lastJsonRef = React.useRef<{ shifts: string; pto: string; cal: string; agents: string }>({ shifts: '', pto: '', cal: '', agents: '' })
   useEffect(()=>{
     if(view!== 'schedule') return
-    if(useDevProxy && !siteUnlocked) return
+    if(!siteUnlocked) return
     let stopped = false
     const pull = async ()=>{
       const data = await cloudGet()
@@ -392,17 +376,9 @@ export default function App(){
     }
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)
-    // If using dev proxy, also subscribe to SSE for instant updates
-    let es: EventSource | null = null
-  const base = (import.meta.env.VITE_DEV_PROXY_BASE || '').replace(/\/$/,'')
-  if(useDevProxy && base){
-      try{
-        es = new EventSource(`${base}/api/events`, { withCredentials: true } as any)
-        es.addEventListener('updated', ()=> pull())
-      }catch{}
-    }
-    return ()=>{ stopped = true; clearInterval(id); try{ es?.close() }catch{} }
-  }, [view, useDevProxy, siteUnlocked])
+    // No SSE in unified Worker path; polling is sufficient
+    return ()=>{ stopped = true; clearInterval(id) }
+  }, [view, siteUnlocked])
 
   // Derived: list of unique agent names
   const agents = useMemo(()=> Array.from(new Set(shifts.map(s=>s.person))).sort(), [shifts])
@@ -439,13 +415,13 @@ export default function App(){
             <div className="text-lg font-semibold">Protected — Enter Site Password</div>
             <p className="text-sm opacity-80">Sign in to view the schedule.</p>
             <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-              const { devSiteLogin } = await import('./lib/api')
-              const { ok, status } = await devSiteLogin(sitePw)
+              const { loginSite } = await import('./lib/api')
+              const { ok, status } = await loginSite(sitePw)
               if(ok){ setSiteUnlocked(true); setSiteMsg(''); try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
               else if(status===401){ setSiteMsg('Incorrect password') }
-              else if(status===403){ setSiteMsg('Origin blocked by dev proxy. Check DEV_ALLOWED_ORIGIN(S).') }
-              else if(status===404){ setSiteMsg('Endpoint missing on dev proxy. Restart it to pick up routes.') }
-              else { setSiteMsg('Network/CORS error. Is dev proxy running?') }
+              else if(status===403){ setSiteMsg('Forbidden by server policy') }
+              else if(status===404){ setSiteMsg('API endpoint not found') }
+              else { setSiteMsg('Network error. Is the API running?') }
             })() }}>
               <div className="flex gap-2">
                 <input type="password" autoFocus className="flex-1 border rounded-xl px-3 py-2 bg-neutral-900 border-neutral-700" value={sitePw} onChange={(e)=>setSitePw(e.target.value)} placeholder="Password" />

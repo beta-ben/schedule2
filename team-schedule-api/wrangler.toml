@@ -21,8 +21,8 @@ id = "00000000000000000000000000000000" # dev placeholder; replace in prod
 # COOKIE_SAMESITE = "Lax"
 # REQUIRE_SITE_SESSION = "true"
 # DATA_KEY = "schedule.json"
-# Prefer KV by default; we’ll flip this during cutover
-USE_D1 = "0"
+# Prefer D1 by default; KV remains a fallback if USE_D1="0"
+USE_D1 = "1"
 
 [[d1_databases]]
 binding = "DB"
