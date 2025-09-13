@@ -7,6 +7,7 @@ import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
 // Legacy ManagePage phased out; use ManageV2Page only
 import ManageV2Page from './pages/ManageV2Page'
+import TeamsPage from './pages/TeamsPage'
 import { generateSample } from './sample'
 // sha256Hex removed from App; keep local hashing only in components that need it
 import { TZ_OPTS } from './constants'
@@ -26,13 +27,14 @@ export default function App(){
       setSiteUnlocked(r.ok)
     }catch{ setSiteUnlocked(false) }
   })() }, [])
-  const hashToView = (hash:string): 'schedule'|'manageV2' => {
+  const hashToView = (hash:string): 'schedule'|'teams'|'manageV2' => {
     const h = (hash||'').toLowerCase()
+    if(h.includes('teams')) return 'teams'
     if(h.includes('manage2')) return 'manageV2'
     if(h.includes('manage')) return 'manageV2'
     return 'schedule'
   }
-  const [view,setView] = useState<'schedule'|'manageV2'>(()=> hashToView(window.location.hash))
+  const [view,setView] = useState<'schedule'|'teams'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
   const [theme,setTheme] = useState<"system"|"default"|"night"|"noir"|"prism">(()=>{
@@ -332,6 +334,12 @@ export default function App(){
       if(!low.startsWith('#manage2')){
         window.location.hash = '#manage2'
       }
+    } else if(view==='teams') {
+      const h = window.location.hash || ''
+      const low = h.toLowerCase()
+      if(!low.startsWith('#teams')){
+        window.location.hash = '#teams'
+      }
     } else {
       // schedule: remove hash for clean URL
       if(window.location.hash){
@@ -607,6 +615,15 @@ export default function App(){
               onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
               agents={agentsV2}
               slimline={slimline}
+            />
+          ) : view==='teams' ? (
+            <TeamsPage
+              dark={dark}
+              weekStart={weekStart}
+              agents={agentsV2}
+              pto={draftActive ? (draft!.data.pto) : pto}
+              tasks={tasks}
+              calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
             />
           ) : (
             <ManageV2Page

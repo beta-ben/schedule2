@@ -6,8 +6,8 @@ import { TZ_OPTS } from '../constants'
 export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
-  view: 'schedule'|'manageV2'
-  setView: (v:'schedule'|'manageV2')=>void
+  view: 'schedule'|'teams'|'manageV2'
+  setView: (v:'schedule'|'teams'|'manageV2')=>void
   weekStart: string
   setWeekStart: (v:string)=>void
   tz: { id:string; label:string; offset:number }
@@ -61,9 +61,19 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             </svg>
           </button>
           <button
-            // Legacy Manage button hidden per request
-            // (left intentionally blank)
-          />
+            onClick={()=>setView('teams')}
+            aria-label="Teams"
+            title="Teams"
+            className={["inline-flex items-center justify-center h-9 sm:h-10 px-2.5 sm:px-3 rounded-lg text-sm font-medium border", view==='teams' ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}
+          >
+            {/* Users icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </button>
           <button
             onClick={()=>setView('manageV2')}
             aria-label="Manage v2"
