@@ -622,6 +622,7 @@ export default function App(){
               weekStart={weekStart}
               agents={agentsV2}
               pto={draftActive ? (draft!.data.pto) : pto}
+              overrides={draftActive ? (draft!.data.overrides) : overrides}
               tasks={tasks}
               calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
             />

@@ -3,6 +3,7 @@ import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
 import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
+import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import ProposalDiffVisualizer from '../components/ProposalDiffVisualizer'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
@@ -439,8 +440,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [eaTaskId, setEaTaskId] = React.useState('')
   const [eaEndDay, setEaEndDay] = React.useState<typeof DAYS[number]>('Mon' as any)
   // const [filterTaskId, setFilterTaskId] = React.useState('') // not used currently
-  // Calendar filter (posture) — empty means show all
-  const [calendarFilterTaskId, setCalendarFilterTaskId] = React.useState('')
+  // Calendar filter removed in favor of per-posture calendars
 
   // PTO tab state
   const [pt_agent, setPtAgent] = React.useState('')
@@ -1300,7 +1300,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           if(assignEndDay===assignDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                         const dayShiftsLocal = shiftsForDayInTZ(shifts, assignDay as any, tz.offset).filter(s=>s.person===assignee)
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
-                        if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.'); }
+                        // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
                           setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
                       }}
                       className={["h-10 rounded-xl border font-medium px-4", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}
@@ -1422,7 +1422,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           if(eaEndDay===eaDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                           const dayShiftsLocal = shiftsForDayInTZ(shifts, eaDay as any, tz.offset).filter(s=>s.person===eaPerson)
                           const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE=s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
-                          if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.') }
+                          // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
                           setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, endDay: eaEndDay, start: eaStart, end: eaEnd, taskId: eaTaskId } as any : cs))
                           setEditingIdx(null)
                         }} className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
@@ -1434,98 +1434,24 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               </div>
             </div>
 
-            {/* Bottom calendar view: weekly calendar grid with posture filter */}
-      <div className={["mt-3 rounded-xl p-3", dark?"bg-neutral-900":"bg-white"].join(' ')}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-medium">Weekly posture calendar</div>
-                <label className="text-xs inline-flex items-center gap-2">
-                  <span className={dark?"text-neutral-300":"text-neutral-700"}>Filter</span>
-                  <select
-                    className={["border rounded-lg px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                    value={calendarFilterTaskId}
-                    onChange={(e)=> setCalendarFilterTaskId(e.target.value)}
-                  >
-                    <option value="">All postures</option>
-                    {tasks.filter(t=>!t.archived).map(t=> (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {(()=>{
-                const H_PX = 420 // column height
-                const hrColor = dark? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
-                const hourMarks = Array.from({length:25},(_,i)=>i)
-                const taskMap = new Map(tasks.map(t=>[t.id,t]))
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
-                    {DAYS.map(day=>{
-                      // Build lanes so overlapping items render side-by-side
-                      const dayItems = calendarSegs
-                        .map((cs, _idx)=> ({...cs, _idx}))
-                        // Expand any cross-day segments into per-day pieces so they render on both days
-                        .flatMap(cs=>{
-                          const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
-                          if(sameDay){ return [cs] }
-                          const startMin = toMin(cs.start)
-                          const endMin = cs.end==='24:00'?1440:toMin(cs.end)
-                          return [
-                            { ...cs, day: cs.day, start: cs.start, end: '24:00' },
-                            { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
-                          ]
-                        })
-                        .filter(cs=> cs.day===day && (!calendarFilterTaskId || cs.taskId===calendarFilterTaskId))
-                        .sort((a,b)=> toMin(a.start) - toMin(b.start))
-                      const lanes: number[] = [] // end minute per lane
-                      const placed = dayItems.map((it)=>{
-                        const s = toMin(it.start)
-                        const e = it.end==='24:00' ? 1440 : toMin(it.end)
-                        let lane = 0
-                        for(lane=0; lane<lanes.length; lane++){
-                          if(s >= lanes[lane]){ lanes[lane] = e; break }
-                        }
-                        if(lane===lanes.length){ lanes.push(e) }
-                        return { it, lane, s, e }
-                      })
-                      const laneCount = Math.max(1, lanes.length)
-                      const laneWidthPct = 100 / laneCount
-                      return (
-                        <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: H_PX }}>
-                          <div className="font-medium mb-1">{day}</div>
-                          {/* Hour grid */}
-                          <div className="absolute left-2 right-2 bottom-2 top-7">
-                            {hourMarks.map((h)=>{
-                              const top = (h/24)*100
-                              return <div key={h} className="absolute left-0 right-0" style={{ top: `${top}%`, height: h===0?1:1 }}>
-                                <div style={{ borderTop: `1px solid ${hrColor}` }} />
-                              </div>
-                            })}
-                            {/* Items */}
-                            {placed.map(({it, lane, s, e})=>{
-                              const top = (s/1440)*100
-                              const height = Math.max(1.5, ((e-s)/1440)*100)
-                              const left = `calc(${lane * laneWidthPct}% + 0px)`
-                              const width = `calc(${laneWidthPct}% - 4px)`
-                              const t = taskMap.get(it.taskId)
-                              const color = t?.color || '#888'
-                              const dispName = agentDisplayName(localAgents as any, it.agentId, it.person)
-                              return (
-                                <div key={`${it._idx}-${it.person}-${it.start}-${it.end}`} className={["absolute rounded-md px-2 py-1 overflow-hidden", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top:`${top}%`, height:`${height}%`, left, width }} title={`${dispName} — ${it.start}–${it.end} • ${(t?.name)||it.taskId}`}>
-                                  <div className="flex items-center gap-1.5 text-[11px] leading-tight">
-                                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
-                                    <span className="truncate">{t?.name || it.taskId}</span>
-                                  </div>
-                                  <div className="text-[11px] opacity-70 leading-tight truncate">{it.start}–{it.end} <span className="opacity-60">({dispName})</span></div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
+            {/* Bottom calendars: one per populated posture (packed) */}
+            <div className="mt-3 space-y-3">
+              {activeTasks
+                .filter(t=> calendarSegs.some(cs=> cs.taskId===t.id))
+                .sort((a,b)=> a.name.localeCompare(b.name))
+                .map(t=> (
+                  <WeeklyPosturesCalendar
+                    key={t.id}
+                    dark={dark}
+                    weekStart={weekStart}
+                    calendarSegs={calendarSegs}
+                    tasks={tasks}
+                    agents={localAgents as any}
+                    filterTaskId={t.id}
+                    packed
+                    title={`Weekly ${t.name} calendar`}
+                  />
+                ))}
             </div>
           </div>
         ) : subtab==='PTO & Overrides' ? (

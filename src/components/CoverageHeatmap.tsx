@@ -58,6 +58,24 @@ export default function CoverageHeatmap({
   }, [tzShifts])
 
   const maxCount = React.useMemo(()=> counts.reduce((m,col)=> Math.max(m, ...col), 0), [counts])
+  const flatStats = React.useMemo(()=>{
+    const pts: Array<{ dIdx:number; h:number; v:number }> = []
+    for(let di=0; di<7; di++){
+      for(let h=0; h<24; h++) pts.push({ dIdx: di, h, v: counts[di][h] })
+    }
+    let min = Infinity, max = 0
+    for(const p of pts){ if(p.v < min) min = p.v; if(p.v > max) max = p.v }
+    const maxPts = max>0 ? pts.filter(p=> p.v===max) : []
+    const minPts = pts.filter(p=> p.v===min)
+    const zeroHours = pts.filter(p=> p.v===0).length
+    const sum = pts.reduce((s,p)=> s+p.v, 0)
+    const avg = pts.length ? (sum/pts.length) : 0
+    // totals by day for quick insights
+    const dayTotals = Array.from({length:7},(_,di)=> counts[di].reduce((s,v)=> s+v, 0))
+    const bestDayIdx = dayTotals.reduce((bi,tot,i)=> tot>(dayTotals[bi]??-Infinity) ? i : bi, 0)
+    const worstDayIdx = dayTotals.reduce((wi,tot,i)=> tot<(dayTotals[wi]??Infinity) ? i : wi, 0)
+    return { pts, minCount: Number.isFinite(min)? min : 0, maxCount: max, maxPts, minPts, zeroHours, avg, bestDayIdx, worstDayIdx, dayTotals }
+  }, [counts])
   const colorFor = (v:number)=>{
     if(maxCount<=0) return dark? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
     const t = v / maxCount
@@ -145,8 +163,28 @@ export default function CoverageHeatmap({
                 )}
               </svg>
             </button>
+            {(()=>{
+              const fmt = (h:number)=> h===0? '12a' : h<12? `${h}a` : h===12? '12p' : `${h-12}p`
+              const maxPtsLabel = flatStats.maxPts.slice(0,3).map(p=> `${DAYS[p.dIdx]} ${fmt(p.h)}`).join(', ')
+              const minPtsLabel = flatStats.minPts.slice(0,3).map(p=> `${DAYS[p.dIdx]} ${fmt(p.h)}`).join(', ')
+              return (
+                <div className="flex items-center gap-1">
+                  <span
+                    className={["px-1.5 py-0.5 rounded border", dark?"border-neutral-700 bg-neutral-900 text-neutral-300":"border-neutral-300 bg-white text-neutral-700"].join(' ')}
+                    title={maxPtsLabel ? `Max at: ${maxPtsLabel}` : 'No data'}
+                  >Max {flatStats.maxCount}</span>
+                  <span
+                    className={["px-1.5 py-0.5 rounded border", dark?"border-neutral-700 bg-neutral-900 text-neutral-300":"border-neutral-300 bg-white text-neutral-700"].join(' ')}
+                    title={minPtsLabel ? `Min at: ${minPtsLabel}` : 'No data'}
+                  >Min {flatStats.minCount}</span>
+                  <span
+                    className={["px-1.5 py-0.5 rounded border hidden sm:inline", dark?"border-neutral-700 bg-neutral-900 text-neutral-300":"border-neutral-300 bg-white text-neutral-700"].join(' ')}
+                    title={`Avg across all hours`}
+                  >Avg {flatStats.avg.toFixed(1)}</span>
+                </div>
+              )
+            })()}
           </div>
-          {/* Max indicator removed for now; will add context-specific label later */}
         </div>
         {!collapsed && (
           <div className="flex items-stretch gap-1 mt-1">
