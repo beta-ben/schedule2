@@ -59,25 +59,22 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     return names.filter(n=> !hiddenNames.has(n))
   },[shifts, hiddenNames])
   const [agentView, setAgentView] = useState<string>('')
-  const [showViewOpts, setShowViewOpts] = useState(false)
   const [showAgentMenu, setShowAgentMenu] = useState(false)
   const agentMenuRef = React.useRef<HTMLDivElement|null>(null)
   // Close the small panes on outside click / Escape
-  const viewOptsRef = React.useRef<HTMLDivElement|null>(null)
   useEffect(()=>{
-    if(!(showViewOpts || showAgentMenu)) return
+    if(!showAgentMenu) return
     const onDocClick = (e: MouseEvent)=>{
       const t = e.target as Node
-      if(viewOptsRef.current && !viewOptsRef.current.contains(t)) setShowViewOpts(false)
       if(agentMenuRef.current && !agentMenuRef.current.contains(t)) setShowAgentMenu(false)
     }
-    const onKey = (e: KeyboardEvent)=>{ if(e.key === 'Escape') setShowViewOpts(false) }
+    const onKey = (e: KeyboardEvent)=>{ if(e.key === 'Escape') setShowAgentMenu(false) }
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKey)
     return ()=> { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey) }
-  },[showViewOpts, showAgentMenu])
+  },[showAgentMenu])
   // Close when switching agent/day
-  useEffect(()=>{ setShowViewOpts(false); setShowAgentMenu(false) }, [agentView, dayIndex])
+  useEffect(()=>{ setShowAgentMenu(false) }, [agentView, dayIndex])
 
   // (no secondary view state)
 
@@ -164,8 +161,26 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
           </div>
         )}
 
-        {/* Right: agent picker button, day selector, settings */}
-        <div className="flex items-center gap-2 order-2 sm:order-3 w-full sm:w-auto justify-between sm:justify-end">
+        {/* Right: day selector, then agent picker, then eye toggle */}
+        <div className="flex items-center gap-1.5 sm:gap-2 order-2 sm:order-3 w-full sm:w-auto justify-start sm:justify-end">
+          {!agentView && (
+            <div className="overflow-x-auto no-scrollbar max-w-full">
+              <div className="inline-flex gap-1.5 sm:gap-2 whitespace-nowrap pr-0.5 sm:pr-1">
+              {DAYS.map((d,i)=> {
+                const isToday = d === todayKey
+                const base = "px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm border"
+                const stateCls = i===dayIndex
+                  ? (dark?"bg-neutral-800 border-neutral-600 text-white":"bg-blue-600 border-blue-600 text-white")
+                  : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")
+                const todayCls = isToday ? (dark?"text-red-400":"text-red-600") : ""
+                return (
+                  <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls].filter(Boolean).join(' ')}>{d}</button>
+                )
+              })}
+              </div>
+            </div>
+          )}
+
           {/* Agent picker: compact button that opens a menu */}
           <div className="relative" ref={agentMenuRef}>
             <button
@@ -187,101 +202,34 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
             )}
           </div>
 
+          {/* Eye toggle: hide/show off-duty agents (replaces settings) */}
           {!agentView && (
-            <div className="overflow-x-auto no-scrollbar max-w-full">
-              <div className="inline-flex gap-1.5 sm:gap-2 whitespace-nowrap pr-1">
-              {DAYS.map((d,i)=> {
-                const isToday = d === todayKey
-                const base = "px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm border"
-                const stateCls = i===dayIndex
-                  ? (dark?"bg-neutral-800 border-neutral-600 text-white":"bg-blue-600 border-blue-600 text-white")
-                  : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")
-                const todayCls = isToday ? (dark?"text-red-400":"text-red-600") : ""
-                return (
-                  <button key={d} onClick={()=>setDayIndex(i)} className={[base, stateCls, todayCls].filter(Boolean).join(' ')}>{d}</button>
-                )
-              })}
-              </div>
-            </div>
-          )}
-
-          {/* Schedule-only settings (small pane under button) */}
-          {!agentView && (
-            <div className="relative" ref={viewOptsRef}>
-              <button
-                aria-label="View options"
-                title="View options"
-                onClick={()=> setShowViewOpts(v=>!v)}
-                className={["inline-flex items-center justify-center h-8 sm:h-9 w-9 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 9 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 20.91 11H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
-                </svg>
-              </button>
-              {showViewOpts && (
-                <div className={["absolute right-0 mt-2 w-64 sm:w-72 max-w-[calc(100vw-2rem)] sm:max-w-none rounded-xl p-3 border shadow-lg z-50", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
-                  <div className="text-sm font-semibold mb-2">Schedule settings</div>
-                  {/* Slimline switch */}
-                  <div className="flex items-center justify-between gap-3 text-sm py-1">
-                    <span className="flex-1">Hide off-duty agents</span>
-                    <button
-                      role="switch"
-                      aria-checked={!!slimline}
-                      onClick={()=>{
-                        const val = !slimline
-                        try{ localStorage.setItem('schedule_slimline',''+(val?'1':'0')) }catch{}
-                        window.dispatchEvent(new CustomEvent('schedule:set-slimline', { detail: { value: val } }))
-                      }}
-                      className={["w-12 h-6 rounded-full border relative transition", dark?"bg-neutral-800 border-neutral-700":"bg-white border-neutral-300"].join(' ')}
-                      aria-label="Toggle slimline"
-                    >
-                      <span className={["absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-sm flex items-center justify-center transition-transform", (!!slimline ? 'translate-x-6' : 'translate-x-0'), dark?"bg-neutral-700 text-neutral-200":"bg-neutral-100 text-neutral-700"].join(' ')}>
-                        {/* dot */}
-                      </span>
-                    </button>
-                  </div>
-
-                  
-
-                  {/* Theme select */}
-                  <label className="flex items-center justify-between gap-3 text-sm py-1">
-                    <span className="flex-1 flex items-center gap-2" title="Theme">
-                      {/* Sun icon */}
-                      <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="4"/>
-                        <path d="M12 2v2"/>
-                        <path d="M12 20v2"/>
-                        <path d="m4.93 4.93 1.41 1.41"/>
-                        <path d="m17.66 17.66 1.41 1.41"/>
-                        <path d="M2 12h2"/>
-                        <path d="M20 12h2"/>
-                        <path d="m4.93 19.07 1.41-1.41"/>
-                        <path d="m17.66 6.34 1.41-1.41"/>
-                      </svg>
-                      <span className="sr-only">Theme</span>
-                    </span>
-                    <select
-                      aria-label="Theme"
-                      className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-900"].join(' ')}
-                      defaultValue={(()=>{ try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : (v || 'system') }catch{ return 'system' }})()}
-                      onChange={(e)=>{
-                        const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir'|'prism'
-                        try{ localStorage.setItem('schedule_theme', val) }catch{}
-                        window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
-                      }}
-                    >
-                      <option value="system">System</option>
-                      <option value="light">Light</option>
-                      <option value="dark">Dark</option>
-                      <option value="night">Night</option>
-                      <option value="noir">Noir</option>
-                      <option value="prism">Prism</option>
-                    </select>
-                  </label>
-                </div>
-              )}
-            </div>
+            <button
+              aria-label={slimline ? 'Show off-duty agents' : 'Hide off-duty agents'}
+              title={slimline ? 'Show off-duty agents' : 'Hide off-duty agents'}
+              onClick={()=>{
+                const val = !slimline
+                try{ localStorage.setItem('schedule_slimline',''+(val?'1':'0')) }catch{}
+                window.dispatchEvent(new CustomEvent('schedule:set-slimline', { detail: { value: val } }))
+              }}
+              aria-pressed={!!slimline}
+              className={["inline-flex items-center justify-center h-8 sm:h-9 w-9 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+            >
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {slimline ? (
+                  <>
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/>
+                    <path d="M1 1l22 22"/>
+                    <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/>
+                  </>
+                ) : (
+                  <>
+                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </>
+                )}
+              </svg>
+            </button>
           )}
         </div>
       </div>

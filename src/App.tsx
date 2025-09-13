@@ -103,8 +103,10 @@ export default function App(){
   // Compute root classes based on effective theme
   const rootCls = useMemo(()=>{
     const baseCls = 'min-h-screen w-full'
-    if(effectiveTheme==='night') return dark ? `${baseCls} bg-black text-red-400` : `${baseCls} bg-white text-red-600`
-    if(effectiveTheme==='noir') return dark ? `${baseCls} bg-black text-white` : `${baseCls} bg-white text-black`
+    // Night: enforce black background regardless of variant; text stays red
+    if(effectiveTheme==='night') return dark ? `${baseCls} bg-black text-red-400` : `${baseCls} bg-black text-red-600`
+    // Noir: strict black + white only
+    if(effectiveTheme==='noir') return `${baseCls} bg-black text-white`
     if(effectiveTheme==='prism') return dark ? `${baseCls} bg-black text-neutral-100` : `${baseCls} bg-sky-50 text-sky-800`
     // default
     return dark? `${baseCls} bg-neutral-950 text-neutral-100` : `${baseCls} bg-neutral-100 text-neutral-900`

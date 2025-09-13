@@ -351,7 +351,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         ...(bgImage ? { backgroundImage: bgImage } : {}),
                         ...(prism ? { backgroundColor: 'rgba(0,0,0,0.08)', backgroundBlendMode: 'multiply' } : {}),
                         ...(prism ? { backgroundSize: '300% 100%', animation: 'prismChip 10s linear infinite', animationDelay: `${(H%60)/30}s` } : {}),
-                        transition: 'filter 160ms ease, box-shadow 160ms ease',
+                        transition: 'filter 100ms ease, box-shadow 100ms ease',
                         ...(isHovered ? { filter: 'brightness(1.06)' } : {}),
                       }
                       return <div className="absolute" style={style} />
@@ -408,7 +408,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         ),
                         borderRadius: CHIP_RADIUS,
                         zIndex: 5,
-                        transition: 'box-shadow 160ms ease'
+                        transition: 'box-shadow 100ms ease'
                       }}
                     />
 
@@ -428,7 +428,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                           style={{
                             left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX,
                             ...(prismText ? { textShadow: '0 1px 1px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.35)' } : {}),
-                            transition: 'filter 160ms ease',
+                            transition: 'filter 100ms ease',
                             ...(isHovered && !prismText ? { filter: 'brightness(1.02)' } : {})
                           }}
                         >

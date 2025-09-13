@@ -477,25 +477,43 @@ export default function AgentWeekLinear({
                   // Reset trackers on wrap (monotonicity break)
                   if(chipLeftPx < lastStartEdgePx) lastStartEdgePx = -Infinity
                   if(chipRightPx < (lastEndRightPx - LABEL_W)) lastEndRightPx = -Infinity
+
                   const wantsOuterStart = (opts?.forceStartOuter || forceOuterTimeTags)
                   const wantsOuterEnd = (opts?.forceEndOuter || forceOuterTimeTags)
+                  // Special case: if a piece touches the band edge due to wrap (left==0 or right==T),
+                  // keep the corresponding outer tag even if it would otherwise be suppressed.
+                  const atBandLeft = pLeft === 0
+                  const atBandRight = pRight === totalMins
+                  const forceKeepStart = wantsOuterStart && atBandLeft
+                  const forceKeepEnd = wantsOuterEnd && atBandRight
+
                   if(wantsOuterStart && allowStartTag){
                     // Start label sits immediately to the left of chip
                     const labelRight = chipLeftPx
-                    const minAllowed = lastStartEdgePx + LABEL_W + LABEL_GAP
-                    if(labelRight < minAllowed){
-                      allowStartTag = false
-                    }else{
+                    if(!forceKeepStart){
+                      const minAllowed = lastStartEdgePx + LABEL_W + LABEL_GAP
+                      if(labelRight < minAllowed){
+                        allowStartTag = false
+                      }else{
+                        lastStartEdgePx = labelRight
+                      }
+                    } else {
+                      // Still advance the tracker so following labels space correctly
                       lastStartEdgePx = labelRight
                     }
                   }
                   if(wantsOuterEnd && allowEndTag){
                     // End label sits immediately to the right of chip
                     const labelLeft = chipRightPx
-                    const minLeft = lastEndRightPx + LABEL_GAP
-                    if(labelLeft < minLeft){
-                      allowEndTag = false
-                    }else{
+                    if(!forceKeepEnd){
+                      const minLeft = lastEndRightPx + LABEL_GAP
+                      if(labelLeft < minLeft){
+                        allowEndTag = false
+                      }else{
+                        lastEndRightPx = labelLeft + LABEL_W
+                      }
+                    } else {
+                      // Still advance the tracker so following labels space correctly
                       lastEndRightPx = labelLeft + LABEL_W
                     }
                   }

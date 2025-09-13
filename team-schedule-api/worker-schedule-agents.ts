@@ -187,8 +187,10 @@ function corsHeaders(req: Request, env: Env){
   const allowlist = new Set(allowed)
   const h: Record<string,string> = {
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'content-type,x-csrf-token',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    // Allow Content-Type for JSON, x-csrf-token for writes, and Authorization for dev bearer/test tools
+    'Access-Control-Allow-Headers': 'content-type,x-csrf-token,authorization',
+    // Include PATCH for v2/agents; keep GET/POST/OPTIONS
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
   }
   // Safer default: only echo Origin when explicitly allowlisted.
   if (origin && allowed.length > 0 && allowlist.has(origin)) {

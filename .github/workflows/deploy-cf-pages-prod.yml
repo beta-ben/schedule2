@@ -37,6 +37,8 @@ jobs:
           cache: npm
 
       - name: Install deps
+        env:
+          HUSKY: '0'
         run: npm ci
 
       - name: Prepare production env
@@ -87,11 +89,11 @@ jobs:
 
       - name: Publish to Cloudflare Pages (production)
         run: |
-          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true
+          # Use --branch=main for forward compatibility across Wrangler versions
+          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --branch=main --commit-dirty=true
 
       - name: Diagnostics: domains and deployments
         run: |
           npx --yes wrangler@3.90.0 pages domain list "${PRJ}" || true
           echo "Production deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" --production || true
           echo "Preview deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" || true
-

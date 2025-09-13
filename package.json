@@ -26,7 +26,7 @@
     "test": "vitest run --reporter=basic",
     "validate:legacy": "node ./scripts/validate-legacy.mjs",
     "check": "npm run typecheck && vite build --mode development",
-    "prepare": "husky install",
+    "prepare": "husky install || true",
     "postinstall": "npm --prefix team-schedule-api ci || npm --prefix team-schedule-api i"
   },
   "dependencies": {

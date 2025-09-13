@@ -442,7 +442,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
               <div className="text-right whitespace-nowrap">Reports to</div>
               <div className="whitespace-nowrap">TZ</div>
             </div>
-										    <ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
+										    <ul ref={agentsListRef} className={["max-h-[48vh] overflow-y-auto"].join(' ')}>
 															    {sortedAgents.map(({ a, i }, sIdx)=> {
                   const supId = (a as any).supervisorId as string | undefined | null
                   const supAgent = supId ? (agents.find(x=> ((x as any).id && (x as any).id===supId) || (`${x.firstName||''} ${x.lastName||''}`.trim()===supId)) || null) : null

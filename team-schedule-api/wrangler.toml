@@ -7,9 +7,9 @@ compatibility_date = "2025-08-28"
 
 [[kv_namespaces]]
 binding = "SCHEDULE_KV"
-# Replace with your real KV id before deploy (from Cloudflare dashboard)
-# e.g., id = "abcdef1234567890abcdef1234567890"
-id = "00000000000000000000000000000000" # dev placeholder; replace in prod
+# Production KV namespace for sessions (and legacy doc fallback)
+# Namespace title example: "SESSIONS"
+id = "a99ca3fba4c04b32bb9f138a64b2c95a"
 
 [vars]
 # These can be overridden in Cloudflare dashboard (Settings > Variables).
@@ -27,4 +27,4 @@ USE_D1 = "1"
 [[d1_databases]]
 binding = "DB"
 database_name = "schedule2"
-database_id = "964685e3-46af-4ac4-95de-94c0c5356ede"
+database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"

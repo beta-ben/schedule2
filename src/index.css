@@ -107,7 +107,9 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 [data-theme='noir'] .text-neutral-900,
 [data-theme='noir'] .text-neutral-800,
 [data-theme='noir'] .text-neutral-700,
-[data-theme='noir'] .text-neutral-100 { color: #fff !important; }
+[data-theme='noir'] .text-neutral-100,
+[data-theme='noir'] .text-white,
+[data-theme='noir'] .text-black { color: #fff !important; }
 [data-theme='noir'] .border-neutral-200,
 [data-theme='noir'] .border-neutral-300,
 [data-theme='noir'] .border-neutral-600,
@@ -117,6 +119,14 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 [data-theme='noir'] .border-white { border-color: rgba(255,255,255,0.6) !important; }
 [data-theme='noir'] .hover\:bg-neutral-100:hover,
 [data-theme='noir'] .hover\:bg-neutral-800:hover { background-color: #111 !important; }
+/* Ensure icons are white-only in Noir */
+[data-theme='noir'] svg { color: #fff !important; stroke: #fff !important; }
+/* Force any prominent colored badges to monochrome in Noir */
+[data-theme='noir'] .bg-red-400,
+[data-theme='noir'] .bg-red-500 { background-color: #000 !important; }
+[data-theme='noir'] .text-red-400,
+[data-theme='noir'] .text-red-500,
+[data-theme='noir'] .text-red-600 { color: #fff !important; }
 
 /* Unicorn LSD: animated rainbow surfaces with readable overlay */
 @keyframes unicornShift {

@@ -51,7 +51,16 @@ export default function ThemeSelector({ dark }:{ dark:boolean }){
         <div className={["absolute right-0 mt-2 z-50 w-[320px] rounded-xl p-2 border shadow-lg", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-200"].join(' ')} role="menu">
           <div className="grid grid-cols-2 gap-2">
             {PRESETS.map(p=> (
-              <button key={p.id} onClick={()=>apply(p.id)} className={["flex items-center gap-2 p-2 rounded-lg border text-left", (dark?"hover:bg-neutral-800 border-neutral-700":"hover:bg-neutral-100 border-neutral-300"), (current===p.id? (dark?"ring-1 ring-blue-500":"ring-1 ring-blue-500") : '')].join(' ')}>
+              <button
+                key={p.id}
+                onClick={()=>apply(p.id)}
+                className={[
+                  "flex items-center gap-2 p-2 rounded-lg border text-left",
+                  (dark?"hover:bg-neutral-800 border-neutral-700":"hover:bg-neutral-100 border-neutral-300"),
+                  (current===p.id? (dark?"ring-1 ring-blue-500":"ring-1 ring-blue-500") : ''),
+                  (p.id==='system' ? 'col-span-2' : '')
+                ].join(' ')}
+              >
                 <div className="flex -space-x-1">
                   {p.chips.map((c,i)=> (
                     <span key={i} className="inline-block w-5 h-5 rounded-full border border-black/10" style={{ background: c }} />
