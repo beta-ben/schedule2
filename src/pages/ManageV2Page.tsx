@@ -1,22 +1,34 @@
 import React from 'react'
+import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents } from '../lib/api'
+import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
-import type { PTO, Shift, Task } from '../types'
+import type { PTO, Shift, Task, Override } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
-import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD } from '../lib/utils'
+import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, minToHHMM } from '../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
 
-export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void }){
+export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, overrides, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto, setOverrides }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; overrides: Override[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void; setOverrides: (f:(prev:Override[])=>Override[])=>void }){
   // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
   const [unlocked, setUnlocked] = React.useState(false)
   const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
+  // Lightweight toast state for publish notifications
+  const toastTimerRef = React.useRef<number | null>(null)
+  const [toast, setToast] = React.useState<null | { text: string; kind: 'success'|'error' }>(null)
+  const showToast = React.useCallback((text: string, kind: 'success'|'error'='success')=>{
+    setToast({ text, kind })
+    if(toastTimerRef.current!=null){
+      window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+    toastTimerRef.current = window.setTimeout(()=> setToast(null), 3000)
+  }, [])
   React.useEffect(()=>{
     if(hasCsrfToken()){ setUnlocked(true); setMsg('') }
   },[])
@@ -25,7 +37,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
-  const tabs = ['Agents','Shifts','Postures','PTO'] as const
+  const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Proposals'] as const
   type Subtab = typeof tabs[number]
   const [subtab, setSubtab] = React.useState<Subtab>('Agents')
   // Shifts tab: show time labels for all shifts
@@ -47,49 +59,99 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // Shifts tab: scrollable chunk index when visibleDays < 7
   const [dayChunkIdx, setDayChunkIdx] = React.useState(0)
   React.useEffect(()=>{ setDayChunkIdx(0) }, [visibleDays, weekStart])
+  // Load proposals list and live doc for diff when switching to Proposals tab
+  React.useEffect(()=>{
+    if(subtab !== 'Proposals') return
+    let cancelled = false
+    ;(async()=>{
+      setLoadingProposals(true)
+      const list = await cloudListProposals()
+      if(cancelled) return
+      setLoadingProposals(false)
+      if(list.ok){ setProposals(list.proposals||[]) } else { setProposals([]) }
+      const live = await cloudGet()
+      if(cancelled) return
+      setLiveDoc(live)
+    })()
+    return ()=>{ cancelled = true }
+  }, [subtab])
   // Shifts tab: working copy (draft) of shifts
   const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
   // PTO tab: working copy (draft) of PTO entries
   const [workingPto, setWorkingPto] = React.useState<PTO[]>(pto)
+  const [workingOverrides, setWorkingOverrides] = React.useState<Override[]>(overrides)
   const [isDirty, setIsDirty] = React.useState(false)
   // Import panel state
   const [showImport, setShowImport] = React.useState(false)
   const [importUrl, setImportUrl] = React.useState<string>('https://team-schedule-api.bsteward.workers.dev/v1/schedule')
   const [importText, setImportText] = React.useState<string>('')
   const [importMsg, setImportMsg] = React.useState<string>('')
-  // Track whether current draft session started from live (so full undo returns to Live)
+  // Proposals tab state
+  type ProposalMeta = { id:string; title?:string; status:string; createdAt:number; updatedAt:number; weekStart?:string; tzId?:string }
+  const [proposals, setProposals] = React.useState<ProposalMeta[]>([])
+  const [loadingProposals, setLoadingProposals] = React.useState(false)
+  const [selectedProposalId, setSelectedProposalId] = React.useState<string>('')
+  const [proposalDetail, setProposalDetail] = React.useState<any>(null)
+  const [liveDoc, setLiveDoc] = React.useState<any>(null)
+  const [diffMsg, setDiffMsg] = React.useState<string>('')
+  // Track whether the working session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
-  const DRAFT_KEY = React.useMemo(()=> `schedule2.v2.draft.${weekStart}.${tz.id}`,[weekStart,tz.id])
-  const DRAFT_LIST_KEY = React.useMemo(()=> `schedule2.v2.drafts`,[])
-  // Which saved draft (if any) this working session is tied to
-  const [currentDraftId, setCurrentDraftId] = React.useState<string | null>(null)
+  // Local autosave for unpublished changes (single snapshot per week/tz)
+  const UNPUB_KEY = React.useMemo(()=> `schedule2.v2.unpublished.${weekStart}.${tz.id}`,[weekStart,tz.id])
+  const LEGACY_DRAFT_KEY = React.useMemo(()=> `schedule2.v2.draft.${weekStart}.${tz.id}`,[weekStart,tz.id])
   // Keep working copy synced to live only when not dirty
   React.useEffect(()=>{ if(!isDirty) setWorkingShifts(shifts) },[shifts,isDirty])
   React.useEffect(()=>{ if(!isDirty) setWorkingPto(pto) },[pto,isDirty])
-  // Load existing draft if present for this week/tz
+  // Load any autosaved unpublished changes for this week/tz (and migrate legacy once)
   React.useEffect(()=>{
     try{
-      const raw = localStorage.getItem(DRAFT_KEY)
+      const raw = localStorage.getItem(UNPUB_KEY)
       if(raw){
         const parsed = JSON.parse(raw)
-  if(Array.isArray(parsed?.shifts)){
-          setWorkingShifts(parsed.shifts as Shift[])
+        if(Array.isArray(parsed?.shifts)) setWorkingShifts(parsed.shifts as Shift[])
+        if(Array.isArray(parsed?.pto)) setWorkingPto(parsed.pto as PTO[])
+        if(Array.isArray(parsed?.overrides)) setWorkingOverrides(parsed.overrides as Override[])
+        if(Array.isArray(parsed?.shifts) || Array.isArray(parsed?.pto) || Array.isArray(parsed?.overrides)){
           setIsDirty(true)
-          if(parsed?.draftId && typeof parsed.draftId === 'string') setCurrentDraftId(parsed.draftId)
           startedFromLiveRef.current = false
         }
+        return
+      }
+      // Migrate legacy draft key if present
+      const legacy = localStorage.getItem(LEGACY_DRAFT_KEY)
+      if(legacy){
+        const parsed = JSON.parse(legacy)
+        const payload:any = { schema: 1, weekStart, tzId: tz.id, updatedAt: new Date().toISOString() }
+        if(Array.isArray(parsed?.shifts)){
+          setWorkingShifts(parsed.shifts as Shift[])
+          payload.shifts = parsed.shifts
+        }
+        if(Array.isArray(parsed?.pto)){
+          setWorkingPto(parsed.pto as PTO[])
+          payload.pto = parsed.pto
+        }
+        if(Array.isArray(parsed?.overrides)){
+          setWorkingOverrides(parsed.overrides as Override[])
+          payload.overrides = parsed.overrides
+        }
+        if(payload.shifts || payload.pto || payload.overrides){
+          setIsDirty(true)
+          startedFromLiveRef.current = false
+          try{ localStorage.setItem(UNPUB_KEY, JSON.stringify(payload)) }catch{}
+        }
+        try{ localStorage.removeItem(LEGACY_DRAFT_KEY) }catch{}
       }
     }catch{}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[DRAFT_KEY])
-  // Autosave working when dirty
+  }, [UNPUB_KEY, LEGACY_DRAFT_KEY])
+  // Autosave unpublished changes (debounced)
   React.useEffect(()=>{
     if(!isDirty) return
     const t = setTimeout(()=>{
-    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: workingShifts, weekStart, tzId: tz.id, draftId: currentDraftId, updatedAt: new Date().toISOString() })) }catch{}
-    },300)
+      try{ localStorage.setItem(UNPUB_KEY, JSON.stringify({ schema: 1, weekStart, tzId: tz.id, shifts: workingShifts, pto: workingPto, overrides: workingOverrides, updatedAt: new Date().toISOString() })) }catch{}
+    }, 300)
     return ()=> clearTimeout(t)
-  },[isDirty,workingShifts,DRAFT_KEY,weekStart,tz.id,currentDraftId])
+  }, [isDirty, workingShifts, workingPto, workingOverrides, UNPUB_KEY, weekStart, tz.id])
   // Track modified shifts to show edge time labels next render
   const [modifiedIds, setModifiedIds] = React.useState<Set<string>>(new Set())
   // Shifts tab: multi-select of shifts by id
@@ -146,16 +208,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     // Push redo patches on stack
     setShiftRedoStack(prev=> prev.concat([redoPatches]))
     setIsDirty(true)
-    // If we've undone the very first change from live, revert to live and clear draft
+    // If we've undone the very first change from live, revert to live
     const remaining = shiftUndoStack.length - 1
     if(remaining===0 && startedFromLiveRef.current){
       setWorkingShifts(shifts)
       setIsDirty(false)
       startedFromLiveRef.current = false
-      try{ localStorage.removeItem(DRAFT_KEY) }catch{}
-  setCurrentDraftId(null)
     }
-  }, [shiftUndoStack, workingShifts, shifts, DRAFT_KEY])
+  }, [shiftUndoStack, workingShifts, shifts])
   const redoShifts = React.useCallback(()=>{
     if(shiftRedoStack.length===0) return
     const last = shiftRedoStack[shiftRedoStack.length-1]
@@ -178,24 +238,166 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     setShiftUndoStack(prev=> prev.concat([undoPatches]))
     setIsDirty(true)
   }, [shiftRedoStack, workingShifts])
+
+  // Compute effective shifts for display by applying Overrides as replacements.
+  // - No-time overrides: remove the agent's shifts for the covered day(s).
+  // - Time overrides: replace the agent's shifts on the covered day(s) with the provided time window.
+  // Weekly recurrence is respected.
+  const effectiveWorkingShifts = React.useMemo(()=>{
+    try{
+      const orig: Shift[] = Array.isArray(workingShifts) ? workingShifts : []
+      // Pre-split any overnight shifts into day-bounded pieces so day-level replacement is precise
+      const pieces: Shift[] = []
+      for(const s of orig){
+        const sMin = toMin(s.start)
+        const eMinRaw = s.end==='24:00' ? 1440 : toMin(s.end)
+        const crosses = typeof (s as any).endDay === 'string' ? ((s as any).endDay !== s.day) : (eMinRaw < sMin && s.end !== '24:00')
+        if(crosses){
+          const endDay = (s as any).endDay || (['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const)[((['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const).indexOf(s.day as any)+1)%7]
+          pieces.push({ ...s, end: '24:00', endDay } as any)
+          pieces.push({ ...s, day: endDay as any, start: '00:00', end: s.end, endDay } as any)
+        }else{
+          pieces.push(s)
+        }
+      }
+      const ovs: Override[] = Array.isArray(workingOverrides) ? workingOverrides : []
+      if(ovs.length===0) return pieces
+      const week0 = parseYMD(weekStart)
+      const week6 = addDays(week0, 6)
+      const inWeek = (ymd: string)=> ymd >= fmtYMD(week0) && ymd <= fmtYMD(week6)
+      const dayStr = (d: Date)=> ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] as any
+      const addDaysY = (d: Date, n: number)=> addDays(d, n)
+      const toY = (d: Date)=> fmtYMD(d)
+      const skipAddForYmd = new Set<string>()
+      const removeWindowFor = (person:string, day:string, rmStartMin:number, rmEndMin:number)=>{
+        const clamp = (n:number)=> Math.max(0, Math.min(1440, n))
+        const R0 = clamp(rmStartMin), R1 = clamp(rmEndMin)
+        if(!(R1>R0)) return
+        for(let i=pieces.length-1; i>=0; i--){
+          const p = pieces[i]
+          if(p.person!==person || p.day!==day) continue
+          const pS = toMin(p.start)
+          const pE = p.end==='24:00' ? 1440 : toMin(p.end)
+          const L = Math.max(pS, R0)
+          const U = Math.min(pE, R1)
+          if(!(U> L)) continue
+          // overlap exists: split/trim
+          const beforeLen = L - pS
+          const afterLen = pE - U
+          // Remove the original
+          pieces.splice(i,1)
+          const makePiece = (startMin:number, endMin:number, suffix:string)=>{
+            const endStr = endMin>=1440 ? '24:00' : `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`
+            const startStr = `${String(Math.floor(startMin/60)).padStart(2,'0')}:${String(startMin%60).padStart(2,'0')}`
+            const np: any = { ...p, id: `${p.id}${suffix}`, start: startStr, end: endStr }
+            // If not ending at 24:00 anymore, ensure no cross-midnight flag remains
+            if(endStr !== '24:00' && np.endDay && np.endDay !== np.day){ delete np.endDay }
+            return np as Shift
+          }
+          // Push in reverse order to maintain original relative ordering after splice
+          if(afterLen>0){ pieces.splice(i, 0, makePiece(U, pE, '-b')) }
+          if(beforeLen>0){ pieces.splice(i, 0, makePiece(pS, L, '-a')) }
+        }
+      }
+      const applyOccurrence = (start: Date, end: Date, ov: Override)=>{
+        // iterate each day of this occurrence
+        let cur = new Date(start)
+        const last = new Date(end)
+        while(cur <= last){
+          const ymd = toY(cur)
+          if(inWeek(ymd)){
+            const dStr = dayStr(cur)
+            if(ov.start && ov.end){
+              // Replace the whole day for this person, then add the override window
+              for(let i = pieces.length - 1; i >= 0; i--){
+                const p = pieces[i]
+                if(p.person === ov.person && p.day === dStr) pieces.splice(i,1)
+              }
+              if(!skipAddForYmd.has(ymd)){
+                const s = ov.start
+                const e = ov.end
+                const sMin = toMin(s)
+                const eMin = toMin(e)
+                const overnight = (eMin <= sMin) && !(e==='24:00')
+                const endDay = overnight ? dayStr(addDaysY(cur, 1)) : undefined
+                pieces.push({
+                  id: `ov:${ov.id}:${ymd}`,
+                  person: ov.person,
+                  agentId: agentIdByName(localAgents as any, ov.person),
+                  day: dStr,
+                  start: s,
+                  end: e,
+                  ...(endDay ? { endDay } : {})
+                } as any)
+                if(overnight){
+                  // On the following day, trim from 00:00 up to max(end, 08:00)
+                  const nextDay = dayStr(addDaysY(cur, 1))
+                  const blackoutEnd = Math.max(eMin % 1440, 480) // minutes
+                  removeWindowFor(ov.person, nextDay, 0, blackoutEnd)
+                  // Avoid double-adding on the next day when loop advances
+                  const nextY = fmtYMD(addDaysY(cur, 1))
+                  skipAddForYmd.add(nextY)
+                }
+              }
+            } else {
+              // No-time override: trim 8 hours starting at earliest shift start on that day
+              let anchor: number | null = null
+              for(const p of pieces){
+                if(p.person===ov.person && p.day===dStr){
+                  const st = toMin(p.start)
+                  if(anchor==null || st < anchor) anchor = st
+                }
+              }
+              if(anchor!=null){
+                removeWindowFor(ov.person, dStr, anchor, anchor + 480)
+              }
+            }
+          }
+          cur = addDaysY(cur, 1)
+        }
+      }
+      for(const ov of ovs){
+        let s = parseYMD(ov.startDate)
+        let e = parseYMD(ov.endDate)
+        if(ov.recurrence?.rule === 'weekly'){
+          const until = ov.recurrence.until ? parseYMD(ov.recurrence.until) : null
+          // fast-forward whole range by weeks until it overlaps the current week window
+          let guard = 0
+          while(e < week0 && guard < 200){
+            s = addDaysY(s, 7)
+            e = addDaysY(e, 7)
+            guard++
+            if(until && s > until) break
+          }
+          // Push each weekly occurrence that starts within or before the week and overlaps it
+          while(s <= week6 && (!until || s <= until)){
+            applyOccurrence(s, e, ov)
+            s = addDaysY(s, 7)
+            e = addDaysY(e, 7)
+          }
+        } else {
+          applyOccurrence(s, e, ov)
+        }
+      }
+      return pieces
+    }catch{
+      return workingShifts
+    }
+  }, [workingShifts, workingOverrides, weekStart, localAgents])
   // When switching into Shifts tab, if there are no local edits pending, refresh from live
   React.useEffect(()=>{
     if(subtab!== 'Shifts') return
     const noLocalEdits = shiftUndoStack.length===0 && shiftRedoStack.length===0 && modifiedIds.size===0
     if(noLocalEdits){ setWorkingShifts(shifts) }
   }, [subtab, shifts, shiftUndoStack, shiftRedoStack, modifiedIds])
-  // Ctrl/Cmd+Z for Shifts tab
+  // Keyboard shortcuts for Shifts tab (Undo/Redo, Escape)
   React.useEffect(()=>{
     const onKey = (e: KeyboardEvent)=>{
       if(subtab!=='Shifts') return
       const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key==='z' || e.key==='Z')
-    const isRedo = ((e.ctrlKey || e.metaKey) && (e.shiftKey && (e.key==='z' || e.key==='Z'))) || ((e.ctrlKey || e.metaKey) && (e.key==='y' || e.key==='Y'))
-    if(isUndo){ e.preventDefault(); undoShifts() }
-    else if(isRedo){ e.preventDefault(); redoShifts() }
-    const isSave = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key==='s' || e.key==='S')
-    const isSaveNew = (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key==='s' || e.key==='S')
-  if(isSave){ e.preventDefault(); currentDraftId ? saveDraft() : saveNewDraft() }
-    else if(isSaveNew){ e.preventDefault(); saveNewDraft() }
+      const isRedo = ((e.ctrlKey || e.metaKey) && (e.shiftKey && (e.key==='z' || e.key==='Z'))) || ((e.ctrlKey || e.metaKey) && (e.key==='y' || e.key==='Y'))
+      if(isUndo){ e.preventDefault(); undoShifts() }
+      else if(isRedo){ e.preventDefault(); redoShifts() }
       if(e.key === 'Escape'){
         // Clear selection to allow single-shift moves without grouping
         setSelectedShiftIds(new Set())
@@ -203,7 +405,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     }
     window.addEventListener('keydown', onKey)
     return ()=> window.removeEventListener('keydown', onKey)
-  }, [subtab, undoShifts, redoShifts, currentDraftId])
+  }, [subtab, undoShifts, redoShifts])
 
   // Postures tab form state
   const allPeople = React.useMemo(()=>{
@@ -252,70 +454,18 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const startPtoEdit = (r: PTO)=>{ setPtoEditing(r); setPtEPerson(r.person); setPtEStart(r.startDate); setPtEEnd(r.endDate); setPtENotes(r.notes||'') }
   const clearPtoEdit = ()=>{ setPtoEditing(null); setPtEPerson(''); setPtEStart(''); setPtEEnd(''); setPtENotes('') }
 
-  // Draft versions (saved snapshots)
-  type DraftSnapshot = { id:string; name:string; createdAt:string; weekStart:string; tzId:string; shifts: Shift[] }
-  const [savedDrafts, setSavedDrafts] = React.useState<DraftSnapshot[]>(()=>{
-    try{
-      const raw = localStorage.getItem(DRAFT_LIST_KEY)
-      if(!raw) return []
-      const arr = JSON.parse(raw)
-      if(Array.isArray(arr)) return arr
-    }catch{}
-    return []
-  })
-  function persistSavedDrafts(next: DraftSnapshot[]){
-    setSavedDrafts(next)
-    try{ localStorage.setItem(DRAFT_LIST_KEY, JSON.stringify(next)) }catch{}
-  }
-  function saveDraft(){
-    // Overwrite current draft if linked, else create a new one
-    let idToUse: string | null = currentDraftId
-    if(currentDraftId){
-      const idx = savedDrafts.findIndex(d=> d.id===currentDraftId)
-      if(idx>=0){
-        const next = savedDrafts.slice()
-        next[idx] = { ...next[idx], shifts: workingShifts }
-        const id = crypto.randomUUID()
-      } else {
-        const name = prompt('Name this draft', new Date().toLocaleString()) || new Date().toLocaleString()
-        const id = Math.random().toString(36).slice(2)
-        const snap: DraftSnapshot = { id, name, createdAt: new Date().toISOString(), weekStart, tzId: tz.id, shifts: workingShifts }
-        persistSavedDrafts(savedDrafts.concat([snap]))
-        setCurrentDraftId(id)
-        setSelectedDraftId(id)
-        idToUse = id
-      }
-    } else {
-      const name = prompt('Name this draft', new Date().toLocaleString()) || new Date().toLocaleString()
-      const id = Math.random().toString(36).slice(2)
-      const snap: DraftSnapshot = { id, name, createdAt: new Date().toISOString(), weekStart, tzId: tz.id, shifts: workingShifts }
-      persistSavedDrafts(savedDrafts.concat([snap]))
-      setCurrentDraftId(id)
-      setSelectedDraftId(id)
-      idToUse = id
-    }
-    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: workingShifts, weekStart, tzId: tz.id, draftId: idToUse || currentDraftId || undefined, updatedAt: new Date().toISOString() })) }catch{}
-  }
-  function saveNewDraft(){
-    const name = prompt('Name this draft', new Date().toLocaleString()) || new Date().toLocaleString()
-    const id = Math.random().toString(36).slice(2)
-    const snap: DraftSnapshot = { id, name, createdAt: new Date().toISOString(), weekStart, tzId: tz.id, shifts: workingShifts }
-    persistSavedDrafts(savedDrafts.concat([snap]))
-    setCurrentDraftId(id)
-    setSelectedDraftId(id)
-    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: workingShifts, weekStart, tzId: tz.id, draftId: id, updatedAt: new Date().toISOString() })) }catch{}
-  }
-  const [selectedDraftId, setSelectedDraftId] = React.useState('')
-  function loadSelectedDraft(){
-    const d = savedDrafts.find(x=> x.id===selectedDraftId)
-    if(!d) return
-    setWorkingShifts(d.shifts)
-    setIsDirty(true)
-    setCurrentDraftId(d.id)
-    setShiftUndoStack([]); setShiftRedoStack([]); setModifiedIds(new Set())
-    startedFromLiveRef.current = false
-    try{ localStorage.setItem(DRAFT_KEY, JSON.stringify({ shifts: d.shifts, weekStart: d.weekStart, tzId: d.tzId, draftId: d.id, updatedAt: new Date().toISOString() })) }catch{}
-  }
+  // Overrides state (PTO tab)
+  const [ov_agent, setOvAgent] = React.useState('')
+  const [ov_start, setOvStart] = React.useState('') // YYYY-MM-DD
+  const [ov_end, setOvEnd] = React.useState('')     // YYYY-MM-DD
+  const [ov_tstart, setOvTStart] = React.useState('') // HH:MM optional
+  const [ov_tend, setOvTEnd] = React.useState('')     // HH:MM optional
+  const [ov_kind, setOvKind] = React.useState('')
+  const [ov_notes, setOvNotes] = React.useState('')
+  const [ov_recurring, setOvRecurring] = React.useState(false)
+  const [ov_until, setOvUntil] = React.useState('') // YYYY-MM-DD (optional)
+
+  // Removed: saved draft snapshots and related actions — drafts are deprecated
   // Persist agent selection across tab switches
   const [selectedAgentIdx, setSelectedAgentIdx] = React.useState<number|null>(null)
   // If the selected index goes out-of-range after agent edits, fix it up
@@ -325,47 +475,106 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setSelectedAgentIdx(localAgents.length>0 ? 0 : null)
     }
   }, [selectedAgentIdx, localAgents])
-  function deleteSelectedDraft(){
-    if(!selectedDraftId) return
-    const next = savedDrafts.filter(x=> x.id!==selectedDraftId)
-    persistSavedDrafts(next)
-    setSelectedDraftId('')
-    if(currentDraftId === selectedDraftId) setCurrentDraftId(null)
-  }
   function discardWorkingDraft(){
     setWorkingShifts(shifts)
     setIsDirty(false)
     setShiftUndoStack([]); setShiftRedoStack([]); setModifiedIds(new Set())
-    try{ localStorage.removeItem(DRAFT_KEY) }catch{}
     startedFromLiveRef.current = false
-    setCurrentDraftId(null)
+    try{ localStorage.removeItem(UNPUB_KEY) }catch{}
   }
   async function publishWorkingToLive(){
-    const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, calendarSegs, updatedAt: new Date().toISOString() })
+    // Include agents in publish so metadata like supervisor persists
+    const agentsPayload = localAgents.map(a=> ({
+      id: (a as any).id || Math.random().toString(36).slice(2),
+      firstName: a.firstName||'',
+      lastName: a.lastName||'',
+      tzId: a.tzId,
+      hidden: !!a.hidden,
+      isSupervisor: !!(a as any).isSupervisor,
+      supervisorId: (a as any).supervisorId ?? null,
+      notes: (a as any).notes
+    }))
+    const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
     if(res.ok){
       setIsDirty(false)
-      try{ localStorage.removeItem(DRAFT_KEY) }catch{}
-      alert('Published to live.')
+      showToast('Published to live.', 'success')
       startedFromLiveRef.current = false
-      setCurrentDraftId(null)
-  // Clear modified markers so shift ribbons no longer show edited tags
-  setModifiedIds(new Set())
-      // Update parent state to reflect published PTO immediately
+      // Clear modified markers so shift ribbons no longer show edited tags
+      setModifiedIds(new Set())
+      try{ localStorage.removeItem(UNPUB_KEY) }catch{}
+      // Update parent state to reflect published PTO/Overrides immediately
       setPto(()=> workingPto)
+      setOverrides(()=> workingOverrides)
     }else{
       if(res.status===404 || res.error==='missing_site_session' || (res.bodyText||'').includes('missing_site_session')){
         await ensureSiteSession()
-        alert('Publish failed: missing or expired site session. Please sign in to view and then try again.')
+        showToast('Publish failed: missing or expired site session. Please sign in to view and then try again.', 'error')
       }else if(res.status===401){
-        alert('Publish failed: not signed in as admin (401).')
+        showToast('Publish failed: not signed in as admin (401).', 'error')
       }else if(res.status===403){
-        alert('Publish failed: CSRF mismatch (403). Try reloading and signing in again.')
+        showToast('Publish failed: CSRF mismatch (403). Try reloading and signing in again.', 'error')
       }else if(res.status===409){
-        alert('Publish failed: conflict (409). Refresh to load latest, then retry.')
+        showToast('Publish failed: conflict (409). Refresh to load latest, then retry.', 'error')
       }else{
-        alert(`Failed to publish. ${res.status?`HTTP ${res.status}`:''} ${res.error?`— ${res.error}`:''}`)
+        showToast(`Failed to publish. ${res.status?`HTTP ${res.status}`:''} ${res.error?`— ${res.error}`:''}`, 'error')
       }
     }
+  }
+  // Create a proposal from current working changes
+  async function createProposalFromWorking(){
+    const title = prompt('Proposal title', new Date().toLocaleString()) || new Date().toLocaleString()
+    // Include agents to preserve metadata like hidden/supervisor on review
+    const agentsPayload = localAgents.map(a=> ({
+      id: (a as any).id || Math.random().toString(36).slice(2),
+      firstName: a.firstName||'',
+      lastName: a.lastName||'',
+      tzId: a.tzId,
+      hidden: !!a.hidden,
+      isSupervisor: !!(a as any).isSupervisor,
+      supervisorId: (a as any).supervisorId ?? null,
+      notes: (a as any).notes
+    }))
+    const res = await cloudCreateProposal({
+      title,
+      weekStart,
+      tzId: tz.id,
+      shifts: workingShifts,
+      pto: workingPto,
+      overrides: workingOverrides,
+      calendarSegs,
+      agents: agentsPayload as any
+    })
+    if(res.ok){
+      showToast('Proposal created.', 'success')
+    } else {
+      showToast('Failed to create proposal.', 'error')
+    }
+  }
+  // Proposal diff helpers
+  function diffById<T extends { id: string }>(liveArr: T[] = [], propArr: T[] = [], eq: (a:T,b:T)=>boolean){
+    const liveMap = new Map(liveArr.map(x=> [x.id, x]))
+    const propMap = new Map(propArr.map(x=> [x.id, x]))
+    const added: T[] = []
+    const removed: T[] = []
+    const changed: Array<{ before: T; after: T }> = []
+    for(const [id, after] of propMap){
+      const before = liveMap.get(id)
+      if(!before) added.push(after)
+      else if(!eq(before, after)) changed.push({ before, after })
+    }
+    for(const [id, before] of liveMap){ if(!propMap.has(id)) removed.push(before) }
+    return { added, removed, changed }
+  }
+  const eqShiftLite = (a: any, b: any)=> a && b && a.id===b.id && a.person===b.person && a.day===b.day && a.start===b.start && a.end===b.end && ((a as any).endDay||'')===((b as any).endDay||'')
+  const eqPtoLite = (a: any, b: any)=> a && b && a.id===b.id && a.person===b.person && a.startDate===b.startDate && a.endDate===b.endDate && (a.notes||'')===(b.notes||'')
+  const eqOverrideLite = (a: any, b: any)=> a && b && a.id===b.id && a.person===b.person && a.startDate===b.startDate && a.endDate===b.endDate && (a.start||'')===(b.start||'') && (a.end||'')===(b.end||'') && ((a as any).endDay||'')===((b as any).endDay||'') && (a.kind||'')===(b.kind||'') && (a.notes||'')===(b.notes||'')
+  async function loadProposalDetail(id: string){
+    setSelectedProposalId(id)
+    setProposalDetail(null)
+    setDiffMsg('')
+    const res = await cloudGetProposal(id)
+    if(!res.ok || !res.proposal){ setDiffMsg('Failed to load proposal'); return }
+    setProposalDetail(res.proposal)
   }
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
   onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
@@ -390,7 +599,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               if(hasCsrfToken()){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
         // Proactively push agents metadata so Hidden flags propagate immediately post-login
-        try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))) }catch{}
+        try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId ?? null, notes: (a as any).notes }))) }catch{}
               } else {
                 setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
               }
@@ -402,6 +611,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             </div>
           </form>
           {msg && (<div className={["text-sm", dark ? "text-red-300" : "text-red-600"].join(' ')}>{msg}</div>)}
+          <div className="pt-3 border-t border-neutral-700/30 mt-3">
+            <div className="text-sm font-medium mb-1">Or email me a magic link</div>
+            <MagicLoginPanel dark={dark} />
+          </div>
           <div className="text-xs opacity-70">Your API should set a session cookie and CSRF token on success.</div>
           <div className="text-xs opacity-60 mt-2">
             <div>API base: <code>{apiBase}</code></div>
@@ -421,7 +634,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
 
   return (
     <section className={["rounded-2xl p-3 space-y-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-  <div className="flex items-center gap-2">
+  <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
         {tabs.map(t=>{
           const active = subtab===t
           return (
@@ -441,20 +655,45 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             >{t}</button>
           )
         })}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!isDirty}
+            onClick={discardWorkingDraft}
+            className={[
+              "px-2.5 py-1.5 rounded-xl border font-medium shrink-0",
+              isDirty ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")
+            ].join(' ')}
+            title="Discard working changes"
+            aria-label="Discard"
+          >
+            <span className="inline-flex items-center gap-1">
+              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
+              <span>Discard</span>
+            </span>
+          </button>
+          <button
+            onClick={publishWorkingToLive}
+            className="px-3 py-1.5 rounded-xl border font-semibold bg-blue-600 border-blue-600 text-white hover:bg-blue-500 shrink-0"
+            title="Publish working changes to live"
+            aria-label="Publish"
+          >
+            <span className="inline-flex items-center gap-1">
+              <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="M16 5h2a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Publish</span>
+            </span>
+          </button>
+        </div>
       </div>
 
   {subtab==='Shifts' && (
         <div className={["flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs rounded-xl px-2 py-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
-          {/* Left: draft status + metadata */}
+          {/* Left: status badge */}
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <span className={["inline-flex items-center px-2 py-1 rounded-xl border font-medium", isDirty ? (dark?"bg-neutral-900 border-amber-600 text-amber-400":"bg-white border-amber-500 text-amber-700") : (dark?"bg-neutral-900 border-neutral-800 text-neutral-400":"bg-white border-neutral-200 text-neutral-500")].join(' ')}>
-              {isDirty ? 'Draft — not live' : 'Live'}
+              {isDirty ? 'Unpublished changes' : 'Live'}
             </span>
-            {(()=>{ const cur = savedDrafts.find(d=> d.id===currentDraftId); const text = cur ? (`Editing draft: ${cur.name} — created ${new Date(cur.createdAt).toLocaleString()}`) : 'No draft linked'; return (
-              <span className="text-[11px] opacity-70 truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[42ch] sm:max-w-[64ch]" title={text}>
-                {text}
-              </span>
-            )})()}
           </div>
 
           {/* Right: all controls */}
@@ -606,43 +845,21 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               </button>
             </div>
 
-            {/* Draft: Save / Save new */}
-      <div className="inline-flex items-center gap-1" title="Save / Save new">
-              <button
-                onClick={saveDraft}
-                disabled={!currentDraftId}
-                className={["px-2.5 py-1.5 rounded-xl border font-medium", currentDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')}
-                title="Save current draft (Ctrl/Cmd+S)"
-              >
-        <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-              </button>
-              <button
-                onClick={saveNewDraft}
-                className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
-                title="Save new draft (Ctrl/Cmd+Shift+S)"
-              >
-        <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-              </button>
-            </div>
+            {/* Removed: draft save/load UI — drafts are deprecated */}
 
-            {/* Drafts: picker + load/delete */}
-            <div className="inline-flex items-center gap-1 min-w-0">
-              <div className="relative">
-                <select className={["border rounded-xl pl-2 pr-7 py-1 max-w-[28ch] sm:max-w-[36ch] truncate appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={selectedDraftId} onChange={(e)=> setSelectedDraftId(e.target.value)} title="Select a saved draft" aria-label="Select draft">
-                <option value="">Drafts…</option>
-                {savedDrafts.slice().reverse().map(d=> (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-                </select>
-                <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              </div>
-              <button disabled={!selectedDraftId} onClick={loadSelectedDraft} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Load selected draft" aria-label="Load draft">
-                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              </button>
-              <button disabled={!selectedDraftId} onClick={()=>{ if(confirm('Delete selected draft?')) deleteSelectedDraft() }} className={["px-2.5 py-1.5 rounded-xl border shrink-0", selectedDraftId ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')} title="Delete selected draft" aria-label="Delete draft">
-                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-              </button>
-            </div>
+            {/* Create proposal */}
+            <button
+              type="button"
+              onClick={createProposalFromWorking}
+              className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+              title="Create a proposal from current changes"
+              aria-label="Create proposal"
+            >
+              <span className="inline-flex items-center gap-1">
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                <span>Proposal</span>
+              </span>
+            </button>
 
             {/* Import legacy */}
             <button
@@ -665,18 +882,96 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             >
               <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
             </button>
-            <button
-              onClick={publishWorkingToLive}
-              className="px-3 py-1.5 rounded-xl border font-semibold bg-blue-600 border-blue-600 text-white hover:bg-blue-500 shrink-0"
-              title="Publish working changes to live"
-              aria-label="Publish"
-            >
-              <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="M16 5h2a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
+            {/* Publish button moved to global header */}
           </div>
         </div>
       )}
 
+      {subtab==='Proposals' && (
+        <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-sm font-semibold">Proposals</div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>{ setLoadingProposals(true); cloudListProposals().then(r=>{ setLoadingProposals(false); setProposals(r.ok?(r.proposals||[]):[]) }) }} className={["px-2.5 py-1.5 rounded-xl border text-xs", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}>Refresh</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className={["rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+              <div className="text-xs font-medium mb-2">List</div>
+              <div className="flex flex-col gap-1 max-h-80 overflow-auto">
+                {loadingProposals && (<div className="text-xs opacity-70">Loading…</div>)}
+                {(!loadingProposals && proposals.length===0) && (<div className="text-xs opacity-70">No proposals</div>)}
+                {proposals.map(p=> (
+                  <button key={p.id} onClick={()=> loadProposalDetail(p.id)} className={["text-left px-2 py-1 rounded-lg border text-xs", selectedProposalId===p.id ? (dark?"bg-neutral-800 border-neutral-700":"bg-neutral-100 border-neutral-300") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}>
+                    <div className="font-medium truncate">{p.title || p.id}</div>
+                    <div className="opacity-70 truncate">{p.status} • {new Date((p.updatedAt||0)*1000).toLocaleString()}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={["md:col-span-2 rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+              <div className="text-xs font-medium mb-2">Diff</div>
+              {diffMsg && (<div className="text-xs text-red-600 dark:text-red-300">{diffMsg}</div>)}
+              {proposalDetail && liveDoc && (()=>{
+                const patch = proposalDetail.patch||{}
+                const live = { shifts: liveDoc?.shifts||[], pto: liveDoc?.pto||[], overrides: liveDoc?.overrides||[] }
+                const dShifts = diffById(live.shifts, patch.shifts||[], eqShiftLite)
+                const dPto = diffById(live.pto, patch.pto||[], eqPtoLite)
+                const dOv = diffById(live.overrides, patch.overrides||[], eqOverrideLite)
+                const Badge = ({kind}:{kind:'added'|'removed'|'changed'})=> (
+                  <span className={[
+                    'text-[10px] px-1.5 py-0.5 rounded border',
+                    kind==='added' ? (dark? 'bg-green-900/30 border-green-800 text-green-300':'bg-green-50 border-green-200 text-green-700') :
+                    kind==='removed' ? (dark? 'bg-red-900/30 border-red-800 text-red-300':'bg-red-50 border-red-200 text-red-700') :
+                    (dark? 'bg-amber-900/30 border-amber-800 text-amber-300':'bg-amber-50 border-amber-200 text-amber-700')
+                  ].join(' ')}>{kind}</span>
+                )
+                const Row = ({text,kind}:{text:string;kind:'added'|'removed'|'changed'})=> (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Badge kind={kind} />
+                    <div className="truncate" title={text}>{text}</div>
+                  </div>
+                )
+                const fmtShift = (s:any)=> `${s.person||''} — ${s.day||''} ${s.start||''}–${s.end||''}${s.endDay && s.endDay!==s.day?` (${s.endDay})`:''}`
+                const fmtPto = (p:any)=> `${p.person||''} — ${p.startDate||''} → ${p.endDate||''}${p.notes?` (${p.notes})`:''}`
+                const fmtOv = (o:any)=> `${o.person||''} — ${o.startDate||''} → ${o.endDate||''}${o.start?` ${o.start}`:''}${o.end?`–${o.end}`:''}${o.endDay?` (${o.endDay})`:''}${o.kind?` [${o.kind}]`:''}${o.notes?` (${o.notes})`:''}`
+                return (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-xs font-semibold mb-1">Shifts</div>
+                      <div className="space-y-1">
+                        {dShifts.added.map((s:any)=> <Row key={'a-'+s.id} kind="added" text={fmtShift(s)} />)}
+                        {dShifts.removed.map((s:any)=> <Row key={'r-'+s.id} kind="removed" text={fmtShift(s)} />)}
+                        {dShifts.changed.map(({before,after}:any)=> <Row key={'c-'+after.id} kind="changed" text={`${fmtShift(before)} → ${fmtShift(after)}`} />)}
+                        {(dShifts.added.length+dShifts.removed.length+dShifts.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold mb-1">PTO</div>
+                      <div className="space-y-1">
+                        {dPto.added.map((p:any)=> <Row key={'pa-'+p.id} kind="added" text={fmtPto(p)} />)}
+                        {dPto.removed.map((p:any)=> <Row key={'pr-'+p.id} kind="removed" text={fmtPto(p)} />)}
+                        {dPto.changed.map(({before,after}:any)=> <Row key={'pc-'+after.id} kind="changed" text={`${fmtPto(before)} → ${fmtPto(after)}`} />)}
+                        {(dPto.added.length+dPto.removed.length+dPto.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold mb-1">Overrides</div>
+                      <div className="space-y-1">
+                        {dOv.added.map((o:any)=> <Row key={'oa-'+o.id} kind="added" text={fmtOv(o)} />)}
+                        {dOv.removed.map((o:any)=> <Row key={'or-'+o.id} kind="removed" text={fmtOv(o)} />)}
+                        {dOv.changed.map(({before,after}:any)=> <Row key={'oc-'+after.id} kind="changed" text={`${fmtOv(before)} → ${fmtOv(after)}`} />)}
+                        {(dOv.added.length+dOv.removed.length+dOv.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+              {(!proposalDetail || !liveDoc) && (<div className="text-xs opacity-60">Select a proposal to see its diff</div>)}
+            </div>
+          </div>
+        </div>
+      )}
       {showImport && (
         <div className={["mt-2 rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
           <div className="text-sm font-semibold mb-2">Import legacy data</div>
@@ -701,12 +996,16 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                     if(Array.isArray(j.pto)){
                       setWorkingPto(j.pto as PTO[])
                     }
+                    // Merge Overrides
+                    if(Array.isArray(j.overrides)){
+                      setWorkingOverrides(j.overrides as Override[])
+                    }
                     // Merge calendar segments into parent list via setter
                     if(Array.isArray(j.calendarSegs)){
                       setCalendarSegs(prev=> j.calendarSegs as any)
                     }
                     setIsDirty(true)
-                    setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
+                    setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.overrides)?`, ${j.overrides.length} overrides`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
                   }catch(e:any){ setImportMsg(e?.message || 'Import failed') }
                 }}>Fetch</button>
               <button
@@ -728,8 +1027,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         setWorkingShifts(importedShifts as Shift[])
                         if(Array.isArray(j.calendarSegs)) setCalendarSegs(j.calendarSegs as any)
                         if(Array.isArray(j.pto)) setWorkingPto(j.pto as PTO[])
+                        if(Array.isArray(j.overrides)) setWorkingOverrides(j.overrides as Override[])
                         setIsDirty(true)
-                        setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
+                        setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.overrides)?`, ${j.overrides.length} overrides`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
                       }catch(e:any){ setImportMsg(e?.message || 'Invalid JSON') }
                     }}>Load</button>
                     <button className={["h-9 rounded-xl px-4 border font-medium", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={()=> setImportText('')}>Clear</button>
@@ -788,7 +1088,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             tz={tz}
             weekStart={weekStart}
             agents={includeHiddenAgents ? localAgents : localAgents.filter(a=> !a.hidden)}
-            shifts={workingShifts}
+            shifts={effectiveWorkingShifts}
             pto={pto}
             /* Hide posture data in this view */
             tasks={undefined as any}
@@ -901,7 +1201,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 dark={dark}
                 tz={tz}
                 weekStart={weekStart}
-                shifts={workingShifts}
+                shifts={effectiveWorkingShifts}
                 visibleAgentNames={visibleAgents}
                 visibleDays={visibleDays}
                 scrollChunk={dayChunkIdx}
@@ -1194,9 +1494,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               })()}
             </div>
           </div>
-        ) : (
-          <>
-          <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+        ) : subtab==='PTO & Overrides' ? (
+          <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-3">
+              <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+            <div className="text-sm font-medium mb-2">Add PTO</div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end mb-3">
               <label className="text-sm flex flex-col">
                 <span className="mb-1">Agent</span>
@@ -1284,7 +1587,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             })()}
 
             {ptoEditing && (
-              <div className={["mt-3 rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
+              <div className={["rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
                 <div className="text-sm font-medium mb-2">Edit PTO</div>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <label className="text-sm flex flex-col">
@@ -1320,9 +1623,119 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 </div>
               </div>
             )}
+            </div>
+            <div className="space-y-3">
+          {/* Overrides (add + list) */}
+          <div className={["rounded-xl p-3 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+            <div className="text-sm font-medium mb-2">Add Override</div>
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs opacity-80">Agent</span>
+                <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_agent} onChange={(e)=> setOvAgent(e.target.value)}>
+                  <option value="">—</option>
+                  {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs opacity-80">Start date</span>
+                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_start} onChange={(e)=> setOvStart(e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs opacity-80">End date</span>
+                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_end} onChange={(e)=> setOvEnd(e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs opacity-80">Start time (optional)</span>
+                <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_tstart} onChange={(e)=>{
+                  const val = e.target.value
+                  const addMin = (t:string, m:number)=> minToHHMM(((toMin(t)+m)%1440+1440)%1440)
+                  const prevDefault = ov_tstart ? addMin(ov_tstart, 510) : null // 8.5 hours
+                  setOvTStart(val)
+                  if(val){
+                    const nextDefault = addMin(val, 510)
+                    if(!ov_tend || (prevDefault && ov_tend===prevDefault)){
+                      setOvTEnd(nextDefault)
+                    }
+                  }
+                }} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs opacity-80">End time (optional)</span>
+                <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_tend} onChange={(e)=> setOvTEnd(e.target.value)} />
+              </label>
+              {/* Removed End day selector; end date already provided */}
+              <label className="flex flex-col gap-1 md:col-span-2">
+                <span className="text-xs opacity-80">Kind</span>
+                <input type="text" placeholder="e.g., Swap, Half-day" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_kind} onChange={(e)=> setOvKind(e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1 md:col-span-2">
+                <span className="text-xs opacity-80">Notes</span>
+                <input type="text" placeholder="Optional" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_notes} onChange={(e)=> setOvNotes(e.target.value)} />
+              </label>
+              <div className="flex items-end gap-3 md:col-span-2">
+                <label className="inline-flex items-center gap-2">
+                  <Toggle ariaLabel="Weekly recurrence" dark={dark} size="md" checked={ov_recurring} onChange={(v)=> setOvRecurring(v)} />
+                  <span className="text-sm">Weekly recurrence</span>
+                </label>
+                {ov_recurring && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="opacity-80">Until</span>
+                    <input type="date" className={["border rounded-xl px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_until} onChange={(e)=> setOvUntil(e.target.value)} />
+                  </label>
+                )}
+                <button className={["ml-auto px-3 py-1.5 rounded-md text-sm font-medium border", dark?"bg-blue-600 border-blue-600 text-white hover:opacity-95":"bg-blue-600 text-white border-blue-600 hover:opacity-95"].join(' ')} onClick={()=>{
+                  if(!ov_agent) return alert('Choose an agent')
+                  if(!ov_start || !ov_end) return alert('Choose start and end dates')
+                  if(ov_end < ov_start) return alert('End date must be on/after start date')
+                  if((ov_tstart && !ov_tend) || (!ov_tstart && ov_tend)) return alert('Provide both start and end times, or leave both blank')
+                  const entry: Override = {
+                    id: uid(), person: ov_agent, agentId: agentIdByName(localAgents as any, ov_agent), startDate: ov_start, endDate: ov_end,
+                    start: ov_tstart || undefined, end: ov_tend || undefined,
+                    kind: ov_kind || undefined, notes: ov_notes || undefined,
+                    recurrence: ov_recurring ? { rule: 'weekly', until: ov_until || undefined } : undefined
+                  }
+                  setWorkingOverrides(prev=> prev.concat([entry])); setIsDirty(true)
+                }}>Add Override</button>
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-sm font-medium mb-1">Overrides</div>
+              {workingOverrides.filter(x=> !pt_filter || x.person===pt_filter).length===0 ? (
+                <div className="text-sm opacity-70">No overrides.</div>
+              ) : (
+                <ul className="divide-y divide-neutral-700/30">
+                  {workingOverrides
+                    .filter(x=> !pt_filter || x.person===pt_filter)
+                    .slice()
+                    .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
+                    .map(o=> (
+                      <li key={o.id} className="py-1.5 flex items-center justify-between gap-2">
+                        <div className="text-sm">
+                          <span className="font-medium">{o.person}</span>
+                          <span className="opacity-70"> • {o.startDate} → {o.endDate}</span>
+                          {o.start && o.end && (
+                            <span className="opacity-70"> • {o.start}–{o.end}</span>
+                          )}
+                          {o.kind && <span className="ml-1 opacity-70">• {o.kind}</span>}
+                          {o.recurrence?.rule==='weekly' && <span className="ml-1 text-xs opacity-80">(weekly{ o.recurrence.until?` until ${o.recurrence.until}`:'' })</span>}
+                          {o.notes && <span className="ml-2 text-xs opacity-70">{o.notes}</span>}
+                        </div>
+                        <div className="shrink-0">
+                          <button className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')} onClick={()=>{
+                            if(confirm('Delete override?')){ setWorkingOverrides(prev=> prev.filter(x=> x.id!==o.id)); setIsDirty(true) }
+                          }}>Delete</button>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
           </div>
+            </div>
+          </div>
+
           {/* Weekly PTO calendar */}
-          <div className={["mt-3 rounded-xl p-3", dark?"bg-neutral-900":"bg-white"].join(' ')}>
+          <div className={["mt-3 rounded-xl p-3 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-medium">Weekly PTO calendar</div>
               <div className="text-xs opacity-70">Full-day entries by person</div>
@@ -1373,9 +1786,56 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               )
             })()}
           </div>
-          </>
-        )
+          </div>
+          </div>
+        ) : null
+      )}
+
+      {toast && (
+        <div className="fixed right-4 bottom-4 z-50">
+          <div
+            role="status"
+            aria-live="polite"
+            className={[
+              "min-w-[220px] max-w-[360px] px-3 py-2 rounded-xl border shadow-md text-sm",
+              toast.kind==='success'
+                ? (dark?"bg-neutral-800 border-green-700 text-green-300":"bg-white border-green-500 text-green-700")
+                : (dark?"bg-neutral-800 border-red-700 text-red-300":"bg-white border-red-500 text-red-700")
+            ].join(' ')}
+          >
+            {toast.text}
+          </div>
+        </div>
       )}
     </section>
+  )
+}
+
+function MagicLoginPanel({ dark }:{ dark:boolean }){
+  const [email, setEmail] = React.useState('')
+  const [msg, setMsg] = React.useState('')
+  const [link, setLink] = React.useState<string|undefined>(undefined)
+  return (
+    <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
+      setMsg(''); setLink(undefined)
+      const r = await requestMagicLink(email, 'admin')
+      if(r.ok){
+        if(r.link){ setLink(r.link); setMsg('Dev mode: click the link below to sign in.') }
+        else setMsg('Check your inbox for the sign-in link.')
+      }else{
+        setMsg('Failed to request link. Check email format and try again.')
+      }
+    })() }}>
+      <div className="flex gap-2 items-center">
+        <input type="email" required className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@company.com" />
+        <button type="submit" className={["rounded-xl px-3 py-2 text-sm font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>Email link</button>
+      </div>
+      {msg && (<div className="text-xs mt-2 opacity-80">{msg}</div>)}
+      {link && (
+        <div className="mt-2 text-xs break-all">
+          <a className="underline" href={link} target="_blank" rel="noreferrer">{link}</a>
+        </div>
+      )}
+    </form>
   )
 }

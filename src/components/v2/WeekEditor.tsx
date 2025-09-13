@@ -1,4 +1,6 @@
 import React from 'react'
+import DeleteAllShiftsModals from './DeleteAllShiftsModals'
+import AgentDetailsPanel from './AgentDetailsPanel'
 import { TZ_OPTS, DAYS } from '../../constants'
 import { convertShiftsToTZ, tzAbbrev } from '../../lib/utils'
 import AgentWeekGrid from '../AgentWeekGrid'
@@ -7,7 +9,7 @@ import AgentWeekLinear from '../AgentWeekLinear'
 import type { PTO, Shift, Task } from '../../types'
 import type { CalendarSegment } from '../../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
 
 function tzFullName(id?: string){
 	switch(id){
@@ -29,6 +31,19 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const [ef, setEf] = React.useState('')
 	const [el, setEl] = React.useState('')
 	const [et, setEt] = React.useState<string>(TZ_OPTS[0]?.id || 'UTC')
+	const [eIsSup, setEIsSup] = React.useState<boolean>(false)
+	const [eSupId, setESupId] = React.useState<string>('')
+	const [eNotes, setENotes] = React.useState<string>('')
+	const [eHidden, setEHidden] = React.useState<boolean>(false)
+
+	// Selected agent for right panel (controlled if provided)
+	const [selectedIdxLocal, setSelectedIdxLocal] = React.useState<number|null>(null)
+	const selectedIdx = (selectedIdxProp!=null ? selectedIdxProp : selectedIdxLocal) as number | null
+	const setSelectedIdx = (idx:number)=>{ onSelectIdx ? onSelectIdx(idx) : setSelectedIdxLocal(idx) }
+	const selectedAgent = selectedIdx!=null ? agents[selectedIdx] : null
+	const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
+
+
 
 	function beginEdit(idx:number){
 		const a = agents[idx]
@@ -36,10 +51,35 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		setEditingIdx(idx)
 		setEf(a.firstName || '')
 		setEl(a.lastName || '')
-			setEt(a.tzId || TZ_OPTS[0]?.id || 'UTC')
+		setEt(a.tzId || TZ_OPTS[0]?.id || 'UTC')
+		setEIsSup(!!a.isSupervisor)
+		setESupId((a.supervisorId as any) || '')
+		setENotes(a.notes || '')
+		setEHidden(!!a.hidden)
 	}
 	function cancelEdit(){ setEditingIdx(null) }
-		function saveEdit(){ if(editingIdx==null) return; onUpdateAgent?.(editingIdx, { firstName: ef.trim(), lastName: el.trim(), tzId: et, hidden: agents[editingIdx]?.hidden }); setEditingIdx(null) }
+	function saveEdit(){
+		if(editingIdx==null) return
+		onUpdateAgent?.(editingIdx, {
+			firstName: ef.trim(),
+			lastName: el.trim(),
+			tzId: et,
+			hidden: eHidden,
+			isSupervisor: eIsSup,
+			supervisorId: eSupId ? eSupId : null,
+			notes: eNotes
+		})
+		setEditingIdx(null)
+	}
+
+	// When selection changes, sync right-panel editor with selected agent
+	React.useEffect(()=>{
+		if(selectedIdx==null){ setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEIsSup(false); setESupId(''); setENotes(''); setEHidden(false); return }
+		const a = agents[selectedIdx]
+		if(!a){ setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEIsSup(false); setESupId(''); setENotes(''); setEHidden(false); return }
+		setEf(a.firstName||''); setEl(a.lastName||''); setEt(a.tzId||TZ_OPTS[0]?.id||'UTC'); setEIsSup(!!a.isSupervisor); setESupId((a.supervisorId as any)||''); setENotes(a.notes||''); setEHidden(!!a.hidden)
+		setEditingIdx(selectedIdx)
+	}, [selectedIdx, agents])
 
 	// Track last added agent to scroll into view
 	const [lastAddedAgentName, setLastAddedAgentName] = React.useState<string | null>(null)
@@ -68,17 +108,38 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		setLastAddedAgentName(null)
 	}, [sortedAgents, lastAddedAgentName])
 
+	// Arrow Up/Down to navigate agent selection in the left list (after sortedAgents exists)
+	React.useEffect(()=>{
+		const onKey = (e: KeyboardEvent)=>{
+			const t = e.target as HTMLElement | null
+			const tag = (t?.tagName || '').toLowerCase()
+			const isFormField = tag==='input' || tag==='textarea' || tag==='select' || (t?.isContentEditable===true)
+			if(isFormField) return
+			if(e.key!== 'ArrowDown' && e.key!== 'ArrowUp') return
+			if(sortedAgents.length===0) return
+			e.preventDefault()
+			let pos = selectedIdx==null ? -1 : sortedAgents.findIndex(x=> x.i===selectedIdx)
+			if(e.key==='ArrowDown') pos = Math.min(sortedAgents.length-1, pos+1)
+			else pos = pos<=0 ? 0 : pos-1
+			const next = sortedAgents[pos]
+			if(next){
+				setSelectedIdx(next.i)
+				setTimeout(()=>{
+					const ul = agentsListRef.current
+					const li = ul?.querySelector<HTMLLIElement>(`li[data-idx=\"${next.i}\"]`)
+					li?.scrollIntoView({ block: 'nearest' })
+				}, 0)
+			}
+		}
+		window.addEventListener('keydown', onKey)
+		return ()=> window.removeEventListener('keydown', onKey)
+	}, [sortedAgents, selectedIdx])
+
 	// Delete confirmation state
 	const [deleteIdx, setDeleteIdx] = React.useState<number|null>(null)
 	const pending = deleteIdx!=null ? agents[deleteIdx] : null
 	function confirmDelete(){ if(deleteIdx==null) return; onDeleteAgent?.(deleteIdx); setDeleteIdx(null) }
 
-	// Selected agent for right panel (controlled if provided)
-	const [selectedIdxLocal, setSelectedIdxLocal] = React.useState<number|null>(null)
-	const selectedIdx = (selectedIdxProp!=null ? selectedIdxProp : selectedIdxLocal) as number | null
-	const setSelectedIdx = (idx:number)=>{ onSelectIdx ? onSelectIdx(idx) : setSelectedIdxLocal(idx) }
-	const selectedAgent = selectedIdx!=null ? agents[selectedIdx] : null
-	const selectedName = selectedAgent ? [selectedAgent.firstName, selectedAgent.lastName].filter(Boolean).join(' ') : ''
 
 	// Local editable shifts for selected agent (prototype; not persisted upstream)
 	const [agentShiftsLocal, setAgentShiftsLocal] = React.useState<Shift[]>([])
@@ -359,6 +420,8 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		const t = setTimeout(()=> setLastAddedShiftId(null), 300)
 		return ()=> clearTimeout(t)
 	}, [lastAddedShiftId])
+	// Keep bottom timeline visible by constraining internal lists via fixed viewport-based heights.
+
 	return (
 		<div className={["rounded-xl p-4 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
@@ -373,80 +436,49 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 						</div>
 					) : (
 						<div className={["rounded-md", dark?"":""].join(' ')}>
-										    <div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-4 gap-2">
-								<div>First</div>
-								<div>Last</div>
-								<div>Timezone</div>
-								<div className="text-right">Actions</div>
-							</div>
+            <div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid gap-2" style={{ gridTemplateColumns: '200px 1fr 200px 120px' }}>
+              <div className="whitespace-nowrap">Name</div>
+              <div className="whitespace-nowrap">Notes</div>
+              <div className="text-right whitespace-nowrap">Reports to</div>
+              <div className="text-right whitespace-nowrap">Timezone</div>
+            </div>
 										    <ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
-															    {sortedAgents.map(({ a, i }, sIdx)=> (
-																    <li key={`${a.firstName}-${a.lastName}-${i}`} className={["px-2 py-1.5 text-sm leading-6 grid grid-cols-4 gap-2 items-center cursor-pointer", selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")].join(' ')} onClick={()=>setSelectedIdx(i)}>
-																		{editingIdx===i ? (
-																			<>
-																				<div>
-																					<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={ef} onChange={e=>setEf(e.target.value)} />
-																				</div>
-																				<div>
-																					<input className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={el} onChange={e=>setEl(e.target.value)} />
-																				</div>
-																				<div>
-																					<select className={["w-full border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')} value={et} onChange={e=>setEt(e.target.value)}>
-																						{TZ_OPTS.map(o=> <option key={o.id} value={o.id}>{tzFullName(o.id)}</option>)}
-																					</select>
-																				</div>
-																				<div className="text-right space-x-1">
-																					<button onClick={saveEdit} className={["px-2 py-1 rounded border text-xs", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
-																					<button onClick={cancelEdit} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700"].join(' ')}>Cancel</button>
-																				</div>
-																			</>
-																		) : (
-																			<>
-																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.firstName || '—'}</div>
-																				<div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{a.lastName || '—'}</div>
-																				<div className={dark?"text-neutral-300":"text-neutral-700"}>{tzFullName(a.tzId)}</div>
-																																																												<div className="text-right" onClick={(e)=>{ e.stopPropagation() }}>
-																					<div className="inline-flex items-center gap-1">
-																																																																		<button
-																																																																			title={a.hidden?"Show in schedule":"Hide from schedule"}
-																																																																			aria-label={a.hidden?"Show in schedule":"Hide from schedule"}
-																																																																			onClick={()=> onUpdateAgent?.(i, { ...a, hidden: !a.hidden })}
-																																																																			className={["inline-flex items-center justify-center w-7 h-7 rounded border mr-1", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
-																																																																		>
-																																																																			{a.hidden ? (
-																																																																				<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-																																																																					<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/>
-																																																																					<path d="M1 1l22 22"/>
-																																																																					<path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/>
-																																																																				</svg>
-																																																																			) : (
-																																																																				<svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-																																																																					<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
-																																																																					<circle cx="12" cy="12" r="3"/>
-																																																																				</svg>
-																																																																			)}
-																																																																		</button>
-																							<button title="Edit" aria-label="Edit agent" onClick={()=>beginEdit(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}>
-																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-																								<path d="M12 20h9"/>
-																								<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-																							</svg>
-																						</button>
-																							<button title="Delete" aria-label="Delete agent" onClick={()=>setDeleteIdx(i)} className={["inline-flex items-center justify-center w-7 h-7 rounded border", dark?"border-neutral-700 text-red-300 hover:bg-neutral-800":"border-neutral-300 text-red-600 hover:bg-red-50"].join(' ')}>
-																							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-																								<polyline points="3 6 5 6 21 6"/>
-																								<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-																								<path d="M10 11v6"/>
-																								<path d="M14 11v6"/>
-																								<path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-																							</svg>
-																						</button>
-																					</div>
-																				</div>
-																			</>
-																		)}
-																	</li>
-																	))}
+															    {sortedAgents.map(({ a, i }, sIdx)=> {
+                  const supId = (a as any).supervisorId as string | undefined | null
+                  const supAgent = supId ? (agents.find(x=> ((x as any).id && (x as any).id===supId) || (`${x.firstName||''} ${x.lastName||''}`.trim()===supId)) || null) : null
+                  const supName = supAgent ? `${supAgent.firstName||''} ${supAgent.lastName||''}`.trim() : (supId || '')
+                  return (
+                    <li
+                      data-idx={i}
+                      key={`${a.firstName}-${a.lastName}-${i}`}
+                      className={[
+                        "px-2 py-1.5 text-sm leading-6 grid gap-2 items-center cursor-pointer",
+                        selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")
+                      ].join(' ')}
+                      style={{ gridTemplateColumns: '200px 1fr 200px 120px' }}
+                      onClick={()=>setSelectedIdx(i)}
+                    >
+                      {/* Name */}
+                      <div className={[dark?"text-neutral-200":"text-neutral-800", a.hidden?"opacity-60":""].join(' ')}>{[a.firstName||'—', a.lastName||''].filter(Boolean).join(' ')}</div>
+                      {/* Notes */}
+                      <div className={["truncate", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>{(a.notes||'').split(/\r?\n/)[0] || ''}</div>
+                      {/* Reports to */}
+                      <div className="text-right">
+                        <span className="inline-flex items-center gap-1 justify-end">
+                          <span className={["truncate inline-block", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>{supName || '—'}</span>
+                          {a.isSupervisor && (
+                            <svg aria-hidden className={dark?"text-amber-300":"text-amber-600"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <title>Supervisor</title>
+                              <path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/>
+                            </svg>
+                          )}
+                        </span>
+                      </div>
+                      {/* Timezone */}
+                      <div className={["whitespace-nowrap text-right", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>{tzAbbrev(a.tzId||'UTC')}</div>
+                    </li>
+                  )
+                })}
 											</ul>
 							</div>
 						)}
@@ -532,9 +564,34 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 							</div>
 						)}
 
-				{/* Right: selected agent shifts list (same height as agent list) */}
-								<section className={["rounded-lg p-3", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
-															<div className="flex items-center justify-between mb-2">
+				{/* Right: selected agent details + shifts */}
+								<div className={["rounded-lg p-3", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
+									{/* Agent info controls */}
+										{selectedAgent && (
+											<AgentDetailsPanel
+												dark={dark}
+												selectedName={selectedName}
+												firstName={ef}
+												lastName={el}
+												tzId={et}
+												isSupervisor={eIsSup}
+												supervisorId={eSupId}
+												hidden={eHidden}
+												notes={eNotes}
+												agents={agents as any}
+												selectedIdx={selectedIdx as any}
+												onFirst={(v)=> setEf(v)}
+												onLast={(v)=> setEl(v)}
+												onTz={(v)=> setEt(v)}
+												onIsSup={(v)=> setEIsSup(v)}
+												onSupId={(v)=> setESupId(v)}
+												onHidden={(v)=> setEHidden(v)}
+												onNotes={(v)=> setENotes(v)}
+												onSave={saveEdit}
+												onDelete={()=> selectedIdx!=null && setDeleteIdx(selectedIdx)}
+											/>
+										)}
+									<div className="flex items-center justify-between mb-2">
 																<div className="text-sm font-medium">Shifts ({agentShiftsLocal.length}){agentShiftsLocal.length>0 && (
 																	<span className={"ml-2 opacity-70"}>
 																		• Total {fmtDuration(totalMinutesAll)} 
@@ -570,8 +627,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 										{!selectedAgent ? (
 						<div className="text-sm opacity-70">Select an agent on the left to view and edit their shifts.</div>
 										) : (
-						<div>
-							<div className={["text-2xl font-semibold mb-2", selectedAgent?.hidden ? (dark?"text-neutral-400":"text-neutral-500") : (dark?"text-neutral-100":"text-neutral-900")].join(' ')}>{selectedName}</div>
+							<div>
 								<div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid grid-cols-6 gap-2">
 								<div>Start Day</div>
 								<div>Start Time</div>
@@ -608,8 +664,9 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 									let secondary: { startDay:string; start:string; endDay:string; end:string } | null = null
 									if(viewerTzId !== agentTzId){
 										const base: any = { ...s, person: s.person }
-										// Convert to agent tz to show the agent-local time underneath
-										const segs = convertShiftsToTZ([base], 0) // input already in agent tz model; use identity
+										// Convert PT-based shift to the agent's local TZ using its offset
+										const agentOff = (TZ_OPTS.find(o=> o.id===agentTzId)?.offset) ?? 0
+										const segs = convertShiftsToTZ([base], agentOff)
 										const first = segs[0]
 										secondary = first ? { startDay: first.day, start: first.start, endDay: (first as any).endDay || first.day, end: first.end } : null
 									}
@@ -741,33 +798,16 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 							</ul>
 						</div>
 					)}
-				</section>
-
-				{/* Delete all shifts - double confirmation modals */}
-				{deleteAllStep===1 && (
-					<div role="dialog" aria-modal="true" className={["fixed inset-0 z-50 flex items-center justify-center", dark?"bg-black/70":"bg-black/50"].join(' ')}>
-						<div className={["max-w-sm w-[92%] rounded-xl p-4 border", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
-							<div className="text-base font-semibold mb-2">Delete all shifts?</div>
-							<div className="text-sm opacity-80 mb-4">This will remove all shifts for {selectedName}. This cannot be undone.</div>
-							<div className="flex justify-end gap-2">
-								<button onClick={()=>setDeleteAllStep(0)} className={["px-3 py-1.5 rounded-md text-sm border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
-								<button onClick={()=>setDeleteAllStep(2)} className={["px-3 py-1.5 rounded-md text-sm border bg-red-600 text-white border-red-600"].join(' ')}>Continue</button>
-							</div>
-						</div>
+						<DeleteAllShiftsModals
+							dark={dark}
+							deleteAllStep={deleteAllStep as any}
+							setDeleteAllStep={(n:any)=> setDeleteAllStep(n)}
+							selectedName={selectedName}
+							agentShiftsLocal={agentShiftsLocal}
+							captureUndo={captureUndo}
+							onDeleteShift={(id)=> onDeleteShift?.(id)}
+						/>
 					</div>
-				)}
-				{deleteAllStep===2 && (
-					<div role="dialog" aria-modal="true" className={["fixed inset-0 z-50 flex items-center justify-center", dark?"bg-black/70":"bg-black/50"].join(' ')}>
-						<div className={["max-w-sm w-[92%] rounded-xl p-4 border", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-200 text-neutral-900"].join(' ')}>
-							<div className="text-base font-semibold mb-2">Confirm delete all</div>
-							<div className="text-sm opacity-80 mb-4">Are you absolutely sure? This will permanently remove {agentShiftsLocal.length} shift(s) for {selectedName}.</div>
-							<div className="flex justify-end gap-2">
-								<button onClick={()=>setDeleteAllStep(0)} className={["px-3 py-1.5 rounded-md text-sm border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
-								<button onClick={()=>{ captureUndo(); const ids=agentShiftsLocal.map(s=>s.id); setAgentShiftsLocal([]); ids.forEach(id=> onDeleteShift?.(id)); setDeleteAllStep(0) }} className={["px-3 py-1.5 rounded-md text-sm border bg-red-600 text-white border-red-600"].join(' ')}>Delete all</button>
-							</div>
-						</div>
-					</div>
-				)}
 			</div>
 			{/* Bottom: full-width timeline for selected agent */}
 			<div className="mt-3">
@@ -789,10 +829,8 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 								calendarSegs={calendarSegs}
 								onDragAll={handleDragAll}
 								onDragShift={handleDragSingle}
-								// Agents tab: always show time labels and place them outside chips
 								showShiftLabels={true}
 								showEdgeTimeTagsForHighlights={true}
-								// Bigger ribbon with larger day labels; force outer time tags
 								framed={true}
 								alwaysShowTimeTags={true}
 								forceOuterTimeTags={true}
@@ -806,4 +844,3 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		</div>
 	)
 }
-
