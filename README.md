@@ -19,12 +19,13 @@ Top‑right tools (Shifts tab):
 - Toggle all time labels on ribbons.
 - Visible days selector (1–7). When <7, the ribbons and day labels become horizontally scrollable to view the rest of the week.
 - Undo/Redo recent edits in the Shifts tab.
-- Drafts: Save, Save new, Load, Delete; Discard working changes; Publish to live.
+- Discard working changes; Publish to live.
+- Local autosave: unpublished changes persist per week/timezone in your browser and restore on reload. Discard/Publish clears them.
 - Import panel to load legacy JSON.
 
 Publishing model
-- You edit a working draft locally. Click Publish to write changes to live.
-- You can save named drafts, re‑load them later, or discard to revert to live.
+- Edit locally in the Shifts tab. Changes autosave locally (per week/TZ) until you Publish or Discard.
+- Publish writes changes to live. Discard abandons local changes and returns to live.
 
 ## Agents tab
 
@@ -61,11 +62,10 @@ Key actions
 - Show all time labels: always display start/end tags at chip edges.
 - Undo/Redo: step through your recent Shifts‑tab edits.
 
-Drafts and publishing
-- Save/Save new: persist your current working draft locally with a name.
-- Load/Delete: bring back a saved draft or remove it from the list.
+Publishing
 - Discard: abandon working changes and return to the live schedule.
 - Publish: write current working data to live.
+Note: Named “Drafts” tools were removed. We’re migrating to a proposal workflow; for now, unpublished changes are autosaved locally only.
 
 ## Postures tab (Tasks & calendar assignments)
 
@@ -91,7 +91,7 @@ Visual calendar
 
 - Import legacy: paste or fetch a JSON payload with shifts, PTO, and postures to seed the editor; review then Publish.
 - Cloud save: the Publish button saves to the live API once you’re signed in.
-- Drafts: keep multiple offline drafts, load one to continue, or discard.
+ 
 - Time labels: toggle labels to reduce noise or increase detail in Shifts.
 - Visible days: pick 1–7 to zoom the weekly ribbons and scroll when needed.
 
@@ -114,8 +114,7 @@ Visual calendar
 	- PTO days tint the background and gray out shift chips for that agent.
 - I can’t publish; it says session/CSRF missing.
 	- Sign in again on the Manage page, then retry Publish. If it persists, reload the page.
-- What’s the difference between Live and Draft?
-	- Draft is your local working copy. Publish writes the current draft to live. You can save multiple named drafts and load them later.
+ 
 - How do I reduce visual clutter on ribbons?
 	- Use the time label toggle, choose fewer visible days, and sort by start or name.
 - How do I hide an agent without deleting them?

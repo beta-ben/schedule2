@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,api -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix team-schedule-api run dev\"",
+    "dev": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,api -c \"#00bcd4,#8bc34a\" \"vite --host --logLevel warn\" \"npm --prefix team-schedule-api run dev\"",
     "dev:worker": "npm --prefix team-schedule-api run dev",
     "dev:proxy": "npm --prefix dev-server run dev",
     "dev:all-legacy": "node ./scripts/kill-port.mjs 8787 && concurrently -n web,proxy -c \"#00bcd4,#8bc34a\" \"vite --host\" \"npm --prefix dev-server run dev\"",
@@ -16,9 +16,17 @@
     "validate:prod": "node ./scripts/validate-prod.mjs",
     "seed": "node ./scripts/seed-from-cloud.mjs",
     "seed:dev": "node ./scripts/seed-worker-from-url.mjs",
+    "dev:login": "node ./scripts/dev-magic-login.mjs $DEV_LOGIN_EMAIL",
+    "dev:login:me": "node ./scripts/dev-magic-login.mjs bsteward@betabionics.com",
+    "test:api": "node ./scripts/test-api.mjs",
+    "d1:migrate": "npx --yes wrangler@3.90.0 d1 migrations apply schedule2 --local",
     "seed:v1": "node ./scripts/seed-v1-from-live.mjs",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run --reporter=basic",
     "validate:legacy": "node ./scripts/validate-legacy.mjs",
+    "check": "npm run typecheck && vite build --mode development",
+    "prepare": "husky install",
     "postinstall": "npm --prefix team-schedule-api ci || npm --prefix team-schedule-api i"
   },
   "dependencies": {
@@ -36,7 +44,13 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2",
+    "vite": "^7.1.5",
     "wrangler": "^4.35.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "tsc --pretty false --noEmit"
+    ]
   }
 }

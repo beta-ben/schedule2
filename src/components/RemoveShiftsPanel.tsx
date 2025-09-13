@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import Toggle from './Toggle'
 import type { Shift } from '../types'
 import { DAYS } from '../constants'
 import { isValidHHMM, toMin, shiftKey } from '../lib/utils'
@@ -130,7 +131,7 @@ export default function RemoveShiftsPanel({ shifts, setShifts, dark }:{
               <tr><td colSpan={6} className="px-3 py-6 text-center opacity-70">No shifts match the current filters.</td></tr>
             ) : rows.map(r=> (
               <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
-                <td className="px-3 py-1.5"><input type="checkbox" checked={selected.has(r.id)} onChange={()=>toggle(r.id)} /></td>
+                <td className="px-3 py-1.5"><Toggle ariaLabel="Select row" dark={dark} size="sm" checked={selected.has(r.id)} onChange={()=>toggle(r.id)} /></td>
                 <td className="px-3 py-1.5 font-medium">{r.person}</td>
                 <td className="px-3 py-1.5">{r.day}</td>
                 <td className="px-3 py-1.5">{r.start}</td>

@@ -436,11 +436,11 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 						</div>
 					) : (
 						<div className={["rounded-md", dark?"":""].join(' ')}>
-            <div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid gap-2" style={{ gridTemplateColumns: '200px 1fr 200px 120px' }}>
+            <div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid gap-2" style={{ gridTemplateColumns: '200px 1fr 200px 64px' }}>
               <div className="whitespace-nowrap">Name</div>
               <div className="whitespace-nowrap">Notes</div>
               <div className="text-right whitespace-nowrap">Reports to</div>
-              <div className="text-right whitespace-nowrap">Timezone</div>
+              <div className="whitespace-nowrap">TZ</div>
             </div>
 										    <ul ref={agentsListRef} className={["max-h-[36vh] overflow-y-auto"].join(' ')}>
 															    {sortedAgents.map(({ a, i }, sIdx)=> {
@@ -455,7 +455,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
                         "px-2 py-1.5 text-sm leading-6 grid gap-2 items-center cursor-pointer",
                         selectedIdx===i ? (dark?"bg-neutral-800":"bg-blue-50") : (dark?"odd:bg-neutral-900":"odd:bg-neutral-100")
                       ].join(' ')}
-                      style={{ gridTemplateColumns: '200px 1fr 200px 120px' }}
+                      style={{ gridTemplateColumns: '200px 1fr 200px 64px' }}
                       onClick={()=>setSelectedIdx(i)}
                     >
                       {/* Name */}
@@ -475,7 +475,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
                         </span>
                       </div>
                       {/* Timezone */}
-                      <div className={["whitespace-nowrap text-right", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>{tzAbbrev(a.tzId||'UTC')}</div>
+                      <div className={["whitespace-nowrap", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>{tzAbbrev(a.tzId||'UTC')}</div>
                     </li>
                   )
                 })}

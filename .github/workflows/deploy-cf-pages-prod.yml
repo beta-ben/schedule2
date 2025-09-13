@@ -1,0 +1,97 @@
+name: Deploy Production to Cloudflare Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CI: 'true'
+      SKIP_CF_VERIFY: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare env
+        env:
+          SECRET_CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          SECRET_CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          CF_API_TOKEN_INPUT="${SECRET_CF_API_TOKEN}"
+          CF_ACCOUNT_ID_INPUT="${SECRET_CF_ACCOUNT_ID}"
+          echo "CLOUDFLARE_API_TOKEN=$CF_API_TOKEN_INPUT" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT_ID_INPUT" >> "$GITHUB_ENV"
+          # Legacy aliases (compatibility)
+          echo "CF_API_TOKEN=$CF_API_TOKEN_INPUT" >> "$GITHUB_ENV"
+          echo "CF_ACCOUNT_ID=$CF_ACCOUNT_ID_INPUT" >> "$GITHUB_ENV"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Prepare production env
+        run: |
+          # Prefer repo-level override if provided; otherwise default to live API
+          if [ -n "${{ secrets.VITE_SCHEDULE_API_BASE_PROD }}" ]; then
+            echo "VITE_SCHEDULE_API_BASE=${{ secrets.VITE_SCHEDULE_API_BASE_PROD }}" > .env.production
+          else
+            echo "VITE_SCHEDULE_API_BASE=https://api.teamschedule.cc" > .env.production
+          fi
+          # Avoid forcing base outside of prod builds unless explicitly desired
+          echo "VITE_FORCE_API_BASE=no" >> .env.production
+
+      - name: Validate env (diagnostic)
+        run: |
+          cat .env.production || true
+
+      - name: Build
+        run: npm run build
+
+      - name: Wrangler info (diagnostic)
+        run: |
+          npx --yes wrangler@3.90.0 --version
+          npx --yes wrangler@3.90.0 whoami || true
+
+      - name: Select CF Pages project and domain
+        run: |
+          PRJ="${{ secrets.CF_PAGES_PROJECT_NAME_PROD }}"; if [ -z "$PRJ" ]; then PRJ="schedule2"; fi
+          DOMAIN="${{ secrets.CF_PAGES_DOMAIN_PROD }}"; if [ -z "$DOMAIN" ]; then DOMAIN="next.teamschedule.cc"; fi
+          echo "Using Pages project: $PRJ"
+          echo "Using domain: $DOMAIN"
+          echo "PRJ=$PRJ" >> $GITHUB_ENV
+          echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
+
+      - name: Ensure Cloudflare Pages project exists (idempotent)
+        run: |
+          npx --yes wrangler@3.90.0 pages project create "${PRJ}" \
+            --production-branch=main || true
+
+      - name: Ensure production branch is 'main' (idempotent)
+        run: |
+          npx --yes wrangler@3.90.0 pages project update "${PRJ}" \
+            --production-branch=main || true
+
+      - name: Ensure custom domain attached (idempotent)
+        run: |
+          npx --yes wrangler@3.90.0 pages domain add "${PRJ}" "$DOMAIN" || true
+
+      - name: Publish to Cloudflare Pages (production)
+        run: |
+          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true
+
+      - name: Diagnostics: domains and deployments
+        run: |
+          npx --yes wrangler@3.90.0 pages domain list "${PRJ}" || true
+          echo "Production deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" --production || true
+          echo "Preview deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" || true
+

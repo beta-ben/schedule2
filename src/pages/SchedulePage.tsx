@@ -79,6 +79,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   // Close when switching agent/day
   useEffect(()=>{ setShowViewOpts(false); setShowAgentMenu(false) }, [agentView, dayIndex])
 
+  // (no secondary view state)
+
   // Panels tied to "now": always use today's shifts regardless of selected tab
   const nowTz = nowInTZ(tz.id)
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
@@ -139,20 +141,20 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
         {/* Left: date (always) + live clock + tz */}
-  <div className="flex items-end gap-3 pl-2 order-1">
-          <div className={dark?"text-neutral-600":"text-neutral-600"} style={{ fontSize: '1.5rem', lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+  <div className="flex items-baseline gap-2 sm:gap-3 pl-2 order-1">
+          <div className={[dark?"text-neutral-600":"text-neutral-600","leading-none","text-[1.3rem] sm:text-[1.5rem]"].join(' ')} style={{ whiteSpace: 'nowrap' }}>
             {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
           </div>
-          <div className={["font-bold tabular-nums", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ fontSize: '1.6rem', lineHeight: 1 }}>
+          <div key={nowClock.hhmm} className={["font-bold tabular-nums now-pop leading-none","text-[1.45rem] sm:text-[1.6rem]", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>
             {nowClock.hhmm}
           </div>
-          <div className="flex flex-col items-start leading-tight text-left">
-            <div className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
+          <div className="flex items-baseline gap-1 leading-none">
+            <span className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
               {nowClock.ampm}
-            </div>
-            <div className={["uppercase tracking-wide", dark?"text-neutral-500":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
+            </span>
+            <span className={["uppercase tracking-wide", dark?"text-neutral-500":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
               {tzAbbrev(tz.id)}
-            </div>
+            </span>
           </div>
         </div>
         {/* Middle: agent week title (only in agent view) */}
@@ -240,10 +242,27 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
                     </button>
                   </div>
 
+                  
+
                   {/* Theme select */}
                   <label className="flex items-center justify-between gap-3 text-sm py-1">
-                    <span className="flex-1">Theme</span>
+                    <span className="flex-1 flex items-center gap-2" title="Theme">
+                      {/* Sun icon */}
+                      <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2v2"/>
+                        <path d="M12 20v2"/>
+                        <path d="m4.93 4.93 1.41 1.41"/>
+                        <path d="m17.66 17.66 1.41 1.41"/>
+                        <path d="M2 12h2"/>
+                        <path d="M20 12h2"/>
+                        <path d="m4.93 19.07 1.41-1.41"/>
+                        <path d="m17.66 6.34 1.41-1.41"/>
+                      </svg>
+                      <span className="sr-only">Theme</span>
+                    </span>
                     <select
+                      aria-label="Theme"
                       className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-900"].join(' ')}
                       defaultValue={(()=>{ try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : (v || 'system') }catch{ return 'system' }})()}
                       onChange={(e)=>{
@@ -280,17 +299,17 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         // Hide PTO entirely for today using TZ-based YMD (matches OnDeck logic)
         const hasPto = pto.some(p=> p.person===s.person && p.startDate <= ymdNow && ymdNow <= p.endDate)
         if(hasPto) return false
-    // Keep only active and on-deck (within next 2 hours), and hide chips >30m past end
+        // Keep only active and on-deck (within next 2 hours), and hide chips >30m past end
         const sd = DAYS.indexOf(s.day as any)
         const ed = DAYS.indexOf(((s as any).endDay || s.day) as any)
-    const sAbs = (sd<0?0:sd)*1440 + toMin(s.start)
+        const sAbs = (sd<0?0:sd)*1440 + toMin(s.start)
         let eAbs = (ed<0?sd:ed)*1440 + (s.end==='24:00'?1440:toMin(s.end))
         if(eAbs <= sAbs) eAbs += 1440
-    const isActive = nowAbs >= sAbs && nowAbs < eAbs
-    const isOnDeck = sAbs > nowAbs && sAbs <= (nowAbs + 120)
-    if(!(isActive || isOnDeck)) return false
-    // Also, if already ended more than 30 minutes ago, hide
-    return nowAbs <= (eAbs + 30)
+        const isActive = nowAbs >= sAbs && nowAbs < eAbs
+        const isOnDeck = sAbs > nowAbs && sAbs <= (nowAbs + 120)
+        if(!(isActive || isOnDeck)) return false
+        // Also, if already ended more than 30 minutes ago, hide
+        return nowAbs <= (eAbs + 30)
       })
     })()
   const filteredPeople = Array.from(new Set(filteredShifts.map(s=> s.person)))

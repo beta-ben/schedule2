@@ -53,6 +53,20 @@ export interface Env {
   USE_D1?: string
   // Dev convenience: include sid in login body for tooling
   RETURN_SID_IN_BODY?: string
+  // Dev bearer mode (skip CSRF/cookies; accept Authorization: Bearer <token>)
+  AUTH_DEV_MODE?: string
+  DEV_BEARER_TOKEN?: string
+  // Magic link auth
+  AUTH_MODE?: string
+  MAGIC_ALLOWED_DOMAINS?: string
+  MAGIC_ADMIN_ALLOWLIST?: string
+  MAGIC_LINK_TTL_MIN?: string
+  MAGIC_ECHO_DEV?: string
+  // Email provider (Resend)
+  RESEND_API_KEY?: string
+  MAGIC_FROM_EMAIL?: string
+  // App redirect base for magic verify (e.g., http://localhost:5173 or https://teamschedule.cc)
+  APP_REDIRECT_BASE?: string
 }
 
 // Types
@@ -60,8 +74,20 @@ export type Day = 'Sun'|'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'
 export type Shift = { id: string; person: string; agentId?: string; day: Day; start: string; end: string; endDay?: Day; segments?: Array<{ id: string; shiftId: string; taskId: string; startOffsetMin: number; durationMin: number; notes?: string }> }
 export type PTO = { id: string; person: string; agentId?: string; startDate: string; endDate: string; notes?: string }
 export type CalendarSegment = { person: string; agentId?: string; day: Day; start: string; end: string; taskId: string }
-export type Agent = { id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
-export type ScheduleDoc = { schemaVersion: number; agents?: Agent[]; shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; updatedAt?: string; agentsIndex?: Record<string,string> }
+// Overrides: partial- or full-day one-off changes (swaps, half-days, etc.). Times are optional; when present, HH:MM format.
+export type Override = { id: string; person: string; agentId?: string; startDate: string; endDate: string; start?: string; end?: string; endDay?: Day; kind?: string; notes?: string; recurrence?: { rule?: string; until?: string; count?: number } }
+export type Agent = {
+  id: string
+  firstName: string
+  lastName: string
+  tzId?: string
+  hidden?: boolean
+  // Optional metadata
+  isSupervisor?: boolean
+  supervisorId?: string | null
+  notes?: string
+}
+export type ScheduleDoc = { schemaVersion: number; agents?: Agent[]; shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; updatedAt?: string; agentsIndex?: Record<string,string> }
 
 // Router
 export default {
@@ -84,15 +110,30 @@ export default {
   if (req.method === 'GET' && path === '/health') return health(req, env, cors) // alias for CI tooling
   if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
+  // Magic link auth
+  if (req.method === 'POST' && path === '/api/login-magic/request') return magicRequest(req, env, cors)
+  if (req.method === 'GET' && path === '/api/login-magic/verify') return magicVerify(req, env, cors)
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
   // v2 (D1) read-only endpoints for canary/parity
   if (req.method === 'GET' && path === '/api/v2/agents') return getAgentsV2(req, env, cors)
   if (req.method === 'GET' && path === '/api/v2/shifts') return getShiftsV2(req, env, cors)
+  if (req.method === 'PATCH' && path === '/api/v2/agents') return patchAgentsV2(req, env, cors)
+  if (req.method === 'POST' && path === '/api/v2/shifts/batch') return postShiftsBatchV2(req, env, cors)
+  // v2 proposals (MVP)
+  if (req.method === 'POST' && path === '/api/v2/proposals') return postProposalV2(req, env, cors)
+  if (req.method === 'GET' && path === '/api/v2/proposals') return listProposalsV2(req, env, cors)
+  if (req.method === 'GET' && path.startsWith('/api/v2/proposals/')){
+    const id = path.split('/').pop() || ''
+    return getProposalV2(req, env, cors, id)
+  }
   // Agents-only endpoints to persist metadata (like hidden) without schedule conflicts
   if (req.method === 'GET' && path === '/api/agents') return getAgents(req, env, cors)
   if (req.method === 'POST' && path === '/api/agents') return postAgents(req, env, cors)
+  // Admin: allowlist management
+  if (req.method === 'GET' && path === '/api/admin/allowlist') return getAllowlist(req, env, cors)
+  if (req.method === 'POST' && path === '/api/admin/allowlist') return postAllowlist(req, env, cors)
 
       return json({ error: 'not_found' }, 404, cors)
     } catch (e: any) {
@@ -113,6 +154,14 @@ function setCookie(name: string, value: string, opts: { maxAge?: number } & Retu
   parts.push(`SameSite=${opts.sameSite}`)
   if (opts.secure) parts.push('Secure')
   parts.push('HttpOnly')
+  if (opts.maxAge) parts.push(`Max-Age=${opts.maxAge}`)
+  return parts.join('; ')
+}
+function setCookieReadable(name: string, value: string, opts: { maxAge?: number } & ReturnType<typeof cookieBase>){
+  const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${opts.path}`]
+  if (opts.domain) parts.push(`Domain=${opts.domain}`)
+  parts.push(`SameSite=${opts.sameSite}`)
+  if (opts.secure) parts.push('Secure')
   if (opts.maxAge) parts.push(`Max-Age=${opts.maxAge}`)
   return parts.join('; ')
 }
@@ -147,6 +196,132 @@ function corsHeaders(req: Request, env: Env){
     h['Vary'] = 'Origin'
   }
   return new Headers(h)
+}
+
+// ---- Magic link helpers
+async function sha256Hex(input: string): Promise<string> { const data = new TextEncoder().encode(input); const buf = await crypto.subtle.digest('SHA-256', data); const arr = Array.from(new Uint8Array(buf)); return arr.map(b => b.toString(16).padStart(2, '0')).join('') }
+function randToken(len=48){ return nanoid(Math.max(32, len)) }
+function emailParts(e:string){ const s=(e||'').trim().toLowerCase(); const i=s.lastIndexOf('@'); return { local: i>0? s.slice(0,i): s, domain: i>0? s.slice(i+1): '' } }
+function allowedRoleFor(env: Env, email: string, requested?: string): 'admin'|'site'{ const req = (requested||'').toLowerCase(); const list = (env.MAGIC_ADMIN_ALLOWLIST||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean); if(list.includes(email.toLowerCase())) return 'admin'; return 'site' }
+function isEmailAllowed(env: Env, email: string): boolean{ const { domain } = emailParts(email); const raw = (env.MAGIC_ALLOWED_DOMAINS||'').trim(); if(raw === '*' || raw === '') return true; const set = new Set(raw.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)); if(!domain) return false; return set.has(domain) }
+function linkTtl(env: Env): number{ const n = parseInt(env.MAGIC_LINK_TTL_MIN||'15',10); return Number.isFinite(n) && n>0? n: 15 }
+function echoDev(env: Env){ const v=(env.MAGIC_ECHO_DEV||'').toLowerCase(); return v==='1'||v==='true' }
+async function sendMagicEmail(env: Env, to: string, verifyUrl: string, role: 'admin'|'site'){
+  const key = (env.RESEND_API_KEY||'').trim()
+  const from = (env.MAGIC_FROM_EMAIL||'').trim()
+  if(!key || !from) return false
+  const subject = role==='admin'? 'Sign in to Manage' : 'Sign in to Schedule'
+  const html = `<p>Click to sign in:</p><p><a href="${verifyUrl}">Sign in</a></p><p>This link expires soon and can be used once.</p>`
+  const body = { from, to, subject, html }
+  try{
+    const r = await fetch('https://api.resend.com/emails',{
+      method:'POST', headers:{ 'content-type':'application/json', 'authorization': `Bearer ${key}` }, body: JSON.stringify(body)
+    })
+    return r.ok
+  }catch{ return false }
+}
+
+async function magicRequest(req: Request, env: Env, cors: Headers){
+  try{
+    await ensureD1Schema(env)
+    const { email: rawEmail, role: wantRole } = await safeJson<{ email?: string; role?: string }>(req)
+    const email = (rawEmail||'').trim().toLowerCase()
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error:'invalid_email' }, 400, cors)
+    if(!isEmailAllowed(env, email)) return json({ error:'forbidden_email' }, 403, cors)
+    // Throttle: tokens per minute per email
+    try{ const recent = await env.DB!.prepare('SELECT COUNT(*) as c FROM magic_tokens WHERE email=?1 AND created_at > unixepoch()-60').bind(email).first<{ c: number }>(); if(recent && Number(recent.c) > 3) return json({ error:'rate_limited' }, 429, cors) }catch{}
+    // Resolve role: prefer D1 users table, then env allowlist, else site
+    let role: 'admin'|'site' = 'site'
+    try{
+      const u = await env.DB!.prepare('SELECT role,active FROM users WHERE email=?1').bind(email).first<{ role?: string; active?: number }>()
+      if(u && Number(u.active)===1 && String(u.role||'').toLowerCase()==='admin') role='admin'
+      else if(allowedRoleFor(env, email, wantRole)==='admin') role='admin'
+    }catch{ if(allowedRoleFor(env, email, wantRole)==='admin') role='admin' }
+    const token = randToken(64)
+    const hash = await sha256Hex(token)
+    const expMin = linkTtl(env)
+    await env.DB!.prepare('INSERT INTO magic_tokens (token_hash,email,role,exp_ts) VALUES (?1,?2,?3,unixepoch()+?4)').bind(hash, email, role, expMin*60).run()
+    const base = new URL(req.url)
+    const appBase = (env.APP_REDIRECT_BASE||'').trim()
+    const verifyUrl = `${base.origin}/api/login-magic/verify?token=${encodeURIComponent(token)}${appBase?`&r=${encodeURIComponent(appBase)}`:''}`
+    if(echoDev(env)) return json({ ok:true, role, link: verifyUrl }, 200, cors)
+    const sent = await sendMagicEmail(env, email, verifyUrl, role)
+    if(!sent){ console.log(`[magic] (fallback) Send link to ${email}: ${verifyUrl}`) }
+    return json({ ok:true, sent }, 200, cors)
+  }catch(e:any){ return json({ error:'server_error', message: e?.message || String(e) }, 500, cors) }
+}
+
+async function magicVerify(req: Request, env: Env, cors: Headers){
+  try{
+    await ensureD1Schema(env)
+    const url = new URL(req.url)
+    const token = url.searchParams.get('token')||''
+    if(!token || token.length < 16) return json({ error:'invalid_token' }, 400, cors)
+    const hash = await sha256Hex(token)
+    const row = await env.DB!.prepare('SELECT email,role,exp_ts,used_at FROM magic_tokens WHERE token_hash=?1').bind(hash).first<{ email:string; role:string; exp_ts:number; used_at?: number }>()
+    if(!row) return json({ error:'not_found' }, 404, cors)
+    const now = Math.floor(Date.now()/1000)
+    if(row.used_at && Number(row.used_at)>0) return json({ error:'already_used' }, 400, cors)
+    if(!row.exp_ts || Number(row.exp_ts) < now) return json({ error:'expired' }, 400, cors)
+    await env.DB!.prepare('UPDATE magic_tokens SET used_at=unixepoch() WHERE token_hash=?1').bind(hash).run()
+    const base = cookieBase(env)
+    const accept = (req.headers.get('accept')||'').toLowerCase()
+    const wantsHtml = accept.includes('text/html') || accept.includes('text/*')
+    const appBase = (url.searchParams.get('r')||env.APP_REDIRECT_BASE||'').trim()
+    if((row.role||'site').toLowerCase() === 'admin'){
+      const sid = nanoid(24); const csrf = nanoid(32)
+      await putSession(env,'admin',sid,{ csrf })
+      const headers = new Headers(cors)
+      headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
+      headers.append('Set-Cookie', setCookieReadable('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
+      if(appBase){
+        const loc = `${appBase.replace(/\/$/,'')}/#/manage`
+        headers.set('Location', loc)
+        if(wantsHtml){
+          const html = `<!doctype html><meta http-equiv="refresh" content="0;url=${loc}"><a href="${loc}">Continue</a>`
+          headers.set('Content-Type','text/html; charset=utf-8')
+          return new Response(html, { status: 302, headers })
+        }
+        // Non-HTML clients: JSON with location
+        headers.set('Content-Type','application/json')
+        return new Response(JSON.stringify({ ok:true, role:'admin', location: loc }), { status: 200, headers })
+      }else{
+        headers.set('Content-Type','application/json')
+        return new Response(JSON.stringify({ ok:true, role:'admin', location:'/#/manage' }), { status: 200, headers })
+      }
+    }else{
+      const sid = nanoid(24)
+      await putSession(env,'site',sid,{})
+      const headers = new Headers(cors)
+      headers.append('Set-Cookie', setCookie('site_sid', sid, { ...base, maxAge: TTL_MS/1000 }))
+      if(appBase){
+        const loc = `${appBase.replace(/\/$/,'')}/#/`
+        headers.set('Location', loc)
+        if(wantsHtml){
+          const html = `<!doctype html><meta http-equiv="refresh" content="0;url=${loc}"><a href="${loc}">Continue</a>`
+          headers.set('Content-Type','text/html; charset=utf-8')
+          return new Response(html, { status: 302, headers })
+        }
+        headers.set('Content-Type','application/json')
+        return new Response(JSON.stringify({ ok:true, role:'site', location: loc }), { status: 200, headers })
+      }else{
+        headers.set('Content-Type','application/json')
+        return new Response(JSON.stringify({ ok:true, role:'site', location:'/#/' }), { status: 200, headers })
+      }
+    }
+  }catch(e:any){ return json({ error:'server_error', message: e?.message || String(e) }, 500, cors) }
+}
+
+// Dev-bearer admin check
+function authDevBearerOk(req: Request, env: Env){
+  const on = (env.AUTH_DEV_MODE||'').toLowerCase()
+  if(!(on==='1' || on==='true')) return false
+  const want = (env.DEV_BEARER_TOKEN||'').trim()
+  if(!want) return false
+  const h = req.headers.get('authorization')||''
+  const m = h.match(/^Bearer\s+(.+)$/i)
+  if(!m) return false
+  return m[1] === want
 }
 
 // Sessions (D1 when enabled, otherwise KV)
@@ -206,6 +381,42 @@ async function ensureD1Schema(env: Env){
     await env.DB.prepare('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, kind TEXT NOT NULL, csrf TEXT, exp_ts INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_kind_exp ON sessions(kind, exp_ts)').run()
   }catch{}
+  // Core tables used by v2 endpoints (create on demand in dev)
+  try{
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT, active INTEGER NOT NULL DEFAULT 1, meta TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_agents_active ON agents(active)').run()
+  }catch{}
+  // Magic link tokens and users allowlist
+  try{
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS magic_tokens (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, role TEXT NOT NULL, exp_ts INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_magic_exp ON magic_tokens(exp_ts)').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_magic_email_created ON magic_tokens(email,created_at)').run()
+  }catch{}
+  try{
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, role TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_users_active ON users(active)').run()
+  }catch{}
+  // Proposals (simple, stores patch JSON in row)
+  try{
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS proposals (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_by TEXT,
+        reviewers TEXT,
+        week_start TEXT,
+        tz_id TEXT,
+        base_updated_at TEXT,
+        patch TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )`
+    ).run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status, updated_at)').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_proposals_created ON proposals(created_at)').run()
+  }catch{}
 }
 async function readDocD1(env: Env): Promise<ScheduleDoc | null>{
   if(!env.DB) return null
@@ -245,7 +456,7 @@ async function loginAdmin(req: Request, env: Env, cors: Headers){
   await putSession(env,'admin',sid,{ csrf })
   const headers = new Headers(cors)
   headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
-  headers.append('Set-Cookie', setCookie('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
+  headers.append('Set-Cookie', setCookieReadable('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
   // Also include csrf in body so clients can store it when cookie is HttpOnly
   const includeSid = (env.RETURN_SID_IN_BODY||'').toLowerCase() === 'true' || (env.RETURN_SID_IN_BODY||'') === '1'
   return json(includeSid ? { ok:true, csrf, sid } : { ok:true, csrf }, 200, headers)
@@ -292,14 +503,15 @@ async function requireSite(req: Request, env: Env){
   return { ok:true }
 }
 async function requireAdmin(req: Request, env: Env){
+  // Dev bearer: bypass cookie+CSRF when enabled
+  if(authDevBearerOk(req, env)) return { ok:true }
   const cookies = getCookieMap(req)
   const sid = cookies.get('sid')
-  const csrfCookie = cookies.get('csrf')
   const csrfHeader = req.headers.get('x-csrf-token') || ''
-  if(!sid || !csrfCookie || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','csrf cookie','x-csrf-token header'] } }
+  if(!sid || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','x-csrf-token header'] } }
   const sess = await getSession(env,'admin',sid)
   if(!sess) return { ok:false, status:401, body:{ error:'expired_admin_session' } }
-  if(sess.csrf !== csrfCookie || sess.csrf !== csrfHeader) return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
+  if(sess.csrf !== csrfHeader) return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
   return { ok:true }
 }
 
@@ -309,12 +521,12 @@ async function getSchedule(req: Request, env: Env, cors: Headers){
   if(!gate.ok) return json(gate.body, gate.status, cors)
   const doc = await readDoc(env)
   if(!doc){
-    const empty: ScheduleDoc = { schemaVersion: 2, agents: [], shifts: [], pto: [], calendarSegs: [], updatedAt: nowIso(), agentsIndex: {} }
+    const empty: ScheduleDoc = { schemaVersion: 2, agents: [], shifts: [], pto: [], overrides: [], calendarSegs: [], updatedAt: nowIso(), agentsIndex: {} }
     await writeDoc(env, empty)
     return json(empty, 200, cors)
   }
   // Always ensure schemaVersion and defaults
-  const safe: ScheduleDoc = { schemaVersion: Math.max(2, doc.schemaVersion||1), agents: doc.agents||[], shifts: doc.shifts||[], pto: doc.pto||[], calendarSegs: doc.calendarSegs||[], updatedAt: doc.updatedAt, agentsIndex: doc.agentsIndex||{} }
+  const safe: ScheduleDoc = { schemaVersion: Math.max(2, doc.schemaVersion||1), agents: doc.agents||[], shifts: doc.shifts||[], pto: doc.pto||[], overrides: doc.overrides||[], calendarSegs: doc.calendarSegs||[], updatedAt: doc.updatedAt, agentsIndex: doc.agentsIndex||{} }
   return json(safe, 200, cors)
 }
 
@@ -326,10 +538,12 @@ async function postSchedule(req: Request, env: Env, cors: Headers){
   if(typeof incoming !== 'object' || incoming===null) return json({ error:'invalid_body' }, 400, cors)
 
   // Load previous doc for concurrency + mapping backfill
-  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
+  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], overrides:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
   // Strict conflict only when shift/pto/calendar data is older; allow agents-only updates elsewhere
-  if(prev.updatedAt && incoming.updatedAt && new Date(incoming.updatedAt) < new Date(prev.updatedAt)){
-    const hasSchedChanges = Array.isArray(incoming.shifts) || Array.isArray(incoming.pto) || Array.isArray(incoming.calendarSegs)
+  const url = new URL(req.url)
+  const force = url.searchParams.get('force') === '1'
+  if(!force && prev.updatedAt && incoming.updatedAt && new Date(incoming.updatedAt) < new Date(prev.updatedAt)){
+    const hasSchedChanges = Array.isArray(incoming.shifts) || Array.isArray(incoming.pto) || Array.isArray(incoming.overrides) || Array.isArray(incoming.calendarSegs)
     if(hasSchedChanges){
       return json({ error:'conflict', prevUpdatedAt: prev.updatedAt }, 409, cors)
     }
@@ -355,7 +569,16 @@ function isHHMM(x:any){ return typeof x==='string' && /^\d{2}:\d{2}$/.test(x) }
 
 function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc): { ok:true; doc: ScheduleDoc } | { ok:false; error: string; details?: any }{
   const errors: any[] = []
-  const doc: ScheduleDoc = { schemaVersion: Math.max(2, (incoming.schemaVersion||2)), agents: Array.isArray(incoming.agents)? incoming.agents as Agent[] : (Array.isArray(prev.agents)? prev.agents : []), shifts: Array.isArray(incoming.shifts)? incoming.shifts as Shift[] : [], pto: Array.isArray(incoming.pto)? incoming.pto as PTO[] : [], calendarSegs: Array.isArray(incoming.calendarSegs)? incoming.calendarSegs as CalendarSegment[] : [], agentsIndex: prev.agentsIndex||{}, updatedAt: nowIso() }
+  const doc: ScheduleDoc = {
+    schemaVersion: Math.max(2, (incoming.schemaVersion||2)),
+    agents: Array.isArray(incoming.agents)? incoming.agents as Agent[] : (Array.isArray(prev.agents)? prev.agents : []),
+    shifts: Array.isArray(incoming.shifts)? incoming.shifts as Shift[] : [],
+    pto: Array.isArray(incoming.pto)? incoming.pto as PTO[] : [],
+    overrides: Array.isArray((incoming as any).overrides)? (incoming as any).overrides as Override[] : [],
+    calendarSegs: Array.isArray(incoming.calendarSegs)? incoming.calendarSegs as CalendarSegment[] : [],
+    agentsIndex: prev.agentsIndex||{},
+    updatedAt: nowIso()
+  }
 
   // Basic shape checks
   for(const s of doc.shifts){
@@ -376,6 +599,15 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
     if(!isHHMM(c.start) || !isHHMM(c.end)) errors.push({ where:'cal', field:'time' })
     if(c.start===c.end) errors.push({ where:'cal', field:'time_equal' })
   }
+  for(const o of (doc.overrides||[])){
+    if(!o || typeof o.id!=='string' || !o.id) errors.push({ where:'override', field:'id' })
+    if(typeof o.person!=='string' || !o.person) errors.push({ where:'override', id:o?.id, field:'person' })
+    if(typeof (o as any).startDate!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test((o as any).startDate)) errors.push({ where:'override', id:o?.id, field:'startDate' })
+    if(typeof (o as any).endDate!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test((o as any).endDate)) errors.push({ where:'override', id:o?.id, field:'endDate' })
+    if(typeof (o as any).start==='string' || typeof (o as any).end==='string'){
+      if(!isHHMM((o as any).start) || !isHHMM((o as any).end)) errors.push({ where:'override', id:o?.id, field:'time' })
+    }
+  }
   for(const a of (doc.agents||[])){
     if(!a || typeof a.id!=='string' || !a.id) errors.push({ where:'agent', field:'id' })
     if(typeof a.firstName!=='string' || typeof a.lastName!=='string') errors.push({ where:'agent', id:a?.id, field:'name' })
@@ -390,6 +622,7 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
     for(const s of doc.shifts){ if(s.agentId) addPair(s.person, s.agentId, { kind:'shift', id:s.id }) }
     for(const p of doc.pto){ if(p.agentId) addPair(p.person, p.agentId, { kind:'pto', id:p.id }) }
     for(const c of (doc.calendarSegs||[])){ if(c.agentId) addPair(c.person, c.agentId, { kind:'cal', person:c.person, day:c.day, start:c.start, end:c.end }) }
+    for(const o of (doc.overrides||[])){ if((o as any).agentId) addPair((o as any).person, (o as any).agentId, { kind:'override', id:(o as any).id }) }
   }catch(err:any){ return { ok:false, error:'agent_mapping_conflict', details: err } }
 
   // Backfill missing agentIds using current or previous mapping
@@ -398,6 +631,7 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
   const fillId = (name:string|undefined)=>{ const key=(name||'').trim().toLowerCase(); return nameToId.get(key) || prevMap.get(key) || undefined }
   for(const s of doc.shifts){ if(!s.agentId){ const id=fillId(s.person); if(id) s.agentId=id } }
   for(const p of doc.pto){ if(!p.agentId){ const id=fillId(p.person); if(id) p.agentId=id } }
+  for(const o of (doc.overrides||[])){ if(!(o as any).agentId){ const id=fillId((o as any).person); if(id) (o as any).agentId=id } }
   for(const c of (doc.calendarSegs||[])){ if(!c.agentId){ const id=fillId(c.person); if(id) c.agentId=id } }
 
   // Normalize endDay for shifts
@@ -405,6 +639,8 @@ function normalizeAndValidate(incoming: Partial<ScheduleDoc>, prev: ScheduleDoc)
 
   // Ensure unique shift ids
   const seen=new Set<string>(); for(const s of doc.shifts){ if(seen.has(s.id)) return { ok:false, error:'duplicate_shift_id', details:{ id:s.id } }; seen.add(s.id) }
+  // Ensure unique override ids
+  const seenO=new Set<string>(); for(const o of (doc.overrides||[])){ const oid=(o as any).id; if(typeof oid==='string'){ if(seenO.has(oid)) return { ok:false, error:'duplicate_override_id', details:{ id:oid } }; seenO.add(oid) } }
 
   // Build agentsIndex from current mapping (name->id), plus from provided agents[]
   const idx: Record<string,string> = {}
@@ -433,7 +669,7 @@ async function postAgents(req: Request, env: Env, cors: Headers){
   const incomingAgents = Array.isArray(body?.agents) ? (body.agents as Agent[]) : null
   if(!incomingAgents) return json({ error:'invalid_body', details:'agents array required' }, 400, cors)
 
-  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
+  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], overrides:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
   const merged = upsertAgents(prev.agents||[], incomingAgents)
   const idx: Record<string,string> = {}
   for(const a of merged){ const full=`${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim().toLowerCase(); if(full) idx[full] = a.id }
@@ -453,11 +689,14 @@ function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
     const lastName = (a.lastName||'').trim()
     const tzId = a.tzId && typeof a.tzId==='string' ? a.tzId : undefined
     const hidden = !!a.hidden
+    const isSupervisor = a.isSupervisor===true
+    const supervisorId = (typeof a.supervisorId==='string' && a.supervisorId.trim()) ? a.supervisorId : (a.supervisorId===null? null: (byId.get(id)?.supervisorId))
+    const notes = typeof a.notes==='string' ? a.notes : (byId.get(id)?.notes)
     const existing = byId.get(id)
     if(existing){
-      byId.set(id, { ...existing, firstName, lastName, tzId, hidden })
+      byId.set(id, { ...existing, firstName, lastName, tzId, hidden, isSupervisor, supervisorId, notes })
     }else{
-      byId.set(id, { id, firstName, lastName, tzId, hidden })
+      byId.set(id, { id, firstName, lastName, tzId, hidden, isSupervisor, supervisorId, notes })
     }
   }
   return Array.from(byId.values())
@@ -522,14 +761,31 @@ async function getAgentsV2(req: Request, env: Env, cors: Headers){
   if(!gate.ok) return json(gate.body, gate.status, cors)
   if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
   const { results } = await env.DB.prepare('SELECT id,name,color,active,meta FROM agents WHERE active=1 ORDER BY name').all()
-  const agents = (results||[]).map((r:any)=> ({
-    id: r.id as string,
-    name: r.name as string,
-    color: r.color ?? undefined,
-    active: Number(r.active) ?? 1,
-    meta: r.meta ? (()=>{ try{return JSON.parse(String(r.meta))}catch{return undefined} })() : undefined
-  })) as D1AgentRow[]
-  return json({ agents }, 200, cors)
+  const agents = (results||[]).map((r:any)=>{
+    const meta = r.meta ? (()=>{ try{return JSON.parse(String(r.meta))}catch{return undefined} })() : undefined
+    const name = String(r.name||'')
+    const parts = name.split(' ')
+    const firstName = (parts[0]||'').trim()
+    const lastName = parts.slice(1).join(' ').trim()
+    const out: any = {
+      id: r.id as string,
+      name,
+      color: r.color ?? undefined,
+      active: Number(r.active) ?? 1,
+      meta,
+      firstName,
+      lastName,
+    }
+    if(meta && typeof meta==='object'){
+      if(typeof (meta as any).tzId === 'string') out.tzId = (meta as any).tzId
+      if('hidden' in (meta as any)) out.hidden = !!(meta as any).hidden
+      if('isSupervisor' in (meta as any)) out.isSupervisor = !!(meta as any).isSupervisor
+      if('supervisorId' in (meta as any)) out.supervisorId = (meta as any).supervisorId ?? null
+      if(typeof (meta as any).notes === 'string') out.notes = (meta as any).notes
+    }
+    return out
+  })
+  return json({ agents: agents as any }, 200, cors)
 }
 
 async function getShiftsV2(req: Request, env: Env, cors: Headers){
@@ -542,4 +798,197 @@ async function getShiftsV2(req: Request, env: Env, cors: Headers){
   if(!Number.isFinite(start) || !Number.isFinite(end) || !(end>start)) return json({ error:'invalid_range' }, 400, cors)
   const { results } = await env.DB.prepare('SELECT id,agent_id,start_ts,end_ts,role,note FROM shifts WHERE start_ts < ?2 AND end_ts > ?1 ORDER BY start_ts').bind(start,end).all()
   return json({ shifts: (results||[]) as D1ShiftRow[] }, 200, cors)
+}
+
+// ---- v2 write endpoints (D1-backed)
+async function patchAgentsV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+  const body = await safeJson<any>(req)
+  const arr: any[] = Array.isArray(body) ? body : (Array.isArray(body?.agents) ? body.agents : [])
+  if(!Array.isArray(arr)) return json({ error:'invalid_body' }, 400, cors)
+  let updated = 0, created = 0
+  for(const raw of arr){
+    if(!raw) continue
+    let id = (raw.id && String(raw.id).trim()) || ''
+    const firstName = (raw.firstName||'').trim()
+    const lastName = (raw.lastName||'').trim()
+    const name = (raw.name && String(raw.name).trim()) || `${firstName} ${lastName}`.trim()
+    if(!name){ continue }
+    const color = raw.color ?? null
+    const active = (raw.active===0 || raw.active===false) ? 0 : 1
+    const metaObj: any = typeof raw.meta==='object' && raw.meta ? { ...raw.meta } : {}
+    if(typeof raw.tzId==='string') metaObj.tzId = raw.tzId
+    if('hidden' in raw) metaObj.hidden = !!raw.hidden
+    if('isSupervisor' in raw) metaObj.isSupervisor = !!raw.isSupervisor
+    if('supervisorId' in raw) metaObj.supervisorId = raw.supervisorId ?? null
+    if(typeof raw.notes==='string') metaObj.notes = raw.notes
+    const meta = Object.keys(metaObj).length>0 ? JSON.stringify(metaObj) : null
+    if(!id) id = nanoid(16)
+    // Upsert
+    await env.DB.prepare(
+      `INSERT INTO agents (id,name,color,active,meta)
+       VALUES (?1,?2,?3,?4,?5)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, active=excluded.active, meta=excluded.meta, updated_at=unixepoch()`
+    ).bind(id, name, color, active, meta).run()
+    // Determine created vs updated (best-effort: check rowcount is always 1 on D1; treat as updated unless id was blank)
+    if(raw.id) updated++; else created++
+  }
+  return json({ ok:true, updated, created }, 200, cors)
+}
+
+type DocShift = { id: string; person: string; agentId?: string; day: Day; start: string; end: string; endDay?: Day }
+async function postShiftsBatchV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  const body = await safeJson<any>(req)
+  const upserts: DocShift[] = Array.isArray(body?.upserts) ? body.upserts : []
+  const deletes: string[] = Array.isArray(body?.deletes) ? body.deletes : []
+  if(!Array.isArray(upserts) && !Array.isArray(deletes)) return json({ error:'invalid_body' }, 400, cors)
+
+  // Merge into existing doc in KV/D1 for now (idempotent per shift id)
+  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], overrides:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
+  const byId = new Map<string, Shift>()
+  for(const s of prev.shifts||[]){ if(s && s.id) byId.set(s.id, s) }
+
+  // Basic normalize helper for endDay
+  function normalizeEndDay(s: DocShift): DocShift{
+    const sMin = hhmmToMin(s.start); const eMin = hhmmToMin(s.end)
+    if(Number.isNaN(sMin) || Number.isNaN(eMin)) return s
+    if(eMin===1440){ if(!s.endDay) s.endDay = s.day }
+    else if(eMin<=sMin){ s.endDay = s.endDay || nextDay(s.day) }
+    else { s.endDay = s.endDay || s.day }
+    return s
+  }
+
+  let upserted = 0; let removed = 0
+  // Apply deletes first
+  for(const id of deletes){ if(typeof id==='string' && byId.delete(id)) removed++ }
+  // Apply upserts
+  for(const raw of upserts){
+    if(!raw || typeof raw.id !== 'string' || !raw.id) continue
+    if(!isDay(raw.day) || !isHHMM(raw.start) || !isHHMM(raw.end)) continue
+    const s = normalizeEndDay({ ...raw })
+    const out: Shift = { id: s.id, person: s.person||'', agentId: s.agentId||undefined, day: s.day, start: s.start, end: s.end, endDay: s.endDay }
+    byId.set(out.id, out); upserted++
+  }
+
+  const next: ScheduleDoc = { ...prev, shifts: Array.from(byId.values()), updatedAt: nowIso() }
+  await writeDoc(env, next)
+  return json({ ok:true, upserted, deleted: removed, updatedAt: next.updatedAt }, 200, cors)
+}
+
+// ---- Allowlist management (D1 users table)
+async function getAllowlist(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  try{
+    await ensureD1Schema(env)
+    const { results } = await env.DB!.prepare('SELECT email, role, active FROM users ORDER BY email').all()
+    return json({ ok:true, users: (results||[]).map((r:any)=>({ email: String(r.email), role: String(r.role||'site'), active: Number(r.active)===1 })) }, 200, cors)
+  }catch{ return json({ error:'read_failed' }, 500, cors) }
+}
+
+async function postAllowlist(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  try{
+    await ensureD1Schema(env)
+    const body = await safeJson<any>(req)
+    const add: string[] = Array.isArray(body?.add) ? body.add : []
+    const remove: string[] = Array.isArray(body?.remove) ? body.remove : []
+    const role = (body?.role||'admin').toLowerCase()==='admin' ? 'admin' : 'site'
+    let added=0, removed=0
+    const norm = (s:string)=> String(s||'').trim().toLowerCase()
+    for(const raw of add){
+      const email = norm(raw)
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) continue
+      await env.DB!.prepare('INSERT INTO users (email,role,active,updated_at) VALUES (?1,?2,1,unixepoch()) ON CONFLICT(email) DO UPDATE SET role=excluded.role, active=1, updated_at=unixepoch()').bind(email, role).run()
+      added++
+    }
+    for(const raw of remove){
+      const email = norm(raw)
+      await env.DB!.prepare('UPDATE users SET active=0, updated_at=unixepoch() WHERE email=?1').bind(email).run()
+      removed++
+    }
+    return json({ ok:true, added, removed }, 200, cors)
+  }catch{ return json({ error:'write_failed' }, 500, cors) }
+}
+
+// ---- Proposals (MVP)
+type ProposalRow = { id:string; title?:string; description?:string; status:string; created_by?:string; reviewers?:string; week_start?:string; tz_id?:string; base_updated_at?:string; patch?:string; created_at:number; updated_at:number }
+async function postProposalV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+  const body = await safeJson<any>(req)
+  const title = typeof body?.title==='string' && body.title.trim() ? body.title.trim() : `Proposal ${new Date().toLocaleString('en-US')}`
+  const description = typeof body?.description==='string' ? body.description : null
+  const week_start = typeof body?.weekStart==='string' ? body.weekStart : null
+  const tz_id = typeof body?.tzId==='string' ? body.tzId : null
+  const base_updated_at = typeof body?.baseUpdatedAt==='string' ? body.baseUpdatedAt : null
+  const patchObj = typeof body?.patch==='object' && body.patch ? body.patch : {
+    shifts: Array.isArray(body?.shifts)? body.shifts : [],
+    pto: Array.isArray(body?.pto)? body.pto : [],
+    overrides: Array.isArray(body?.overrides)? body.overrides : [],
+    calendarSegs: Array.isArray(body?.calendarSegs)? body.calendarSegs : [],
+    agents: Array.isArray(body?.agents)? body.agents : [],
+  }
+  const patch = JSON.stringify(patchObj)
+  const id = nanoid(24)
+  await env.DB.prepare(
+    `INSERT INTO proposals (id,title,description,status,created_by,reviewers,week_start,tz_id,base_updated_at,patch,created_at,updated_at)
+     VALUES (?1,?2,?3,'open',NULL,NULL,?4,?5,?6,?7,unixepoch(),unixepoch())`
+  ).bind(id, title, description, week_start, tz_id, base_updated_at, patch).run()
+  return json({ ok:true, id }, 200, cors)
+}
+
+async function listProposalsV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+  const { results } = await env.DB.prepare('SELECT id, title, description, status, created_by, reviewers, week_start, tz_id, base_updated_at, created_at, updated_at FROM proposals ORDER BY updated_at DESC LIMIT 200').all()
+  const items = (results||[]).map((r:any)=>({
+    id: String(r.id),
+    title: r.title? String(r.title): undefined,
+    description: r.description? String(r.description): undefined,
+    status: String(r.status||'open'),
+    createdBy: r.created_by? String(r.created_by): undefined,
+    reviewers: r.reviewers? JSON.parse(String(r.reviewers)) : undefined,
+    weekStart: r.week_start? String(r.week_start): undefined,
+    tzId: r.tz_id? String(r.tz_id): undefined,
+    baseUpdatedAt: r.base_updated_at? String(r.base_updated_at): undefined,
+    createdAt: Number(r.created_at)||0,
+    updatedAt: Number(r.updated_at)||0,
+  }))
+  return json({ ok:true, proposals: items }, 200, cors)
+}
+
+async function getProposalV2(req: Request, env: Env, cors: Headers, id: string){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+  const row = await env.DB.prepare('SELECT id, title, description, status, created_by, reviewers, week_start, tz_id, base_updated_at, patch, created_at, updated_at FROM proposals WHERE id=?1').bind(id).first<ProposalRow>()
+  if(!row) return json({ error:'not_found' }, 404, cors)
+  let patch: any
+  try{ patch = row.patch ? JSON.parse(String((row as any).patch)) : undefined }catch{ patch = undefined }
+  return json({ ok:true, proposal: {
+    id: String(row.id),
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    createdBy: row.created_by,
+    reviewers: row.reviewers ? JSON.parse(row.reviewers) : undefined,
+    weekStart: row.week_start,
+    tzId: row.tz_id,
+    baseUpdatedAt: row.base_updated_at,
+    patch,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  } }, 200, cors)
 }

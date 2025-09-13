@@ -93,6 +93,37 @@ export default function CoverageHeatmap({
   const CELL_H = 7 // px (slightly taller for visibility)
   const GAP_Y = 1
   const HEADER_H = 18
+  // Name column width (to align heatmap under the schedule scroller)
+  const [nameColPx, setNameColPx] = React.useState<number>(()=>{
+    try{
+      const v = getComputedStyle(document.documentElement).getPropertyValue('--schedule-name-col-px')
+      const n = parseInt(v||'160',10); return Number.isFinite(n)? n : 160
+    }catch{ return 160 }
+  })
+  // Measure the ribbons inner width (in pixels) to ensure exact per-day column widths
+  const [ribbonsInnerW, setRibbonsInnerW] = React.useState<number|null>(null)
+  const [dayRects, setDayRects] = React.useState<Array<{ left:number; width:number }> | null>(null)
+  React.useEffect(()=>{
+    const onNameCol = (e: Event)=>{ try{ const px = (e as any).detail?.px; if(typeof px==='number') setNameColPx(px) }catch{} }
+    window.addEventListener('schedule:namecol', onNameCol as any)
+    const inner = document.querySelector('[data-ribbons-inner="1"]') as HTMLElement | null
+    const measure = ()=>{
+      if(!inner) return
+      setRibbonsInnerW(inner.scrollWidth || inner.clientWidth)
+      try{
+        const rectInner = inner.getBoundingClientRect()
+        const nodes = Array.from(inner.querySelectorAll('[data-day-col]')) as HTMLElement[]
+        if(nodes.length===7){
+          const arr = nodes.map(n=>{ const r=n.getBoundingClientRect(); return { left: r.left-rectInner.left, width: r.width } })
+          setDayRects(arr)
+        }
+      }catch{}
+    }
+    measure()
+    const ro = 'ResizeObserver' in window ? new (window as any).ResizeObserver(()=> measure()) : null
+    if(ro && inner){ ro.observe(inner) }
+    return ()=>{ try{ ro && inner && ro.unobserve(inner) }catch{}; window.removeEventListener('schedule:namecol', onNameCol as any) }
+  }, [visibleDays])
 
   return (
     <div className={["sticky bottom-0 z-30", dark?"bg-neutral-950/92":"bg-white/95","backdrop-blur","border-t", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
@@ -115,55 +146,52 @@ export default function CoverageHeatmap({
               </svg>
             </button>
           </div>
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] opacity-70">max {maxCount || 0}</div>
+          {/* Max indicator removed for now; will add context-specific label later */}
         </div>
         {!collapsed && (
-        <div className="flex items-stretch gap-1 mt-1">
-          {/* Heatmap scroller on the left */}
-          <div ref={scrollerRef} className="flex-1 overflow-x-auto no-scrollbar">
-            <div style={{ width: `${scaleWidthPct}%` }}>
-              {/* Day headers */}
-              <div className="relative" style={{ height: HEADER_H }}>
-                {DAYS.map((d,i)=>{
-                  const left = (i/7)*100
-                  const width = (1/7)*100
-                  return (
-                    <div key={d} className={["absolute text-center text-[11px]", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, lineHeight: `${HEADER_H}px` }}>{d}</div>
-                  )
-                })}
-              </div>
-              {/* Heatmap grid */}
+          <div className="flex items-stretch gap-1 mt-1">
+            {/* Left label column matches schedule name column width */}
+            <div className="shrink-0" style={{ width: nameColPx }}>
+              <div className="h-[20px]" />
               <div className="relative" style={{ height: (CELL_H*24 + GAP_Y*23) }}>
-                {DAYS.map((d,di)=>{
-                  const left = (di/7)*100
-                  const width = (1/7)*100
+                {[0,6,12,18,24].map(h=>{
+                  const totalH = (CELL_H*24 + GAP_Y*23)
+                  const topPx = (h===24) ? totalH : (h*(CELL_H+GAP_Y) + (CELL_H/2))
+                  const trans = (h===24) ? '-translate-y-[100%]' : '-translate-y-1/2'
+                  const label = (h===0? '12a' : h<12? `${h}a` : h===12? '12p' : `${h-12}p`)
                   return (
-                    <div key={d} className="absolute inset-y-0" style={{ left: `${left}%`, width: `${width}%` }}>
-                      {Array.from({length:24},(_,h)=>h).map(h=>{
-                        const top = h*(CELL_H+GAP_Y)
-                        const v = counts[di][h]
-                        const title = `${d} — ${String(h).padStart(2,'0')}:00 to ${String(h+1).padStart(2,'0')}:00 • ${v} on deck`
-                        return <div key={h} className="w-full" style={{ position:'absolute', top, height: CELL_H, backgroundColor: colorFor(v), borderRadius: 2 }} title={title} />
-                      })}
-                    </div>
+                    <div
+                      key={h}
+                      className={["absolute right-2 text-right text-[10px]", trans, dark?"text-neutral-400":"text-neutral-500"].join(' ')}
+                      style={{ top: topPx }}
+                    >{label}</div>
                   )
                 })}
               </div>
             </div>
-          </div>
-          {/* Right mini-hour scale */}
-          <div className="shrink-0" style={{ width: 44 }}>
-            <div className="h-[20px]" />
-            <div className="relative" style={{ height: (CELL_H*24 + GAP_Y*23) }}>
-              {[0,6,12,18,24].map(h=>{
-                const top = ((h/24) * 100)
-                return (
-                  <div key={h} className={["absolute right-0 translate-y-[-50%] text-[10px]", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ top: `${top}%` }}>{h===0? '12a' : h<12? `${h}a` : h===12? '12p' : `${h-12}p`}</div>
-                )
-              })}
+            {/* Heatmap scroller aligned with ribbons above */}
+            <div ref={scrollerRef} className="flex-1 overflow-x-auto no-scrollbar">
+              <div style={ribbonsInnerW? { width: ribbonsInnerW } : { width: `${scaleWidthPct}%` }}>
+                {/* Heatmap grid only (day labels are shown above in the ribbons header) */}
+                <div className="relative" style={{ height: (CELL_H*24 + GAP_Y*23) }}>
+                  {DAYS.map((d,di)=>{
+                    const left = dayRects ? dayRects[di]?.left : (ribbonsInnerW? (di*(ribbonsInnerW/7)) : undefined)
+                    const width = dayRects ? dayRects[di]?.width : (ribbonsInnerW? (ribbonsInnerW/7) : undefined)
+                    return (
+                      <div key={d} className="absolute inset-y-0" style={(dayRects||ribbonsInnerW)? { left, width } : { left: `${(di/7)*100}%`, width: `${(1/7)*100}%` }}>
+                        {Array.from({length:24},(_,h)=>h).map(h=>{
+                          const top = h*(CELL_H+GAP_Y)
+                          const v = counts[di][h]
+                          const title = `${d} — ${String(h).padStart(2,'0')}:00 to ${String(h+1).padStart(2,'0')}:00 • ${v} on deck`
+                          return <div key={h} className="w-full" style={{ position:'absolute', top, height: CELL_H, backgroundColor: colorFor(v), borderRadius: 2 }} title={title} />
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
         )}
       </div>
     </div>

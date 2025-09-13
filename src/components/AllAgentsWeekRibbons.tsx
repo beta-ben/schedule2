@@ -26,6 +26,7 @@ export default function AllAgentsWeekRibbons({
   highlightIds,
   selectedIds,
   onToggleSelect,
+  showNameColumn = true,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -45,6 +46,7 @@ export default function AllAgentsWeekRibbons({
   highlightIds?: Set<string> | string[]
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
+  showNameColumn?: boolean
 }){
   // Hover state for global time indicator (across all agents)
   const [hoverX, setHoverX] = React.useState<number|null>(null)
@@ -68,6 +70,11 @@ export default function AllAgentsWeekRibbons({
       setNameColPx(Math.max(MIN, Math.min(MAX, Math.ceil(max + padding))))
     }catch{ setNameColPx(160) }
   }, [agents])
+  // Expose name column width to other components (heatmap) via CSS var and event
+  React.useEffect(()=>{
+    try{ document.documentElement.style.setProperty('--schedule-name-col-px', `${nameColPx}px`) }catch{}
+    try{ window.dispatchEvent(new CustomEvent('schedule:namecol', { detail: { px: nameColPx } })) }catch{}
+  }, [nameColPx])
   const nameColClass = "shrink-0 text-left pl-1 text-sm truncate"
   const agentNamesSorted = useMemo(()=>{
     const names = agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' '))
@@ -215,17 +222,19 @@ export default function AllAgentsWeekRibbons({
   return (
     <div className="space-y-1">
       <div className="flex items-stretch gap-1">
-        {/* Left column: header spacer + names */}
-        <div className="shrink-0" style={{ width: nameColPx }}>
-          <div className="h-7 opacity-0 select-none">label</div>
-          {agentNamesSorted.length===0 ? (
-            <div className="text-sm opacity-70 px-2">No agents.</div>
-          ) : agentNamesSorted.map(name=> (
-            <div key={name} className={["flex items-center", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ height: BAND_H }} title={name}>
-              <div className={nameColClass} style={{ width: nameColPx }}>{name}</div>
-            </div>
-          ))}
-        </div>
+        {/* Left column: header spacer + names (optional) */}
+        {showNameColumn && (
+          <div className="shrink-0" style={{ width: nameColPx }}>
+            <div className="h-7 opacity-0 select-none">label</div>
+            {agentNamesSorted.length===0 ? (
+              <div className="text-sm opacity-70 px-2">No agents.</div>
+            ) : agentNamesSorted.map(name=> (
+              <div key={name} className={["flex items-center", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ height: BAND_H }} title={name}>
+                <div className={nameColClass} style={{ width: nameColPx }}>{name}</div>
+              </div>
+            ))}
+          </div>
+        )}
         {/* Right column: single synchronized horizontal scroller containing header labels and ribbons */}
         <div
           ref={scrollerRef}
@@ -243,18 +252,18 @@ export default function AllAgentsWeekRibbons({
             setHoverX(x)
           }}
         >
-          <div style={{ width: `${scaleWidthPct}%` }}>
+          <div style={{ width: `${scaleWidthPct}%` }} data-ribbons-inner="1">
             {/* Top day labels aligned to ribbons */}
             <div className="relative h-7">
-              {DAYS.map((d,i)=>{
-                const left = (i/7)*100
-                const width = (1/7)*100
-                return (
-                  <div key={d} className={["absolute text-center", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 13, lineHeight: 1.5 }}>
-                    {d}
-                  </div>
-                )
-              })}
+                {DAYS.map((d,i)=>{
+                  const left = (i/7)*100
+                  const width = (1/7)*100
+                  return (
+                    <div key={d} data-day-col={i} className={["absolute text-center", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 13, lineHeight: 1.5 }}>
+                      {d}
+                    </div>
+                  )
+                })}
               {/* Global hover time indicator line + label inside header */}
         {hoverActive && hoverX!=null && (
                 <>

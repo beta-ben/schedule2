@@ -24,6 +24,22 @@ export type PTO = {
   notes?: string
 }
 
+// One-off or recurring schedule override entries (swaps, half-days, changes).
+// Times optional: when provided, HH:MM; supports across-midnight via endDay.
+export type Override = {
+  id: string
+  person: string
+  agentId?: string
+  startDate: string // YYYY-MM-DD
+  endDate: string   // YYYY-MM-DD
+  start?: string    // HH:MM
+  end?: string      // HH:MM
+  endDay?: Day
+  kind?: string
+  notes?: string
+  recurrence?: { rule?: 'weekly'|'monthly'|'custom'; until?: string; count?: number; byDay?: Day[] }
+}
+
 export type TZOpt = { id: string; label: string; offset: number }
 
 export type Posture = 'phones' | 'chat' | 'email' | 'qa' | 'training' | 'meeting' | 'break' | 'other'

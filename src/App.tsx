@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { fmtYMD, startOfWeek } from './lib/utils'
-import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken } from './lib/api'
-import type { PTO, Shift, Task } from './types'
+import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch } from './lib/api'
+import type { PTO, Shift, Task, Override } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
@@ -12,6 +12,8 @@ import { generateSample } from './sample'
 import { TZ_OPTS } from './constants'
 
 const SAMPLE = generateSample()
+const USE_SAMPLE = (import.meta.env.VITE_USE_SAMPLE || 'no').toLowerCase() === 'yes'
+const ALLOW_DOC_FALLBACK = (import.meta.env.VITE_ALLOW_DOC_FALLBACK || 'no').toLowerCase() === 'yes'
 
 export default function App(){
   // Site-wide gate: if /api/schedule requires a site session, prompt for password.
@@ -33,8 +35,17 @@ export default function App(){
   const [view,setView] = useState<'schedule'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
-  const [theme,setTheme] = useState<"system"|"light"|"dark"|"night"|"noir"|"prism">(()=>{
-    try{ return (localStorage.getItem('schedule_theme') as any) || 'system' }catch{ return 'system' }
+  const [theme,setTheme] = useState<"system"|"default"|"night"|"noir"|"prism">(()=>{
+    try{
+      const raw = localStorage.getItem('schedule_theme') || 'system'
+      if(raw.includes('-')){
+        const base = raw.split('-')[0]
+        return (base==='light'||base==='dark') ? 'default' : (base as any)
+      }
+      if(raw==='light' || raw==='dark') return 'default'
+      if(raw==='night' || raw==='noir' || raw==='prism') return raw as any
+      return 'system'
+    }catch{ return 'system' }
   })
   const [dark,setDark] = useState(()=>{
     try{
@@ -49,13 +60,23 @@ export default function App(){
   useEffect(()=>{
     const handler = (e: Event)=>{
       const any = e as CustomEvent
-  const v = any?.detail?.value as 'light'|'dark'|'system'|'night'|'noir'|'prism' | undefined
-      if(!v) return
-      setTheme(v)
-      if(v==='light') setDark(false)
-  else if(v==='dark' || v==='night' || v==='noir' || v==='prism') setDark(true)
-      else if(v==='system') setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-      try{ localStorage.setItem('schedule_theme', v) }catch{}
+      const raw = any?.detail?.value as string | undefined
+      if(!raw) return
+      if(raw==='system'){
+        setTheme('system')
+        setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        try{ localStorage.setItem('schedule_theme', 'system') }catch{}
+        return
+      }
+      // Support legacy values and new slug format base-variant
+      let base = raw
+      let variant: 'light'|'dark' = 'dark'
+      if(raw.includes('-')){ const parts = raw.split('-'); base = parts[0]; variant = (parts[1]==='light'?'light':'dark') }
+      if(base==='light' || base==='dark'){ variant = base as any; base = 'default' }
+      if(base!=='default' && base!=='night' && base!=='noir' && base!=='prism') base='default'
+      setTheme(base as any)
+      setDark(variant==='dark')
+      try{ localStorage.setItem('schedule_theme', `${base}-${variant}`) }catch{}
     }
     window.addEventListener('schedule:set-theme', handler as any)
     return ()=> window.removeEventListener('schedule:set-theme', handler as any)
@@ -75,22 +96,23 @@ export default function App(){
       else if((mq as any).removeListener) (mq as any).removeListener(onChange)
     }
   },[])
-  // Effective theme: restrict management views to light/dark only
+  // Effective theme base
   const effectiveTheme = useMemo(()=> {
-    let t = (view==='schedule' ? theme : (dark ? 'dark' : 'light')) as 'system'|'light'|'dark'|'night'|'noir'|'prism'|string
-    if(t==='unicorn') t = 'system'
-    return t as 'system'|'light'|'dark'|'night'|'noir'|'prism'
-  }, [view, theme, dark])
+    return (theme==='system' ? 'default' : theme) as 'default'|'night'|'noir'|'prism'
+  }, [theme])
   // Compute root classes based on effective theme
   const rootCls = useMemo(()=>{
-    const base = 'min-h-screen w-full'
-    if(effectiveTheme==='night') return `${base} bg-black text-red-400`
-  if(effectiveTheme==='noir') return `${base} bg-black text-white`
-  if(effectiveTheme==='prism') return `${base} bg-black text-neutral-100`
-    return dark? `${base} bg-neutral-950 text-neutral-100` : `${base} bg-neutral-100 text-neutral-900`
+    const baseCls = 'min-h-screen w-full'
+    if(effectiveTheme==='night') return dark ? `${baseCls} bg-black text-red-400` : `${baseCls} bg-white text-red-600`
+    if(effectiveTheme==='noir') return dark ? `${baseCls} bg-black text-white` : `${baseCls} bg-white text-black`
+    if(effectiveTheme==='prism') return dark ? `${baseCls} bg-black text-neutral-100` : `${baseCls} bg-sky-50 text-sky-800`
+    // default
+    return dark? `${baseCls} bg-neutral-950 text-neutral-100` : `${baseCls} bg-neutral-100 text-neutral-900`
   }, [effectiveTheme, dark])
-  const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
-  const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
+  // Start empty to avoid placeholder flicker; only use sample when explicitly enabled
+  const [shifts, setShifts] = useState<Shift[]>(USE_SAMPLE ? SAMPLE.shifts : [])
+  const [pto, setPto] = useState<PTO[]>(USE_SAMPLE ? SAMPLE.pto : [])
+  const [overrides, setOverrides] = useState<Override[]>([])
   const [tz, setTz] = useState(TZ_OPTS[0])
   const [slimline, setSlimline] = useState<boolean>(()=>{
     try{ const v = localStorage.getItem('schedule_slimline'); if(v===null) return false; return v==='1' }
@@ -107,7 +129,7 @@ export default function App(){
     return ()=> window.removeEventListener('schedule:set-slimline', handler as any)
   },[])
   // v2: dedicated agents list (temporary local persistence)
-  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }
+  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_agents_v2_v1')
@@ -140,13 +162,14 @@ export default function App(){
     return []
   })
   const [loadedFromCloud,setLoadedFromCloud]=useState(false)
+  const prevShiftIdsRef = React.useRef<Set<string>>(new Set())
 
   const [canEdit, setCanEdit] = useState(false)
   const [editMode, setEditMode] = useState(false)
 
   // Draft scheduling state (separate from live). Persisted locally until published/discarded
   type DraftMeta = { id: string; createdBy?: string; createdAt: string; updatedAt: string; publishedAt?: string }
-  type DraftData = { shifts: Shift[]; pto: PTO[]; calendarSegs: CalendarSegment[] }
+  type DraftData = { shifts: Shift[]; pto: PTO[]; overrides: Override[]; calendarSegs: CalendarSegment[] }
   type Draft = { meta: DraftMeta; data: DraftData }
   const [draft, setDraft] = useState<Draft | null>(()=>{
     try{
@@ -169,13 +192,13 @@ export default function App(){
     const now = new Date().toISOString()
     const d: Draft = {
       meta: { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), createdBy, createdAt: now, updatedAt: now },
-      data: { shifts: JSON.parse(JSON.stringify(shifts)), pto: JSON.parse(JSON.stringify(pto)), calendarSegs: JSON.parse(JSON.stringify(calendarSegs)) }
+      data: { shifts: JSON.parse(JSON.stringify(shifts)), pto: JSON.parse(JSON.stringify(pto)), overrides: JSON.parse(JSON.stringify(overrides)), calendarSegs: JSON.parse(JSON.stringify(calendarSegs)) }
     }
     setDraft(d); saveDraftLocal(d)
   }
   const startDraftEmpty = (createdBy?: string)=>{
     const now = new Date().toISOString()
-    const d: Draft = { meta: { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), createdBy, createdAt: now, updatedAt: now }, data: { shifts: [], pto: [], calendarSegs: [] } }
+    const d: Draft = { meta: { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), createdBy, createdAt: now, updatedAt: now }, data: { shifts: [], pto: [], overrides: [], calendarSegs: [] } }
     setDraft(d); saveDraftLocal(d)
   }
   const discardDraft = ()=>{ setDraft(null); saveDraftLocal(null) }
@@ -184,12 +207,22 @@ export default function App(){
     const now = new Date().toISOString()
     const shiftsWithIds = draft.data.shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
     const ptoWithIds = draft.data.pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-  const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
-  const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs: draft.data.calendarSegs, agents: agentsPayload, updatedAt: now })
+  const agentsPayload = agentsV2.map(a=> ({
+    id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
+    firstName: a.firstName||'',
+    lastName: a.lastName||'',
+    tzId: a.tzId,
+    hidden: !!a.hidden,
+    isSupervisor: a.isSupervisor===true,
+    supervisorId: a.supervisorId ?? null,
+    notes: a.notes
+  }))
+  const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, overrides: draft.data.overrides, calendarSegs: draft.data.calendarSegs, agents: agentsPayload, updatedAt: now })
     if(ok){
       setShifts(shiftsWithIds)
       setPto(ptoWithIds)
       setCalendarSegs(draft.data.calendarSegs)
+      setOverrides(draft.data.overrides)
       const published: Draft = { ...draft, meta: { ...draft.meta, updatedAt: now, publishedAt: now } }
       try{ localStorage.setItem('schedule_last_published', JSON.stringify(published.meta)) }catch{}
       setDraft(null); saveDraftLocal(null)
@@ -247,8 +280,17 @@ export default function App(){
       const ok = !!hasCsrfToken()
       setCanEdit(ok)
       if(ok){
-        // Push current agents metadata (hidden flags, tz, names) so other users see changes
-        const payload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+        // Push current agents metadata so other users see changes
+        const payload = agentsV2.map(a=> ({
+          id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
+          firstName: a.firstName||'',
+          lastName: a.lastName||'',
+          tzId: a.tzId,
+          hidden: !!a.hidden,
+          isSupervisor: a.isSupervisor===true,
+          supervisorId: a.supervisorId ?? null,
+          notes: a.notes
+        }))
         cloudPostAgents(payload)
       }
     }
@@ -263,12 +305,14 @@ export default function App(){
       setShifts(data.shifts);
       setPto(data.pto);
       if(Array.isArray(data.calendarSegs)) setCalendarSegs(data.calendarSegs as any)
+      if(Array.isArray((data as any).overrides)) setOverrides((data as any).overrides as any)
       // Prefer cloud-backed agents if present
       if(Array.isArray((data as any).agents)){
         const arr = (data as any).agents as any[]
         setAgentsV2(arr as any)
         try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(arr)) }catch{}
       }
+      try{ prevShiftIdsRef.current = new Set((data.shifts||[]).map((s:any)=> s.id).filter(Boolean)) }catch{}
     }
     setLoadedFromCloud(true)
   })() },[siteUnlocked])
@@ -280,8 +324,12 @@ export default function App(){
   },[])
   useEffect(()=>{
     if(view==='manageV2'){
-      const desired = '#manage2'
-      if(window.location.hash !== desired){ window.location.hash = desired }
+      // Keep any sub-hash like #manage2/shifts; only ensure it starts with #manage2
+      const h = window.location.hash || ''
+      const low = h.toLowerCase()
+      if(!low.startsWith('#manage2')){
+        window.location.hash = '#manage2'
+      }
     } else {
       // schedule: remove hash for clean URL
       if(window.location.hash){
@@ -329,14 +377,41 @@ export default function App(){
   // Auto-save local edits to the cloud only when editing is allowed and NOT in draft mode
   useEffect(()=>{ 
     if(!loadedFromCloud || !canEdit || draftActive) return; 
-    const t=setTimeout(()=>{ 
+    const t=setTimeout(async ()=>{ 
       const shiftsWithIds = shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
-      const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-      const agentsPayload = agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
-      cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()}) 
+      // Detect deletions compared to last known server snapshot
+      let deletes: string[] = []
+      try{
+        const prev = prevShiftIdsRef.current
+        if(prev && prev.size>0){
+          const cur = new Set(shiftsWithIds.map(s=> s.id).filter(Boolean) as string[])
+          deletes = Array.from(prev).filter(id=> !cur.has(id))
+        }
+      }catch{}
+      // Prefer v2 batch upsert for shifts; fallback to doc post on failure
+      try{
+        const ok = await cloudPostShiftsBatch({ upserts: shiftsWithIds as any, deletes })
+        if(ok){
+          try{ prevShiftIdsRef.current = new Set(shiftsWithIds.map(s=> s.id).filter(Boolean) as string[]) }catch{}
+        } else if(ALLOW_DOC_FALLBACK) {
+          const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
+          const overridesWithIds = overrides.map(o=> (o as any).agentId ? o : ({ ...o, agentId: agentIdByFullName(o.person) }))
+          const agentsPayload = agentsV2.map(a=> ({
+            id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
+            firstName: a.firstName||'',
+            lastName: a.lastName||'',
+            tzId: a.tzId,
+            hidden: !!a.hidden,
+            isSupervisor: a.isSupervisor===true,
+            supervisorId: a.supervisorId ?? null,
+            notes: a.notes
+          }))
+          await cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, overrides: overridesWithIds as any, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()})
+        }
+      }catch{}
     },600); 
     return ()=>clearTimeout(t) 
-  },[shifts,pto,calendarSegs,loadedFromCloud,canEdit,draftActive])
+  },[shifts,pto,calendarSegs,agentsV2,loadedFromCloud,canEdit,draftActive])
 
   // Persist agent metadata (including hidden flags) even when a draft is active.
   // This lets the Hide/Show Agent toggle reflect across devices immediately without waiting for a draft publish.
@@ -345,7 +420,16 @@ export default function App(){
     const t = setTimeout(()=>{
       // Prefer agents-only endpoint to avoid schedule conflicts
       cloudPostAgents(
-        agentsV2.map(a=> ({ id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))
+        agentsV2.map(a=> ({
+          id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
+          firstName: a.firstName||'',
+          lastName: a.lastName||'',
+          tzId: a.tzId,
+          hidden: !!a.hidden,
+          isSupervisor: a.isSupervisor===true,
+          supervisorId: a.supervisorId ?? null,
+          notes: a.notes
+        }))
       )
     }, 600)
     return ()=> clearTimeout(t)
@@ -353,7 +437,7 @@ export default function App(){
 
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   // Use refs to avoid creating a render loop when setting state inside this effect.
-  const lastJsonRef = React.useRef<{ shifts: string; pto: string; cal: string; agents: string }>({ shifts: '', pto: '', cal: '', agents: '' })
+  const lastJsonRef = React.useRef<{ shifts: string; pto: string; overrides: string; cal: string; agents: string }>({ shifts: '', pto: '', overrides: '', cal: '', agents: '' })
   useEffect(()=>{
     if(view!== 'schedule') return
     if(!siteUnlocked) return
@@ -364,21 +448,62 @@ export default function App(){
       const s = JSON.stringify(data.shifts||[])
       const p = JSON.stringify(data.pto||[])
       const c = JSON.stringify(Array.isArray(data.calendarSegs)? data.calendarSegs : [])
+      const o = JSON.stringify(Array.isArray((data as any).overrides)? (data as any).overrides : [])
       const a = JSON.stringify(Array.isArray((data as any).agents)? (data as any).agents : [])
       if(s !== lastJsonRef.current.shifts){ setShifts(data.shifts); lastJsonRef.current.shifts = s }
       if(p !== lastJsonRef.current.pto){ setPto(data.pto); lastJsonRef.current.pto = p }
       if(c !== lastJsonRef.current.cal){ setCalendarSegs((data.calendarSegs as any) || []); lastJsonRef.current.cal = c }
+      if(o !== lastJsonRef.current.overrides){ setOverrides(((data as any).overrides as any) || []); lastJsonRef.current.overrides = o }
       if(a !== lastJsonRef.current.agents && Array.isArray((data as any).agents)){
         setAgentsV2((data as any).agents as any)
         lastJsonRef.current.agents = a
         try{ localStorage.setItem('schedule_agents_v2_v1', a) }catch{}
       }
+      try{ prevShiftIdsRef.current = new Set((data.shifts||[]).map((s:any)=> s.id).filter(Boolean)) }catch{}
     }
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)
     // No SSE in unified Worker path; polling is sufficient
     return ()=>{ stopped = true; clearInterval(id) }
   }, [view, siteUnlocked])
+
+  // Normalize displayed names from agents list when possible (overlay real names onto placeholder person fields)
+  useEffect(()=>{
+    if(!loadedFromCloud) return
+    if(!agentsV2 || agentsV2.length===0) return
+    // Build id -> name map once
+    const idToName = new Map<string,string>()
+    for(const a of agentsV2){
+      const nm = `${(a.firstName||'').trim()} ${(a.lastName||'').trim()}`.trim()
+      if(a.id && nm) idToName.set(a.id as string, nm)
+    }
+    // Remap shifts
+    let changedS = false
+    const remapShifts = shifts.map(s=>{
+      if(s && (s as any).agentId){
+        const nm = idToName.get((s as any).agentId as string)
+        if(nm && nm !== s.person){ changedS = true; return { ...s, person: nm } }
+      }
+      return s
+    })
+    if(changedS) setShifts(remapShifts)
+    // Remap PTO
+    let changedP = false
+    const remapPto = pto.map(p=>{
+      const id = (p as any).agentId as string | undefined
+      if(id){ const nm = idToName.get(id); if(nm && nm !== p.person){ changedP = true; return { ...p, person: nm } } }
+      return p
+    })
+    if(changedP) setPto(remapPto)
+    // Remap calendar segments
+    let changedC = false
+    const remapCal = calendarSegs.map(c=>{
+      const id = (c as any).agentId as string | undefined
+      if(id){ const nm = idToName.get(id); if(nm && nm !== c.person){ changedC = true; return { ...c, person: nm } } }
+      return c
+    })
+    if(changedC) setCalendarSegs(remapCal as any)
+  }, [loadedFromCloud, agentsV2, shifts, pto, calendarSegs])
 
   // Derived: list of unique agent names
   const agents = useMemo(()=> Array.from(new Set(shifts.map(s=>s.person))).sort(), [shifts])
@@ -435,6 +560,21 @@ export default function App(){
     )
   }
 
+  // Show a simple loader until cloud data is fetched to avoid placeholder flicker
+  if(!loadedFromCloud){
+    const dark = true
+    return (
+      <div className={dark?"min-h-screen w-full bg-neutral-950 text-neutral-100":"min-h-screen w-full bg-neutral-100 text-neutral-900"}>
+        <div className="max-w-md mx-auto p-6">
+          <section className={["rounded-2xl p-6 space-y-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
+            <div className="text-lg font-semibold">Loading schedule…</div>
+            <p className="text-sm opacity-80">Fetching the latest data.</p>
+          </section>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <ErrorCatcher dark={dark}>
   <div className={rootCls} data-theme={effectiveTheme}>
@@ -477,7 +617,7 @@ export default function App(){
                 if(dup){ alert('An agent with that name already exists.'); return }
                 setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
               }}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean })=>{
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string })=>{
                 // Compute names and check duplicates (excluding self)
                 const cur = agentsV2[index]
                 if(!cur){ return }
@@ -499,13 +639,30 @@ export default function App(){
                 }
 
                 // Finally update the agents list
-                setAgentsV2(prev=> prev.map((r,i)=> i===index ? { ...r, firstName: nextFirst, lastName: nextLast, tzId: a.tzId || r.tzId, hidden: a.hidden!=null ? a.hidden : r.hidden } : r))
+                setAgentsV2(prev=> prev.map((r,i)=> i===index ? {
+                  ...r,
+                  firstName: nextFirst,
+                  lastName: nextLast,
+                  tzId: a.tzId || r.tzId,
+                  hidden: a.hidden!=null ? a.hidden : r.hidden,
+                  isSupervisor: a.isSupervisor!=null ? !!a.isSupervisor : r.isSupervisor,
+                  supervisorId: (a.supervisorId!==undefined) ? (a.supervisorId ?? null) : r.supervisorId,
+                  notes: a.notes!==undefined ? a.notes : r.notes,
+                } : r))
               }}
-              onDeleteAgent={(index:number)=> setAgentsV2(prev=> prev.filter((_,i)=> i!==index))}
+              onDeleteAgent={(index:number)=> setAgentsV2(prev=>{
+                const target = prev[index]
+                if(!target) return prev.filter((_,i)=> i!==index)
+                const targetId = target.id
+                const filtered = prev.filter((_,i)=> i!==index)
+                if(!targetId) return filtered
+                return filtered.map(a=> a.supervisorId===targetId ? { ...a, supervisorId: null } : a)
+              })}
               weekStart={weekStart}
               tz={tz}
               shifts={draftActive ? (draft!.data.shifts) : shifts}
               pto={draftActive ? (draft!.data.pto) : pto}
+              overrides={draftActive ? (draft!.data.overrides) : overrides}
               tasks={tasks}
               calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
               onUpdateShift={(id, patch)=> setShiftsRouted(prev=> prev.map(s=> s.id===id ? { ...s, ...patch } : s))}
@@ -514,6 +671,18 @@ export default function App(){
               setTasks={setTasks}
               setCalendarSegs={setCalendarSegsRouted}
               setPto={setPtoRouted}
+              setOverrides={(updater)=>{
+                if(draftActive){
+                  setDraft(prev=>{
+                    if(!prev) return prev
+                    const nextOver = updater(prev.data.overrides)
+                    const next: Draft = { meta: { ...prev.meta, updatedAt: new Date().toISOString() }, data: { ...prev.data, overrides: nextOver } }
+                    saveDraftLocal(next); return next
+                  })
+                } else {
+                  setOverrides(updater)
+                }
+              }}
             />
           )}
         </div>

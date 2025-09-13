@@ -1,4 +1,5 @@
 import React from 'react'
+import Toggle from './Toggle'
 import { DAYS } from '../constants'
 import DayPills from './DayPills'
 import DayGrid from './DayGrid'
@@ -196,7 +197,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
             </label>
             <div className="flex items-end">
               <label className="text-xs inline-flex items-center gap-2">
-                <input type="checkbox" checked={endNextDay} onChange={e=>setEndNextDay(e.target.checked)} />
+                <Toggle ariaLabel="Ends next day" dark={dark} size="sm" checked={endNextDay} onChange={(v)=>setEndNextDay(v)} />
                 <span>Ends next day</span>
               </label>
             </div>
@@ -215,7 +216,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
           <div className="flex items-center justify-between">
             <div className="text-sm opacity-70">Preview of additions</div>
             <label className="text-xs inline-flex items-center gap-2 opacity-80">
-              <input type="checkbox" checked={showOtherAgentsInPreview} onChange={e=>setShowOtherAgentsInPreview(e.target.checked)} />
+              <Toggle ariaLabel="Show other agents" dark={dark} size="sm" checked={showOtherAgentsInPreview} onChange={(v)=>setShowOtherAgentsInPreview(v)} />
               <span>Show other agents</span>
             </label>
           </div>
@@ -329,7 +330,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
                   <tr><td colSpan={7} className="px-3 py-6 text-center opacity-70">{editAgent? 'No shifts for this agent.' : 'Choose an agent to edit shifts.'}</td></tr>
                 ) : rows.map(r=> (
                   <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
-                    <td className="px-3 py-1.5"><input type="checkbox" checked={selected.has(r.id)} onChange={()=>toggle(r.id)} /></td>
+                    <td className="px-3 py-1.5"><Toggle ariaLabel="Select row" dark={dark} size="sm" checked={selected.has(r.id)} onChange={()=>toggle(r.id)} /></td>
                     {editing===r.id ? (
                       <>
                         <td className="px-3 py-1.5"><input list="people" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ePerson} onChange={e=>setEPerson(e.target.value)} /></td>

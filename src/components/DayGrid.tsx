@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { COLS, DAYS, TZ_OPTS } from '../constants'
 import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
@@ -59,8 +59,9 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const scale = bp==='lg'?1:bp==='md'?0.9:bp==='sm'?0.82:0.75
   const PERSON_FONT_PX = Math.max(12, Math.round(13*scale))
   // Dynamic name column: fit longest name with breathing room, clamped by breakpoint
-  const MIN_NAME_COL_PX = bp==='lg'?100:bp==='md'?92:bp==='sm'?84:76
-  const MAX_NAME_COL_PX = bp==='lg'?220:bp==='md'?200:bp==='sm'?180:160
+  // Tighten name column clamps on extra-small viewports to free timeline width
+  const MIN_NAME_COL_PX = bp==='lg'?100:bp==='md'?92:bp==='sm'?84:66
+  const MAX_NAME_COL_PX = bp==='lg'?220:bp==='md'?200:bp==='sm'?180:148
   const measuredNameColPx = React.useMemo(()=>{
     try{
       if(!people || people.length===0) return MIN_NAME_COL_PX
@@ -86,7 +87,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const NOW_FONT_PX = HOUR_LABEL_PX
   const CHIP_H = Math.max(20, Math.round(24*scale))
   const CHIP_RADIUS = 6
-  const hourEvery = bp==='lg'?1:bp==='md'?2:3
+  // Show fewer hour labels on very narrow screens to reduce visual noise
+  const hourEvery = bp==='lg'?1:bp==='md'?2:bp==='sm'?3:4
   // Background columns: when all 24 labels are visible (hourEvery===1) show half-hour columns; otherwise hour columns
   const colLight = dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
   const colDark  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
@@ -182,8 +184,9 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
           {isToday && (
             <div className="absolute inset-y-0 left-2 right-2 pointer-events-none" style={{ paddingTop: Math.max(1, Math.round(1*scale)) }}>
               <div
-                className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded-md shadow-sm", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
-                style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX }}
+                key={displayNowMin}
+                className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded-md shadow-sm now-pop", dark?"bg-red-400 text-black":"bg-red-500 text-white"].join(' ')}
+                style={{ left: `${nowLeft}%`, fontSize: NOW_FONT_PX, willChange:'transform,opacity' }}
               >
                 {minToHHMM(displayNowMin)}
               </div>
@@ -305,6 +308,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                   (()=>{ const aS=sMin, aE=eMin; const bS=toMin(other.start); const bERaw=toMin(other.end); const bE=bERaw>toMin(other.start)?bERaw:1440; return aS<bE && aE>bS })()
                 ))
                 const outline = overlapsAnother ? (dark? 'inset 0 0 0 2px rgba(255,0,0,0.6)' : 'inset 0 0 0 2px rgba(255,0,0,0.7)') : undefined
+                const isHovered = hover.id===s.id
                 return (
                   <div
                     key={s.id}
@@ -347,6 +351,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         ...(bgImage ? { backgroundImage: bgImage } : {}),
                         ...(prism ? { backgroundColor: 'rgba(0,0,0,0.08)', backgroundBlendMode: 'multiply' } : {}),
                         ...(prism ? { backgroundSize: '300% 100%', animation: 'prismChip 10s linear infinite', animationDelay: `${(H%60)/30}s` } : {}),
+                        transition: 'filter 160ms ease, box-shadow 160ms ease',
+                        ...(isHovered ? { filter: 'brightness(1.06)' } : {}),
                       }
                       return <div className="absolute" style={style} />
                     })()}
@@ -393,7 +399,17 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                     {/* Always-on top border frame to keep the main chip border visible above overlays */}
                     <div
                       className="absolute pointer-events-none"
-                      style={{ left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, boxShadow: (`inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : '')), borderRadius: CHIP_RADIUS, zIndex: 5 }}
+                      style={{
+                        left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H,
+                        boxShadow: (
+                          `inset 0 0 0 1px ${baseBorder}` +
+                          (outline ? `, ${outline}` : '') +
+                          (isHovered ? `, 0 0 0 2px ${baseBorder}, 0 6px 16px rgba(0,0,0,${dark?0.5:0.25})` : '')
+                        ),
+                        borderRadius: CHIP_RADIUS,
+                        zIndex: 5,
+                        transition: 'box-shadow 160ms ease'
+                      }}
                     />
 
                     {/* Center label: first name only; hide if chip too narrow */}
@@ -411,7 +427,9 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                           ].join(' ')}
                           style={{
                             left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX,
-                            ...(prismText ? { textShadow: '0 1px 1px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.35)' } : {})
+                            ...(prismText ? { textShadow: '0 1px 1px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.35)' } : {}),
+                            transition: 'filter 160ms ease',
+                            ...(isHovered && !prismText ? { filter: 'brightness(1.02)' } : {})
                           }}
                         >
                           {show ? ((person||'').split(' ')[0] || person) : ''}

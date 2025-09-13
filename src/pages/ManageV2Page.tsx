@@ -3,6 +3,7 @@ import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
 import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
+import ProposalDiffVisualizer from '../components/ProposalDiffVisualizer'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
 import type { PTO, Shift, Task, Override } from '../types'
@@ -94,6 +95,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [proposalDetail, setProposalDetail] = React.useState<any>(null)
   const [liveDoc, setLiveDoc] = React.useState<any>(null)
   const [diffMsg, setDiffMsg] = React.useState<string>('')
+  const [showVisualDiff, setShowVisualDiff] = React.useState<boolean>(false)
   // Track whether the working session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
   // Local autosave for unpublished changes (single snapshot per week/tz)
@@ -895,10 +897,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               <button onClick={()=>{ setLoadingProposals(true); cloudListProposals().then(r=>{ setLoadingProposals(false); setProposals(r.ok?(r.proposals||[]):[]) }) }} className={["px-2.5 py-1.5 rounded-xl border text-xs", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}>Refresh</button>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="space-y-3">
             <div className={["rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
               <div className="text-xs font-medium mb-2">List</div>
-              <div className="flex flex-col gap-1 max-h-80 overflow-auto">
+              <div className="flex flex-col gap-1 max-h-56 overflow-auto">
                 {loadingProposals && (<div className="text-xs opacity-70">Loading…</div>)}
                 {(!loadingProposals && proposals.length===0) && (<div className="text-xs opacity-70">No proposals</div>)}
                 {proposals.map(p=> (
@@ -909,8 +911,16 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 ))}
               </div>
             </div>
-            <div className={["md:col-span-2 rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
-              <div className="text-xs font-medium mb-2">Diff</div>
+            <div className={["rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium">Diff</div>
+                <button
+                  type="button"
+                  onClick={()=> setShowVisualDiff(v=>!v)}
+                  className={["px-2.5 py-1 rounded-lg border text-[11px]", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+                  aria-pressed={showVisualDiff}
+                >{showVisualDiff? 'Hide visual':'Show visual'}</button>
+              </div>
               {diffMsg && (<div className="text-xs text-red-600 dark:text-red-300">{diffMsg}</div>)}
               {proposalDetail && liveDoc && (()=>{
                 const patch = proposalDetail.patch||{}
@@ -935,6 +945,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 const fmtShift = (s:any)=> `${s.person||''} — ${s.day||''} ${s.start||''}–${s.end||''}${s.endDay && s.endDay!==s.day?` (${s.endDay})`:''}`
                 const fmtPto = (p:any)=> `${p.person||''} — ${p.startDate||''} → ${p.endDate||''}${p.notes?` (${p.notes})`:''}`
                 const fmtOv = (o:any)=> `${o.person||''} — ${o.startDate||''} → ${o.endDate||''}${o.start?` ${o.start}`:''}${o.end?`–${o.end}`:''}${o.endDay?` (${o.endDay})`:''}${o.kind?` [${o.kind}]`:''}${o.notes?` (${o.notes})`:''}`
+                const liveHighlights = new Set<string>([
+                  ...dShifts.removed.map((s:any)=> s.id),
+                  ...dShifts.changed.map((c:any)=> c.before?.id).filter(Boolean),
+                ])
+                const proposalHighlights = new Set<string>([
+                  ...dShifts.added.map((s:any)=> s.id),
+                  ...dShifts.changed.map((c:any)=> c.after?.id).filter(Boolean),
+                ])
                 return (
                   <div className="space-y-3">
                     <div>
@@ -964,6 +982,22 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         {(dOv.added.length+dOv.removed.length+dOv.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
                       </div>
                     </div>
+                    {showVisualDiff && (
+                      <div className="pt-2 border-t border-neutral-800/30">
+                        <ProposalDiffVisualizer
+                          dark={dark}
+                          tz={tz}
+                          weekStart={weekStart}
+                          agents={localAgents}
+                          live={{ shifts: live.shifts, pto: live.pto }}
+                          proposal={{ shifts: patch.shifts||[], pto: patch.pto||[] }}
+                          highlightLiveIds={liveHighlights}
+                          highlightProposalIds={proposalHighlights}
+                          tasks={tasks}
+                          calendarSegs={calendarSegs}
+                        />
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -1297,8 +1331,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                     for(const s of pSegs){ const arr = byPerson.get(s.person) || []; arr.push(s); byPerson.set(s.person, arr) }
                     const people = Array.from(byPerson.keys()).sort()
                     sections.push(
-                      <div key={t.id} className={["rounded-xl border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
-                        <div className={["px-3 py-2 flex items-center justify-between", dark?"bg-neutral-900":"bg-white"].join(' ')}>
+                      <div key={t.id} className={["rounded-xl border overflow-hidden", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+                        <div className={["px-3 py-2 flex items-center justify-between rounded-t-xl", dark?"bg-neutral-900":"bg-white"].join(' ')}>
                           <span className="inline-flex items-center gap-2">
                             <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: t.color || '#888' }}></span>
                             <span className="font-medium text-sm">{t.name}</span>
@@ -1496,8 +1530,63 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           </div>
         ) : subtab==='PTO & Overrides' ? (
           <div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-3">
+          {/* Weekly PTO calendar */}
+          <div className={["mt-3 rounded-xl p-3 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium">Weekly PTO calendar</div>
+              <div className="text-xs opacity-70">Full-day entries by person</div>
+            </div>
+            {(()=>{
+              const H_PX = 220
+              const dayHeight = 22
+              const week0 = parseYMD(weekStart)
+              const ymds = DAYS.map((_,i)=> fmtYMD(addDays(week0, i)))
+              // Precompute per-day grouped pto entries
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
+                  {DAYS.map((day, di)=>{
+                    const ymd = ymds[di]
+                    const dayItems = workingPto
+                      .filter(p=> (!pt_filter || p.person===pt_filter) && p.startDate <= ymd && p.endDate >= ymd)
+                      .slice()
+                      .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
+                    // Assign lanes per person for the day to avoid overlap
+                    const laneByPerson = new Map<string, number>()
+                    let nextLane = 0
+                    const placed = dayItems.map(p=>{
+                      let lane = laneByPerson.get(p.person)
+                      if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
+                      return { p, lane }
+                    })
+                    const laneCount = Math.max(placed.length, 1)
+                    const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
+                    return (
+                      <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
+                        <div className="font-medium mb-1 flex items-baseline justify-between">
+                          <span>{day}</span>
+                          <span className="text-xs opacity-70">{parseInt(ymd.slice(8), 10)}</span>
+                        </div>
+                        <div className="absolute left-2 right-2 bottom-2 top-7">
+                          {placed.map(({p, lane})=>{
+                            const top = lane * (dayHeight + 6)
+                            const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
+                            return (
+                              <div key={`${p.id}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}`}>
+                                <span className="truncate">{disp}</span>
+                                {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <div className="space-y-3 flex-1 min-w-0">
               <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
             <div className="text-sm font-medium mb-2">Add PTO</div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end mb-3">
@@ -1624,10 +1713,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               </div>
             )}
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3 flex-1 min-w-0">
           {/* Overrides (add + list) */}
-          <div className={["rounded-xl p-3 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
-            <div className="text-sm font-medium mb-2">Add Override</div>
+          <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+            <div className="text-sm font-medium mb-2">Add Overrides</div>
             <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
               <label className="flex flex-col gap-1">
                 <span className="text-xs opacity-80">Agent</span>
@@ -1683,7 +1772,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                     <input type="date" className={["border rounded-xl px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_until} onChange={(e)=> setOvUntil(e.target.value)} />
                   </label>
                 )}
-                <button className={["ml-auto px-3 py-1.5 rounded-md text-sm font-medium border", dark?"bg-blue-600 border-blue-600 text-white hover:opacity-95":"bg-blue-600 text-white border-blue-600 hover:opacity-95"].join(' ')} onClick={()=>{
+                <button className={["ml-auto h-10 rounded-xl px-4 border font-medium", dark?"bg-blue-600 border-blue-600 text-white hover:opacity-95":"bg-blue-600 border-blue-600 text-white hover:opacity-95"].join(' ')} onClick={()=>{
                   if(!ov_agent) return alert('Choose an agent')
                   if(!ov_start || !ov_end) return alert('Choose start and end dates')
                   if(ov_end < ov_start) return alert('End date must be on/after start date')
@@ -1733,59 +1822,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           </div>
             </div>
           </div>
-
-          {/* Weekly PTO calendar */}
-          <div className={["mt-3 rounded-xl p-3 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium">Weekly PTO calendar</div>
-              <div className="text-xs opacity-70">Full-day entries by person</div>
-            </div>
-            {(()=>{
-              const H_PX = 220
-              const dayHeight = 22
-              const week0 = parseYMD(weekStart)
-              const ymds = DAYS.map((_,i)=> fmtYMD(addDays(week0, i)))
-              // Precompute per-day grouped pto entries
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
-                  {DAYS.map((day, di)=>{
-                    const ymd = ymds[di]
-                    const dayItems = workingPto
-                      .filter(p=> (!pt_filter || p.person===pt_filter) && p.startDate <= ymd && p.endDate >= ymd)
-                      .slice()
-                      .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
-                    // Assign lanes per person for the day to avoid overlap
-                    const laneByPerson = new Map<string, number>()
-                    let nextLane = 0
-                    const placed = dayItems.map(p=>{
-                      let lane = laneByPerson.get(p.person)
-                      if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
-                      return { p, lane }
-                    })
-                    const laneCount = Math.max(placed.length, 1)
-                    const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
-                    return (
-                      <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
-                        <div className="font-medium mb-1">{day}</div>
-                        <div className="absolute left-2 right-2 bottom-2 top-7">
-                          {placed.map(({p, lane})=>{
-                            const top = lane * (dayHeight + 6)
-                            const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
-                            return (
-                              <div key={`${p.id}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}`}>
-                                <span className="truncate">{disp}</span>
-                                {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-          </div>
+          
           </div>
           </div>
         ) : null

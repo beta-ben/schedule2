@@ -7,6 +7,8 @@ const BASE = process.env.GHPAGES_BASE || '/'
 export default defineConfig({
   plugins: [react()],
   base: BASE,
+  clearScreen: false,
+  logLevel: 'warn',
   // In dev, proxy API calls to the local Worker on 8787 so we have
   // same-origin cookies/CORS behavior as production.
   server: {

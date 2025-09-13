@@ -180,6 +180,18 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	background-size: 400% 400%;
 	animation: unicornChip 12s linear infinite;
 }
+
+/* Subtle pop animation for the floating Now time label */
+@keyframes nowPop {
+  0% { transform: translateX(-50%) scale(0.92); opacity: 0.85; }
+  60% { transform: translateX(-50%) scale(1.04); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1.0); opacity: 1; }
+}
+.now-pop { animation: nowPop 240ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .now-pop { animation: none; }
+}
 /* Per-chip hue variant: supply --h to control palette */
 .chip-unicorn-h {
 	background-image: linear-gradient(90deg,
@@ -327,4 +339,3 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 		50% { background-position: 100% 50%; }
 		100% { background-position: 0% 50%; }
 	}
-
