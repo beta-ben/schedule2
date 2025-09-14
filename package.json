@@ -19,7 +19,7 @@
     "dev:login": "node ./scripts/dev-magic-login.mjs $DEV_LOGIN_EMAIL",
     "dev:login:me": "node ./scripts/dev-magic-login.mjs bsteward@betabionics.com",
     "test:api": "node ./scripts/test-api.mjs",
-    "d1:migrate": "npx --yes wrangler@3.90.0 d1 migrations apply schedule2 --local",
+    "d1:migrate": "wrangler d1 migrations apply schedule2 --local",
     "seed:v1": "node ./scripts/seed-v1-from-live.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",

@@ -113,6 +113,7 @@ export default {
   // Magic link auth
   if (req.method === 'POST' && path === '/api/login-magic/request') return magicRequest(req, env, cors)
   if (req.method === 'GET' && path === '/api/login-magic/verify') return magicVerify(req, env, cors)
+  if (req.method === 'GET' && path === '/login-magic') return magicLanding(req, env, cors)
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
@@ -143,7 +144,19 @@ export default {
 }
 
 // -------- Helpers
-function json(body: any, status = 200, extra?: HeadersInit) { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...(extra||{}) } }) }
+function json(body: any, status = 200, extra?: HeadersInit) {
+  const headers = new Headers({ 'content-type': 'application/json' })
+  if (extra) {
+    if (extra instanceof Headers) {
+      extra.forEach((v, k) => headers.set(k, v))
+    } else if (Array.isArray(extra)) {
+      for (const [k, v] of extra as Array<[string, string]>) headers.set(k, v)
+    } else {
+      for (const [k, v] of Object.entries(extra as Record<string, string>)) headers.set(k, v)
+    }
+  }
+  return new Response(JSON.stringify(body), { status, headers })
+}
 function nowIso(){ return new Date().toISOString() }
 function nanoid(len=22){ const chars='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'; let s=''; const arr=new Uint8Array(len); crypto.getRandomValues(arr); for(const b of arr){ s += chars[b%chars.length] } return s }
 function getCookieMap(req: Request){ const h=req.headers.get('cookie')||''; const m=new Map<string,string>(); h.split(';').map(s=>s.trim()).filter(Boolean).forEach(p=>{ const i=p.indexOf('='); if(i>0){ m.set(p.slice(0,i), decodeURIComponent(p.slice(i+1))) } }); return m }
@@ -246,8 +259,9 @@ async function magicRequest(req: Request, env: Env, cors: Headers){
     const base = new URL(req.url)
     const appBase = (env.APP_REDIRECT_BASE||'').trim()
     const verifyUrl = `${base.origin}/api/login-magic/verify?token=${encodeURIComponent(token)}${appBase?`&r=${encodeURIComponent(appBase)}`:''}`
-    if(echoDev(env)) return json({ ok:true, role, link: verifyUrl }, 200, cors)
-    const sent = await sendMagicEmail(env, email, verifyUrl, role)
+    const landingUrl = `${base.origin}/login-magic?token=${encodeURIComponent(token)}${appBase?`&r=${encodeURIComponent(appBase)}`:''}`
+    if(echoDev(env)) return json({ ok:true, role, link: landingUrl }, 200, cors)
+    const sent = await sendMagicEmail(env, email, landingUrl, role)
     if(!sent){ console.log(`[magic] (fallback) Send link to ${email}: ${verifyUrl}`) }
     return json({ ok:true, sent }, 200, cors)
   }catch(e:any){ return json({ error:'server_error', message: e?.message || String(e) }, 500, cors) }
@@ -271,11 +285,16 @@ async function magicVerify(req: Request, env: Env, cors: Headers){
     const wantsHtml = accept.includes('text/html') || accept.includes('text/*')
     const appBase = (url.searchParams.get('r')||env.APP_REDIRECT_BASE||'').trim()
     if((row.role||'site').toLowerCase() === 'admin'){
+      // Admin session (for writes)
       const sid = nanoid(24); const csrf = nanoid(32)
       await putSession(env,'admin',sid,{ csrf })
+      // Also grant a site session so reads work without a second login
+      const siteSid = nanoid(24)
+      await putSession(env,'site',siteSid,{})
       const headers = new Headers(cors)
       headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
       headers.append('Set-Cookie', setCookieReadable('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
+      headers.append('Set-Cookie', setCookie('site_sid', siteSid, { ...base, maxAge: TTL_MS/1000 }))
       if(appBase){
         const loc = `${appBase.replace(/\/$/,'')}/#/manage`
         headers.set('Location', loc)
@@ -312,6 +331,40 @@ async function magicVerify(req: Request, env: Env, cors: Headers){
       }
     }
   }catch(e:any){ return json({ error:'server_error', message: e?.message || String(e) }, 500, cors) }
+}
+
+// Landing page to avoid email scanners consuming tokens.
+// Serves a simple HTML with a button that navigates to /api/login-magic/verify.
+async function magicLanding(req: Request, env: Env, cors: Headers){
+  const url = new URL(req.url)
+  const token = url.searchParams.get('token')||''
+  const appBase = (url.searchParams.get('r')||env.APP_REDIRECT_BASE||'').trim()
+  const base = cookieBase(env)
+  const headers = new Headers(cors)
+  headers.set('content-type','text/html; charset=utf-8')
+  const verifyPath = `/api/login-magic/verify?token=${encodeURIComponent(token)}${appBase?`&r=${encodeURIComponent(appBase)}`:''}`
+  const html = `<!doctype html>
+<html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#0a0a0a;color:#eaeaea;margin:0} .card{background:#111;border:1px solid #2a2a2a;border-radius:16px;padding:24px;max-width:480px;box-shadow:0 2px 24px rgba(0,0,0,.4)} button{background:#2563eb;border:0;color:white;border-radius:10px;padding:10px 14px;font-weight:600} a{color:#60a5fa}</style>
+<body><div class="card">
+  <h1 style="margin:0 0 8px 0;font-size:20px">Sign in to Team Schedule</h1>
+  <p style="margin:0 0 16px 0;opacity:.8">This link requires a manual click to finish signing in.</p>
+  <div>
+    <button id="go">Continue</button>
+    <div id="msg" style="margin-top:10px;font-size:13px;opacity:.8"></div>
+  </div>
+  <script>
+    const btn=document.getElementById('go');
+    const msg=document.getElementById('msg');
+    btn.addEventListener('click',()=>{
+      msg.textContent='Signing in...';
+      window.location.href = ${JSON.stringify(verifyPath)};
+    });
+  </script>
+</div></body></html>`
+  return new Response(html, { status: 200, headers })
 }
 
 // Dev-bearer admin check
