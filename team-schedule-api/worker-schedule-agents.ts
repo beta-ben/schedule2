@@ -429,9 +429,9 @@ async function delSessionD1(env: Env, kind: 'admin'|'site', sid: string){
 // Data storage in KV or D1 (settings)
 function dataKey(env: Env){ return env.DATA_KEY || 'schedule.json' }
 function useD1(env: Env){
-  // Default to D1 when a DB binding exists; env.USE_D1 can explicitly disable it.
-  const flag = (env.USE_D1 ?? '1').toString().toLowerCase()
-  return !!env.DB && (flag === '1' || flag === 'true')
+  // Always prefer D1 when a DB binding exists. During rollout, we ignore USE_D1 overrides
+  // to reduce parity issues between KV and D1. KV remains a mirror/fallback.
+  return !!env.DB
 }
 // Dev convenience: auto-create required tables if missing
 async function ensureD1Schema(env: Env){

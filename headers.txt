@@ -1,0 +1,16 @@
+HTTP/2 200 
+date: Mon, 15 Sep 2025 04:34:27 GMT
+content-type: application/json
+content-length: 53
+cf-ray: 97f569683e7f69f9-DFW
+set-cookie: sid=Q784Ku3xwlb2lkTgtIMFYDJY; Path=/; Domain=.teamschedule.cc; SameSite=None; Secure; HttpOnly; Max-Age=28800
+set-cookie: csrf=BeXMv5BKaWVCBLNm8gvJgLlD9hqkirll; Path=/; Domain=.teamschedule.cc; SameSite=None; Secure; Max-Age=28800
+access-control-allow-credentials: true
+access-control-allow-headers: content-type,x-csrf-token,authorization
+access-control-allow-methods: GET,POST,PATCH,OPTIONS
+report-to: {"endpoints":[{"url":"https:\/\/a.nel.cloudflare.com\/report\/v4?s=MXfS5JmZ6FEq3y8kkGXh%2FqgS05JPdfg97mpXMUcQh8%2F77JWagIvzuk9imrCYB76h4i%2B9Re7JvCSUqW0AjuwTGTKRZrzOrYMvWuXZCAHDlZDr3JMhUL%2FF2k0bz7vf3OmFV1oj5ugY"}],"group":"cf-nel","max_age":604800}
+nel: {"success_fraction":0,"report_to":"cf-nel","max_age":604800}
+server: cloudflare
+alt-svc: h3=":443"; ma=86400
+server-timing: cfL4;desc="?proto=TCP&rtt=26046&min_rtt=26018&rtt_var=5507&sent=7&recv=10&lost=0&retrans=0&sent_bytes=2942&recv_bytes=648&delivery_rate=111307&cwnd=254&unsent_bytes=0&cid=8d34bf80582921b9&ts=319&x=0"
+

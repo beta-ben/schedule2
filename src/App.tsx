@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { fmtYMD, startOfWeek } from './lib/utils'
-import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink } from './lib/api'
+import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite } from './lib/api'
 import type { PTO, Shift, Task, Override } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
@@ -18,7 +18,8 @@ const ALLOW_DOC_FALLBACK = (import.meta.env.VITE_ALLOW_DOC_FALLBACK || 'no').toL
 
 export default function App(){
   // Site-wide gate: if /api/schedule requires a site session, prompt for password.
-  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(true)
+  // Default to locked until probe confirms access
+  const [siteUnlocked, setSiteUnlocked] = useState<boolean>(false)
   const [sitePw, setSitePw] = useState('')
   const [siteMsg, setSiteMsg] = useState('')
   useEffect(()=>{ (async()=>{
@@ -320,8 +321,8 @@ export default function App(){
         try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(arr)) }catch{}
       }
       try{ prevShiftIdsRef.current = new Set((data.shifts||[]).map((s:any)=> s.id).filter(Boolean)) }catch{}
+      setLoadedFromCloud(true)
     }
-    setLoadedFromCloud(true)
   })() },[siteUnlocked])
   // Keep view in sync with URL hash and vice versa
   useEffect(()=>{
@@ -553,7 +554,6 @@ export default function App(){
             <div className="text-lg font-semibold">Protected — Enter Site Password</div>
             <p className="text-sm opacity-80">Sign in to view the schedule.</p>
             <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-              const { loginSite } = await import('./lib/api')
               const { ok, status } = await loginSite(sitePw)
               if(ok){ setSiteUnlocked(true); setSiteMsg(''); try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
               else if(status===401){ setSiteMsg('Incorrect password') }

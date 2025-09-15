@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "predeploy": "npm run build && cp -f public/CNAME dist/CNAME && mkdir -p dist/schedule2 && cp -a dist/assets dist/schedule2/ && cp -f dist/sw.js dist/schedule2/sw.js",
     "deploy": "gh-pages -d dist",
+    "deploy:gh:force": "gh-pages -d dist -b gh-pages -f",
     "smoke": "node ./scripts/smoke.mjs",
     "validate:prod": "node ./scripts/validate-prod.mjs",
     "seed": "node ./scripts/seed-from-cloud.mjs",
