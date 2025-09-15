@@ -38,7 +38,7 @@
 // Workers types are provided via @cloudflare/workers-types and Wrangler
 
 export interface Env {
-  SCHEDULE_KV: KVNamespace
+  SCHEDULE_KV?: KVNamespace
   ADMIN_PASSWORD: string
   SITE_PASSWORD: string
   ALLOWED_ORIGINS?: string
@@ -107,8 +107,9 @@ export default {
 
   // Lightweight diagnostics during KV -> D1 migration
   if (req.method === 'GET' && path === '/api/_health') return health(req, env, cors)
+  if (req.method === 'GET' && path === '/api/_version') return versionEndpoint(req, env, cors)
   if (req.method === 'GET' && path === '/health') return health(req, env, cors) // alias for CI tooling
-  if (req.method === 'GET' && path === '/api/_store') return storePrefEndpoint(req, env, cors)
+  // Store toggle disabled in production; D1 is the source of truth
   if (req.method === 'GET' && path === '/api/_parity') return parityEndpoint(req, env, cors)
   // Magic link auth
   if (req.method === 'POST' && path === '/api/login-magic/request') return magicRequest(req, env, cors)
@@ -146,13 +147,18 @@ export default {
 // -------- Helpers
 function json(body: any, status = 200, extra?: HeadersInit) {
   const headers = new Headers({ 'content-type': 'application/json' })
+  // Helper to correctly merge headers while preserving multiple Set-Cookie values
+  const add = (k: string, v: string)=>{
+    if (k.toLowerCase() === 'set-cookie') headers.append(k, v)
+    else headers.set(k, v)
+  }
   if (extra) {
     if (extra instanceof Headers) {
-      extra.forEach((v, k) => headers.set(k, v))
+      extra.forEach((v, k) => add(k, v))
     } else if (Array.isArray(extra)) {
-      for (const [k, v] of extra as Array<[string, string]>) headers.set(k, v)
+      for (const [k, v] of extra as Array<[string, string]>) add(k, v)
     } else {
-      for (const [k, v] of Object.entries(extra as Record<string, string>)) headers.set(k, v)
+      for (const [k, v] of Object.entries(extra as Record<string, string>)) add(k, v)
     }
   }
   return new Response(JSON.stringify(body), { status, headers })
@@ -180,18 +186,7 @@ function setCookieReadable(name: string, value: string, opts: { maxAge?: number 
 }
 function clearCookie(name: string, base: ReturnType<typeof cookieBase>){ return setCookie(name, '', { ...base, maxAge: 0 }) }
 
-type StorePref = 'kv'|'d1'
-function resolveStorePref(req: Request, env: Env): { pref: StorePref; from: 'param'|'cookie'|'env'|'default'; cookie?: string; param?: string }{
-  const url = new URL(req.url)
-  const p = (url.searchParams.get('store')||'').toLowerCase()
-  if(p === 'kv' || p === 'd1') return { pref: p, from: 'param', param: p }
-  const cookies = getCookieMap(req)
-  const c = (cookies.get('store')||'').toLowerCase()
-  if(c === 'kv' || c === 'd1') return { pref: c as StorePref, from: 'cookie', cookie: c }
-  const envFlag = (env.USE_D1||'0').toLowerCase()
-  if(envFlag === '1' || envFlag === 'true') return { pref: 'd1', from: 'env' }
-  return { pref: 'kv', from: 'default' }
-}
+// Store is locked to D1 in production. KV is used only for migration if bound.
 
 function corsHeaders(req: Request, env: Env){
   const origin = req.headers.get('Origin') || ''
@@ -383,15 +378,23 @@ function authDevBearerOk(req: Request, env: Env){
 const TTL_MS = 8 * 60 * 60 * 1000
 async function putSession(env: Env, kind: 'admin'|'site', sid: string, data: any){
   if(useD1(env)) return putSessionD1(env, kind, sid, data)
-  await env.SCHEDULE_KV.put(`${kind}:${sid}`, JSON.stringify({ ...data, exp: Date.now()+TTL_MS }), { expirationTtl: Math.ceil(TTL_MS/1000) })
+  const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+  if(!kvNs) throw new Error('kv_unavailable')
+  await kvNs.put(`${kind}:${sid}`, JSON.stringify({ ...data, exp: Date.now()+TTL_MS }), { expirationTtl: Math.ceil(TTL_MS/1000) })
 }
 async function getSession(env: Env, kind: 'admin'|'site', sid: string){
   if(useD1(env)) return getSessionD1(env, kind, sid)
-  const raw = await env.SCHEDULE_KV.get(`${kind}:${sid}`); if(!raw) return null; try{ const j = JSON.parse(raw); if(j.exp && j.exp < Date.now()){ await env.SCHEDULE_KV.delete(`${kind}:${sid}`); return null } return j }catch{ return null }
+  const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+  if(!kvNs) return null
+  const raw = await kvNs.get(`${kind}:${sid}`)
+  if(!raw) return null
+  try{ const j = JSON.parse(raw); if(j.exp && j.exp < Date.now()){ await kvNs.delete(`${kind}:${sid}`); return null } return j }catch{ return null }
 }
 async function delSession(env: Env, kind: 'admin'|'site', sid: string){
   if(useD1(env)) return delSessionD1(env, kind, sid)
-  await env.SCHEDULE_KV.delete(`${kind}:${sid}`)
+  const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+  if(!kvNs) return
+  await kvNs.delete(`${kind}:${sid}`)
 }
 
 async function putSessionD1(env: Env, kind: 'admin'|'site', sid: string, data: any){
@@ -425,7 +428,11 @@ async function delSessionD1(env: Env, kind: 'admin'|'site', sid: string){
 
 // Data storage in KV or D1 (settings)
 function dataKey(env: Env){ return env.DATA_KEY || 'schedule.json' }
-function useD1(env: Env){ return (env.USE_D1||'0') === '1' && !!env.DB }
+function useD1(env: Env){
+  // Default to D1 when a DB binding exists; env.USE_D1 can explicitly disable it.
+  const flag = (env.USE_D1 ?? '1').toString().toLowerCase()
+  return !!env.DB && (flag === '1' || flag === 'true')
+}
 // Dev convenience: auto-create required tables if missing
 async function ensureD1Schema(env: Env){
   if(!env.DB) return
@@ -440,6 +447,22 @@ async function ensureD1Schema(env: Env){
   try{
     await env.DB.prepare('CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT, active INTEGER NOT NULL DEFAULT 1, meta TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_agents_active ON agents(active)').run()
+    // Shifts table for v2 endpoints
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS shifts (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        start_ts INTEGER NOT NULL,
+        end_ts INTEGER NOT NULL,
+        role TEXT,
+        note TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        FOREIGN KEY(agent_id) REFERENCES agents(id) ON DELETE CASCADE
+      )`
+    ).run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_shifts_start ON shifts(start_ts)').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_shifts_agent_start ON shifts(agent_id,start_ts)').run()
   }catch{}
   // Magic link tokens and users allowlist
   try{
@@ -491,13 +514,53 @@ async function writeDocD1(env: Env, doc: ScheduleDoc){
      ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=unixepoch()`
   ).bind(dataKey(env), json).run()
 }
+// Prefer configured store, but auto-migrate once if data exists in the other store.
+// This heals deployments where bindings or USE_D1 flipped and avoids “missing data”.
 async function readDoc(env: Env): Promise<ScheduleDoc | null>{
-  if(useD1(env)) return await readDocD1(env)
-  const raw = await env.SCHEDULE_KV.get(dataKey(env)); if(!raw) return null; try{ return JSON.parse(raw) }catch{ return null }
+  const key = dataKey(env)
+  if(useD1(env)){
+    // Preferred: D1
+    const d1 = await readDocD1(env)
+    if(d1) return d1
+    // Fallback: try KV, then migrate into D1 if found
+    try{
+      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+      if(kvNs){
+        const raw = await kvNs.get(key)
+        if(raw){
+          try{ const fromKv = JSON.parse(raw) as ScheduleDoc; await writeDocD1(env, fromKv); return fromKv }catch{}
+        }
+      }
+    }catch{}
+    return null
+  } else {
+    // Preferred: KV
+    try{
+      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+      if(kvNs){
+        const raw = await kvNs.get(key)
+        if(raw){ try{ return JSON.parse(raw) as ScheduleDoc }catch{ return null } }
+      }
+    }catch{}
+    // Fallback: try D1, then mirror into KV if found
+    const fromD1 = await readDocD1(env)
+    if(fromD1){ try{ const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined; if(kvNs) await kvNs.put(key, JSON.stringify(fromD1, null, 2)) }catch{}; return fromD1 }
+    return null
+  }
 }
 async function writeDoc(env: Env, doc: ScheduleDoc){
-  if(useD1(env)) return await writeDocD1(env, doc)
-  await env.SCHEDULE_KV.put(dataKey(env), JSON.stringify(doc, null, 2))
+  const key = dataKey(env)
+  const json = JSON.stringify(doc, null, 2)
+  if(useD1(env)){
+    await writeDocD1(env, doc)
+    // Best-effort mirror to KV for safety during transitions
+    try{ const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined; if(kvNs) await kvNs.put(key, json) }catch{}
+  } else {
+    const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+    if(kvNs) await kvNs.put(key, json)
+    // Best-effort mirror to D1 when bound
+    try{ await writeDocD1(env, doc) }catch{}
+  }
 }
 
 // Auth handlers
@@ -757,26 +820,36 @@ function upsertAgents(prev: Agent[], inc: Agent[]): Agent[]{
   return Array.from(byId.values())
 }
 
-// ---- Store canary helpers
-async function storePrefEndpoint(req: Request, env: Env, cors: Headers){
-  const base = cookieBase(env)
-  const url = new URL(req.url)
-  const set = (url.searchParams.get('set')||'').toLowerCase()
-  const valid = set === 'kv' || set === 'd1'
-  const cookies = new Headers(cors)
-  if(valid){ cookies.append('Set-Cookie', setCookie('store', set, { ...base, maxAge: 60*60 })) }
-  const resolved = resolveStorePref(req, env)
-  return json({ ok:true, set: valid? set : undefined, resolved }, 200, cookies)
-}
-
 async function parityEndpoint(req: Request, env: Env, cors: Headers){
   // Compare top-level doc presence/updatedAt from KV vs D1 availability
-  const kvRaw = await env.SCHEDULE_KV.get(dataKey(env))
+  const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+  const kvRaw = kvNs ? await kvNs.get(dataKey(env)) : undefined
   let kvUpdatedAt: string | undefined
   try{ if(kvRaw){ const j = JSON.parse(kvRaw); if(j && typeof j.updatedAt==='string') kvUpdatedAt = j.updatedAt } }catch{}
   let d1Ok = false
   try{ if(env.DB){ const r = await env.DB.prepare('SELECT 1 as ok').first<any>(); d1Ok = !!(r && (r.ok===1||r.ok==='1')) } }catch{}
   return json({ kv: { present: !!kvRaw, updatedAt: kvUpdatedAt }, d1: { ok: d1Ok } }, 200, cors)
+}
+
+// Simple version echo to verify live code + vars
+async function versionEndpoint(req: Request, env: Env, cors: Headers){
+  const body = {
+    ok: true,
+    time: nowIso(),
+    vars: {
+      require_site_session: (env.REQUIRE_SITE_SESSION||'').toString(),
+      use_d1: (env.USE_D1||'').toString(),
+      app_redirect_base: (env.APP_REDIRECT_BASE||'').toString(),
+      allowed_origins: (env.ALLOWED_ORIGINS||env.CORS_ORIGINS||'').toString(),
+    },
+    routes: {
+      magic_landing: '/login-magic',
+      magic_request: '/api/login-magic/request',
+      magic_verify: '/api/login-magic/verify',
+      schedule: '/api/schedule'
+    }
+  }
+  return json(body, 200, cors)
 }
 
 // ---- Diagnostics endpoint
@@ -786,9 +859,10 @@ async function health(req: Request, env: Env, cors: Headers){
   let kvOk = false
   let kvUpdatedAt: string | undefined
   try{
-    const raw = await env.SCHEDULE_KV.get(dataKey(env))
+    const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+    const raw = kvNs ? await kvNs.get(dataKey(env)) : undefined
     if(raw){ try{ const j = JSON.parse(raw as string); if(j && typeof j.updatedAt === 'string') kvUpdatedAt = j.updatedAt }catch{} }
-    kvOk = true
+    kvOk = !!kvNs
   }catch{ kvOk = false }
   // D1 probe
   let d1Ok = false
@@ -815,6 +889,7 @@ async function getAgentsV2(req: Request, env: Env, cors: Headers){
   const gate = await requireSite(req, env)
   if(!gate.ok) return json(gate.body, gate.status, cors)
   if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
   const { results } = await env.DB.prepare('SELECT id,name,color,active,meta FROM agents WHERE active=1 ORDER BY name').all()
   const agents = (results||[]).map((r:any)=>{
     const meta = r.meta ? (()=>{ try{return JSON.parse(String(r.meta))}catch{return undefined} })() : undefined
@@ -847,6 +922,7 @@ async function getShiftsV2(req: Request, env: Env, cors: Headers){
   const gate = await requireSite(req, env)
   if(!gate.ok) return json(gate.body, gate.status, cors)
   if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
   const url = new URL(req.url)
   const start = Number(url.searchParams.get('start_ts')||'')
   const end = Number(url.searchParams.get('end_ts')||'')

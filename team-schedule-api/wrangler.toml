@@ -15,16 +15,16 @@ id = "a99ca3fba4c04b32bb9f138a64b2c95a"
 # Non‑secret defaults for Production. Secrets (e.g., RESEND_API_KEY, ADMIN_PASSWORD,
 # SITE_PASSWORD) must be set via `wrangler secret put` or the Dashboard.
 
-# CORS allowlist for the web app
-ALLOWED_ORIGINS = "https://teamschedule.cc,https://api.teamschedule.cc"
+# CORS allowlist for the web app (Pages origin + custom domain)
+ALLOWED_ORIGINS = "https://teamschedule.cc,https://teamschedulecc.pages.dev"
 
 # Cookies across app + API subdomains
 COOKIE_DOMAIN = ".teamschedule.cc"
 COOKIE_SECURE = "true"
-COOKIE_SAMESITE = "Lax"
+COOKIE_SAMESITE = "None"
 
 # Gate reads behind a site session
-REQUIRE_SITE_SESSION = "true"
+REQUIRE_SITE_SESSION = "false"
 
 # Redirect base after magic verify
 APP_REDIRECT_BASE = "https://teamschedule.cc"
@@ -34,7 +34,7 @@ MAGIC_ALLOWED_DOMAINS = "betabionics.com"
 MAGIC_FROM_EMAIL = "Team Schedule <auth@teamschedule.cc>"
 
 # Prefer D1 by default; KV remains a fallback if USE_D1="0"
-USE_D1 = "1"
+USE_D1 = "0"
 
 [[d1_databases]]
 binding = "DB"
