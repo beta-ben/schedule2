@@ -146,19 +146,19 @@ export default {
 
 // -------- Helpers
 function json(body: any, status = 200, extra?: HeadersInit) {
-  const headers = new Headers({ 'content-type': 'application/json' })
-  // Helper to correctly merge headers while preserving multiple Set-Cookie values
-  const add = (k: string, v: string)=>{
-    if (k.toLowerCase() === 'set-cookie') headers.append(k, v)
-    else headers.set(k, v)
+  // If caller passed a Headers object (as we do in login to append multiple Set-Cookie values),
+  // clone it directly so we don't lose duplicate Set-Cookie entries when iterating.
+  if (extra instanceof Headers) {
+    const headers = new Headers(extra)
+    if (!headers.has('content-type')) headers.set('content-type', 'application/json')
+    return new Response(JSON.stringify(body), { status, headers })
   }
+  const headers = new Headers({ 'content-type': 'application/json' })
   if (extra) {
-    if (extra instanceof Headers) {
-      extra.forEach((v, k) => add(k, v))
-    } else if (Array.isArray(extra)) {
-      for (const [k, v] of extra as Array<[string, string]>) add(k, v)
+    if (Array.isArray(extra)) {
+      for (const [k, v] of extra as Array<[string, string]>) headers.set(k, v)
     } else {
-      for (const [k, v] of Object.entries(extra as Record<string, string>)) add(k, v)
+      for (const [k, v] of Object.entries(extra as Record<string, string>)) headers.set(k, v)
     }
   }
   return new Response(JSON.stringify(body), { status, headers })
