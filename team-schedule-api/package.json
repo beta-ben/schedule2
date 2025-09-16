@@ -3,8 +3,13 @@
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
+		"setup": "npm install && cd team-schedule-api && npm install",
 		"deploy": "wrangler deploy",
+<<<<<<< HEAD
+		"dev": "concurrently -n web,api -c '#00bcd4,#ff9800' 'vite --host --port 5173' 'cd team-schedule-api && DEV_MODE=1 wrangler dev --port 5174'",
+=======
 		"dev": "wrangler dev --persist-to .wrangler/state --log-level warn",
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 		"start": "wrangler dev"
 	},
 	"devDependencies": {

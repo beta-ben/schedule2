@@ -236,33 +236,9 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		return { ...s, day: newDay, start: newStart, end: newEnd, endDay: newEndDay }
 	}
 
-	// Global rule: an agent cannot have overlapping shifts.
-	// Compare absolute minute ranges within a 0..10080 band (inclusive start, exclusive end).
-	const rangesOverlap = (aStart:number, aEnd:number, bStart:number, bEnd:number)=> (
-		Math.max(aStart, bStart) < Math.min(aEnd, bEnd)
-	)
-	const absRange = (s: Shift)=>{
-		const minutesInDay = 1440
-		const sd = shiftDayIndex(s.day)
-		const eday = (s as any).endDay || s.day
-		const ed = shiftDayIndex(eday)
-		const sMin = toMinLocal(s.start)
-		const eMin = toMinLocal(s.end)
-		const sAbs = sd*minutesInDay + sMin
-		let eAbs = ed*minutesInDay + eMin
-		if(ed < sd){
-			// Wrap into next week (e.g., Sat -> Sun)
-			eAbs += 7*minutesInDay
-		}else if(ed === sd && eAbs <= sAbs){
-			// Same day but ends after midnight
-			eAbs += minutesInDay
-		}
-		return { start: sAbs, end: eAbs }
-	}
-
-	const shiftDurationMin = (s: Shift)=>{
-		const r = absRange(s); return Math.max(0, r.end - r.start)
-	}
+	// Overlap + duration helpers centralized
+	import { hasAnyOverlap, shiftDurationMinutes } from '../../lib/overlap'
+	const shiftDurationMin = (s: Shift)=> shiftDurationMinutes(s)
 
 	const fmtDuration = (min: number)=>{
 		const h = Math.floor(min/60); const m = min%60
@@ -275,15 +251,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const breakMinutesAll = agentShiftsLocal.length * 30
 	const billableMinutesAll = Math.max(0, totalMinutesAll - breakMinutesAll)
 
-	const wouldOverlap = (candidate: Shift, all: Shift[])=>{
-		const c = absRange(candidate)
-		for(const s of all){
-			if(s.id===candidate.id) continue
-			const r = absRange(s)
-			if(rangesOverlap(c.start, c.end, r.start, r.end)) return true
-		}
-		return false
-	}
+	const wouldOverlap = (candidate: Shift, all: Shift[])=> hasAnyOverlap(candidate, all)
 
 	const handleDragAll = (deltaMinutes:number)=>{
 		captureUndo()
@@ -292,11 +260,9 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		const nextList = agentShiftsLocal.map(s=> applyDeltaToShift(s, deltaMinutes))
 		// Validate pairwise to be safe
 		for(let i=0;i<nextList.length;i++){
-			for(let j=i+1;j<nextList.length;j++){
-				if(wouldOverlap(nextList[i], nextList)){
-					alert('Move would cause overlapping shifts for this agent.');
-					return
-				}
+			if(wouldOverlap(nextList[i], nextList)){
+				alert('Move would cause overlapping shifts for this agent.');
+				return
 			}
 		}
 		setAgentShiftsLocal(nextList)

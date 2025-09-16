@@ -1,22 +1,29 @@
 # team-schedule-api (Cloudflare Worker)
 
-Worker that serves /api/schedule with agents (including hidden) and cookie-based sessions.
+Worker that serves /api/schedule with agents (including hidden) using a single admin session (sid + csrf). View-only/site session removed.
 
 ## Endpoints
 - POST /api/login        → sets admin session (sid) + CSRF (csrf)
-- POST /api/logout
-- POST /api/login-site   → sets view session (site_sid)
-- POST /api/logout-site
-- GET  /api/schedule     → reads schedule (requires site session if REQUIRE_SITE_SESSION=true)
+- POST /api/logout       → clears admin session
+- GET  /api/schedule     → reads schedule (no secondary site session required)
 - POST /api/schedule     → writes schedule (requires admin + CSRF)
+<<<<<<< HEAD
+- GET  /api/events       → Server-Sent Events (SSE) stream; emits "updated" when schedule KV updated
+=======
  - GET  /api/v2/agents   → list agents (D1)
  - GET  /api/v2/shifts   → list shifts in range (D1)
  - PATCH /api/v2/agents  → upsert agents (admin)
  - POST /api/v2/shifts/batch → upsert/delete shifts (admin)
  - POST /api/login-magic/request → request magic link (dev echo returns link)
  - GET  /api/login-magic/verify?token=… → verify token, set cookies
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
 ## Storage
+<<<<<<< HEAD
+- KV: `SCHEDULE_KV` stores the schedule doc and admin sessions
+  - Doc key: `DATA_KEY` (default `schedule.json`)
+  - Sessions: `admin:<sid>` with 8h TTL
+=======
 - D1 (preferred when `USE_D1=1`):
   - Table `settings` stores the schedule doc at key `DATA_KEY` (default `schedule.json`).
   - Table `sessions` stores short‑lived sessions (8h TTL) for `admin`/`site`.
@@ -25,9 +32,9 @@ Worker that serves /api/schedule with agents (including hidden) and cookie-based
 - KV (fallback when `USE_D1=0`):
   - Doc key: `DATA_KEY` (default `schedule.json`).
   - Sessions: `admin:<sid>`, `site:<sid>` with 8h TTL.
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
 ## Deploy (local)
-- From repo root or this folder:
 
 ```bash
 cd team-schedule-api
@@ -35,14 +42,25 @@ npm i
 npm run dev
 ```
 
-Then login and test with cookies:
+Then login and test with cookies & optional SSE listener:
 
 ```bash
+<<<<<<< HEAD
+# Admin login (sets sid + csrf)
+curl -i http://localhost:5174/api/login \
+  -H 'Origin: http://localhost:5173' \
+=======
 # Admin login (sets cookies; in dev, body also includes csrf and sid)
 curl -i http://localhost:8787/api/login \
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   -H 'Content-Type: application/json' \
   --data '{"password":"<ADMIN_PASSWORD>"}'
 
+<<<<<<< HEAD
+# Read schedule (no extra cookie needed)
+curl -i http://localhost:5174/api/schedule \
+  -H 'Origin: http://localhost:5173'
+=======
 # Example dev response body:
 # {"ok":true,"csrf":"<token>","sid":"<sid>"}
 
@@ -50,13 +68,29 @@ curl -i http://localhost:8787/api/login \
 curl -i http://localhost:8787/api/schedule
 # If your dev env enforces a site session, login first:
 # curl -i -X POST http://localhost:8787/api/login-site -H 'content-type: application/json' --data '{"password":"<SITE_PASSWORD>"}'
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
+<<<<<<< HEAD
+# Write schedule
+curl -i http://localhost:5174/api/schedule \
+  -H 'Origin: http://localhost:5173' \
+=======
 # Write schedule (dev‑friendly): requires admin session and CSRF header
 curl -i -X POST http://localhost:8787/api/schedule \
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   -H 'Content-Type: application/json' \
+<<<<<<< HEAD
+  -H "x-csrf-token: <csrfFromCookie>" \
+  --cookie "sid=<sidFromCookie>; csrf=<csrfFromCookie>" \
+  --data '{"schemaVersion":2,"shifts":[],"pto":[],"calendarSegs":[],"agents":[],"updatedAt":"2020-01-01T00:00:00Z"}'
+
+# Listen for update events (SSE)
+curl -N http://localhost:5174/api/events -H 'Origin: http://localhost:5173'
+=======
   -H "x-csrf-token: <csrfFromLoginBody>" \
   --cookie "sid=<sidFromLoginBody>" \
   --data '{"schemaVersion":2,"shifts":[],"pto":[],"calendarSegs":[],"agents":[],"updatedAt":"2025-01-01T00:00:00Z"}'
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 ```
 
 ## Git-based deploy via Cloudflare dashboard
@@ -65,12 +99,22 @@ curl -i -X POST http://localhost:8787/api/schedule \
   - Deploy command: `npx wrangler deploy`
   - Build command: leave empty (Wrangler builds directly)
 - Ensure KV binding exists on the Worker: `SCHEDULE_KV`
-- Set variables: `ADMIN_PASSWORD`, `SITE_PASSWORD`, optionally `ALLOWED_ORIGINS` (or `CORS_ORIGINS`), `COOKIE_DOMAIN`.
+- Set variable: `ADMIN_PASSWORD`, optionally `ALLOWED_ORIGINS` (or `CORS_ORIGINS`), `COOKIE_DOMAIN`.
+
+## Env Vars
+See `.dev.vars.example` for a documented template. Key vars:
+- ADMIN_PASSWORD: required for login.
+- ALLOWED_ORIGINS / CORS_ORIGINS: optional allowlist of origins.
+- COOKIE_DOMAIN: production cookie domain.
+- DATA_KEY: override schedule doc key (default schedule.json).
+- USE_D1: enable optional D1-backed endpoints.
+- DEV_MODE: relax caching, extra logs locally.
 
 ## Notes
-- The worker enforces schemaVersion >= 2 and persists `agents[]` (with `hidden`) so all clients see the same hidden state.
-- If `agents` is omitted in POST, the previous `agents` list is preserved.
-- The client already includes `agents` in publish/auto-save and prefers server-supplied `agents`.
+- Single-session model only (no separate site/view session or password).
+- /api/events SSE lets clients react quickly; falls back to polling if desired.
+- Enforces schemaVersion >= 2 and persists `agents[]` (including `hidden`).
+- Omitted `agents` in POST preserves prior list (idempotent agent updates).
 
 ## Seed dev from live
 

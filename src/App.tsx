@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useScheduleLive } from './hooks/useScheduleLive'
 import { fmtYMD, startOfWeek } from './lib/utils'
 import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite } from './lib/api'
 import type { PTO, Shift, Task, Override } from './types'
@@ -17,6 +18,10 @@ const USE_SAMPLE = (import.meta.env.VITE_USE_SAMPLE || 'no').toLowerCase() === '
 const ALLOW_DOC_FALLBACK = (import.meta.env.VITE_ALLOW_DOC_FALLBACK || 'no').toLowerCase() === 'yes'
 
 export default function App(){
+<<<<<<< HEAD
+  // Unified backend: site always unlocked (server enforces if needed)
+  const hashToView = (hash:string): 'schedule'|'manageV2' => {
+=======
   // Site-wide gate: if /api/schedule requires a site session, prompt for password.
   // Default to locked until probe confirms access
   const [siteUnlocked, setSiteUnlocked] = useState<boolean>(false)
@@ -32,6 +37,7 @@ export default function App(){
     }catch{ setSiteUnlocked(false) }
   })() }, [])
   const hashToView = (hash:string): 'schedule'|'teams'|'manageV2' => {
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     const h = (hash||'').toLowerCase()
     if(h.includes('teams')) return 'teams'
     if(h.includes('manage2')) return 'manageV2'
@@ -117,10 +123,16 @@ export default function App(){
     // default
     return dark? `${baseCls} bg-neutral-950 text-neutral-100` : `${baseCls} bg-neutral-100 text-neutral-900`
   }, [effectiveTheme, dark])
+<<<<<<< HEAD
+  // Live schedule state (replaced later by draft overrides if editing)
+  const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
+  const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
+=======
   // Start empty to avoid placeholder flicker; only use sample when explicitly enabled
   const [shifts, setShifts] = useState<Shift[]>(USE_SAMPLE ? SAMPLE.shifts : [])
   const [pto, setPto] = useState<PTO[]>(USE_SAMPLE ? SAMPLE.pto : [])
   const [overrides, setOverrides] = useState<Override[]>([])
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const [tz, setTz] = useState(TZ_OPTS[0])
   const [slimline, setSlimline] = useState<boolean>(()=>{
     try{ const v = localStorage.getItem('schedule_slimline'); if(v===null) return false; return v==='1' }
@@ -306,6 +318,10 @@ export default function App(){
     return ()=> window.removeEventListener('schedule:auth', onAuth as any)
   }, [agentsV2])
 
+<<<<<<< HEAD
+  // Initial load handled by live hook (below) instead of bespoke effect
+  useEffect(()=>{ setLoadedFromCloud(true) },[])
+=======
   useEffect(()=>{ (async()=>{
     if(!siteUnlocked) return
     const data=await cloudGet();
@@ -324,6 +340,7 @@ export default function App(){
       setLoadedFromCloud(true)
     }
   })() },[siteUnlocked])
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   // Keep view in sync with URL hash and vice versa
   useEffect(()=>{
     const handler = ()=> setView(hashToView(window.location.hash))
@@ -449,10 +466,31 @@ export default function App(){
     return ()=> clearTimeout(t)
   }, [agentsV2, loadedFromCloud, canEdit])
 
+<<<<<<< HEAD
+  // Live schedule subscription (poll + SSE) active only on schedule view
+  const live = useScheduleLive({
+    enabled: view==='schedule',
+    sse: true,
+    intervalMs: 5 * 60 * 1000
+  })
+  const [lastLiveUpdate,setLastLiveUpdate] = useState<number|undefined>(undefined)
+  // Reconcile live.doc into state (unless draft active which isolates editing)
+=======
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   // Use refs to avoid creating a render loop when setting state inside this effect.
   const lastJsonRef = React.useRef<{ shifts: string; pto: string; overrides: string; cal: string; agents: string }>({ shifts: '', pto: '', overrides: '', cal: '', agents: '' })
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   useEffect(()=>{
+<<<<<<< HEAD
+    if(!live.doc) return
+    if(draftActive) return
+    setShifts(live.doc.shifts)
+    setPto(live.doc.pto)
+    setCalendarSegs(live.doc.calendarSegs as any)
+    if(Array.isArray(live.doc.agents)){
+      setAgentsV2(live.doc.agents as any)
+      try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(live.doc.agents)) }catch{}
+=======
     if(view!== 'schedule') return
     if(!siteUnlocked) return
     let stopped = false
@@ -474,7 +512,12 @@ export default function App(){
         try{ localStorage.setItem('schedule_agents_v2_v1', a) }catch{}
       }
       try{ prevShiftIdsRef.current = new Set((data.shifts||[]).map((s:any)=> s.id).filter(Boolean)) }catch{}
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     }
+<<<<<<< HEAD
+    setLastLiveUpdate(Date.now())
+  }, [live.doc, draftActive])
+=======
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)
     // No SSE in unified Worker path; polling is sufficient
@@ -518,6 +561,7 @@ export default function App(){
     })
     if(changedC) setCalendarSegs(remapCal as any)
   }, [loadedFromCloud, agentsV2, shifts, pto, calendarSegs])
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
   // Derived: list of unique agent names
   const agents = useMemo(()=> Array.from(new Set(shifts.map(s=>s.person))).sort(), [shifts])
@@ -545,6 +589,9 @@ export default function App(){
     }
   }, [loadedFromCloud, shifts, agentsV2])
 
+<<<<<<< HEAD
+  // Site password gate removed (unified dev mode)
+=======
   if(!siteUnlocked){
     const dark = true
     return (
@@ -576,6 +623,7 @@ export default function App(){
       </div>
     )
   }
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
   // Show a simple loader until cloud data is fetched to avoid placeholder flicker
   if(!loadedFromCloud){
@@ -604,6 +652,7 @@ export default function App(){
           canEdit={canEdit}
           editMode={editMode}
           setEditMode={setEditMode}
+          liveMeta={view==='schedule' ? { loading: live.loading, lastUpdate: lastLiveUpdate, onRefresh: ()=> live.refresh() } : undefined}
           />
 
           {view==='schedule' ? (

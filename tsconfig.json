@@ -11,8 +11,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["vite/client"]
+    "types": ["vite/client", "vitest"]
   },
+<<<<<<< HEAD
+  "include": ["src", "vitest.config.ts"]
+=======
   "include": ["src"],
   "exclude": ["src/__tests__"]
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 }

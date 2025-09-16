@@ -6,6 +6,7 @@ import DayGrid from './DayGrid'
 import AgentWeekGrid from './AgentWeekGrid'
 import type { PTO, Shift, Task } from '../types'
 import { isValidHHMM, toMin, minToHHMM, uid, shiftKey, shiftKeyOf, addDays, fmtNice, fmtYMD, shiftsForDayInTZ } from '../lib/utils'
+import { hasPersonShiftConflict } from '../lib/overlap'
 
 export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDate, pto, tz, tasks, calendarSegs, agents }:{
   shifts: Shift[]
@@ -30,37 +31,10 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
   const [editOpen, setEditOpen] = React.useState(true)
   const allPeople = React.useMemo(()=>Array.from(new Set(shifts.map(s=>s.person))).sort(),[shifts])
 
-  // Helpers for overlap detection (same person)
-  function normalizeInterval(startHHMM:string, endHHMM:string, forceOvernight?: boolean){
-    const s = toMin(startHHMM)
-    const eRaw = endHHMM==='24:00' ? 1440 : toMin(endHHMM)
-    const overnight = forceOvernight ?? (eRaw<=s && endHHMM!== '24:00')
-    const e = overnight ? 1440 : eRaw
-    return { s, e, overnight }
-  }
+  // Centralized overlap detection
   function nextDay(day:string){ const i=DAYS.indexOf(day as any); return DAYS[(i+1)%7] }
-  function overlaps(aS:number,aE:number,bS:number,bE:number){ return aS < bE && aE > bS }
-  function segmentsFor(day:string, startHHMM:string, endHHMM:string, endDay?: string){
-    const sMin = toMin(startHHMM)
-    const eRaw = endHHMM==='24:00' ? 1440 : toMin(endHHMM)
-    const isOver = typeof endDay==='string' ? (endDay!==day) : (eRaw<=sMin && endHHMM!=='24:00')
-    if(!isOver){ return [{ day, s: sMin, e: eRaw }] }
-    return [
-      { day, s: sMin, e: 1440 },
-      { day: nextDay(day), s: 0, e: eRaw },
-    ]
-  }
-  function hasConflict(personName:string, day:string, sHHMM:string, eHHMM:string, endDay?: string){
-    const newSegs = segmentsFor(day, sHHMM, eHHMM, endDay)
-    for(const seg of newSegs){
-      const existing = shifts.filter(x=> x.person===personName && x.day===seg.day)
-      for(const ex of existing){
-        const parts = segmentsFor(ex.day, ex.start, ex.end, (ex as any).endDay)
-        for(const p of parts){ if(p.day===seg.day && overlaps(seg.s, seg.e, p.s, p.e)) return true }
-      }
-    }
-    return false
-  }
+  const hasConflict = (personName:string, day:string, sHHMM:string, eHHMM:string, endDay?: string)=>
+    hasPersonShiftConflict(shifts, personName, day as any, sHHMM, eHHMM, endDay as any)
 
   // Auto default end = start + 8.5h unless user overrides end
   React.useEffect(()=>{
@@ -107,7 +81,7 @@ export default function ShiftManagerPanel({ shifts, setShifts, dark, weekStartDa
       const k = shiftKeyOf(p, d as any, start, end)
       if(existing.has(k)) continue
       const intendedEndDay = endNextDay ? nextDay(d) : d
-      if(hasConflict(p, d, start, end, intendedEndDay)) { conflicts.push(d); continue }
+  if(hasConflict(p, d, start, end, intendedEndDay)) { conflicts.push(d); continue }
   toAdd.push({ id: uid(), person: p, day: d as any, start, end, endDay: intendedEndDay as any })
     }
     if(conflicts.length){ alert(`Overlaps existing shifts for ${p} on: ${conflicts.join(', ')}. Adjust times or remove conflicts.`); return }

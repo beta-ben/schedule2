@@ -125,3 +125,100 @@ Visual calendar
 —
 
 For developers: build/deploy and environment details are in STAGING.md and comments in the source. If you need the old README content, check the Git history.
+
+## Developer Quick Start
+### Zero-Config Dev (Unified Backend)
+
+Daily loop:
+1. Install once: `npm run setup` (installs root + worker deps)
+2. Copy worker vars: `cp team-schedule-api/.dev.vars.example team-schedule-api/.dev.vars` then edit passwords.
+3. Start everything: `npm run dev`
+4. Build product features. That’s it.
+
+No more local proxy / dual passwords / origin lists. The Worker (Wrangler) is the backend; Vite is the frontend.
+
+### Fast Environment Sanity Check
+### Offline UI Mode (Optional)
+
+If backend auth or proxy issues are blocking you and you just want to build UI logic:
+
+```
+npm run dev:offline
+```
+
+This sets `VITE_DISABLE_API=1` so all network calls become no-ops and data stays local (sample + your edits). Publishing writes to localStorage only. Switch back to `npm run dev` when ready to hit the real API.
+
+
+Run a quick diagnostic before starting everything:
+
+```
+npm run dev:doctor
+```
+
+It verifies:
+- Node version (>=18)
+- Port availability (5173 Vite, 5174 Worker)
+
+### Minimal .env setup
+
+Usually not needed. If you want to override the API prefix or force offline mode, see `.env.example`.
+
+### Flattening a nested duplicate project
+
+If your local clone ended up as `schedule2/schedule2` (an extra nested copy of the repo):
+
+1. From the outer repo root (the one with `.git/`), run a dry run copy of missing files up:
+```sh
+npm run flatten
+```
+2. Inspect `flatten-conflicts.txt` (if present). Decide whether to keep root or nested versions; manually merge as needed.
+3. When satisfied, remove the nested folder:
+```sh
+npm run flatten -- --delete
+```
+4. Commit the changes.
+
+Flags:
+- `--force-conflicts` also writes differing nested files beside existing ones with a `.nested` suffix.
+
+
+Prereqs: Node 18+.
+
+Install deps:
+
+```sh
+npm install
+```
+
+Run app (Vite + Worker):
+
+```sh
+npm run dev
+```
+
+Type check, lint, test (CI bundle):
+
+```sh
+npm run ci
+```
+
+Individual tasks:
+
+```sh
+npm run typecheck
+npm run lint
+npm run test
+```
+
+Formatting:
+
+```sh
+npm run format
+```
+
+Key folders:
+- `src/lib/utils.ts`: time + shift conversion helpers (tested in `utils.test.ts`).
+- `team-schedule-api/worker-schedule-agents.ts`: Cloudflare Worker (validation + auth logic).
+- (Removed) `dev-server/`: legacy local proxy & SSE broadcaster.
+
+See `ARCHITECTURE.md` for higher-level data flow and planned refactors.

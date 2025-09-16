@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { COLS, DAYS, TZ_OPTS } from '../constants'
 import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
+import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
+import { shiftsOverlap } from '../lib/overlap'
 import type { PTO, Shift, Task } from '../types'
 
 export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact, agents }:{
@@ -304,9 +306,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 const chipTitle = `${s.person} • ${s.start}-${s.end}` + (chipTitleLines.length? `\n\nTasks:\n${chipTitleLines.join('\n')}`:'')
 
                 // Simple overlap detection among this person's shifts for warning style
-                const overlapsAnother = shifts.some(other=> other!==s && other.person===person && (
-                  (()=>{ const aS=sMin, aE=eMin; const bS=toMin(other.start); const bERaw=toMin(other.end); const bE=bERaw>toMin(other.start)?bERaw:1440; return aS<bE && aE>bS })()
-                ))
+                // Centralized overlap detection among this person's shifts for warning style
+                const overlapsAnother = shifts.some(other=> other!==s && other.person===person && shiftsOverlap(s as any, other as any))
                 const outline = overlapsAnother ? (dark? 'inset 0 0 0 2px rgba(255,0,0,0.6)' : 'inset 0 0 0 2px rgba(255,0,0,0.7)') : undefined
                 const isHovered = hover.id===s.id
                 return (

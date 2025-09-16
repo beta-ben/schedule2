@@ -1,0 +1,26 @@
+#############################################
+# Worker local dev variables (Wrangler reads .dev.vars)
+# Copy to: team-schedule-api/.dev.vars (DO NOT COMMIT REAL SECRETS)
+#############################################
+
+# Required admin password used by POST /api/login (single-session model)
+ADMIN_PASSWORD=admin
+
+# Enables local-only behaviors (extra logging / relaxed cache)
+DEV_MODE=1
+
+# Optional: comma-separated list of allowed CORS origins (exact matches)
+# ALLOWED_ORIGINS=http://localhost:5173,https://schedule.example.com
+# (Legacy alt env name still recognized if present)
+# CORS_ORIGINS=http://localhost:5173
+
+# Optional: explicit cookie domain for production (omit locally)
+# COOKIE_DOMAIN=.example.com
+
+# Optional: schedule document key (default: schedule.json)
+# DATA_KEY=schedule.json
+
+# Optional: enable D1 endpoints (ensure binding + migrations)
+# USE_D1=1
+
+# No secondary site password/session anymore; SSE events at /api/events.

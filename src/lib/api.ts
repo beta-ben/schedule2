@@ -1,6 +1,12 @@
 import type { PTO, Shift, Override } from '../types'
 import type { CalendarSegment } from './utils'
 
+<<<<<<< HEAD
+// Option A unified backend: always hit same-origin relative /api.
+// Fallback env vars still allowed for legacy builds but discouraged.
+const OFFLINE = (import.meta.env as any).VITE_DISABLE_API === '1'
+const API_BASE = '' // same-origin
+=======
 // Auth model: cookie session + CSRF only.
 // Dev uses same-origin API via Vite proxy to wrangler dev (port 8787).
 // Prod points to VITE_SCHEDULE_API_BASE, validated in CI.
@@ -10,11 +16,16 @@ const DEV_BEARER = (!PROD && (import.meta.env.VITE_DEV_BEARER_TOKEN || '')) as s
 const API_BASE = (
   (PROD || FORCE) ? (import.meta.env.VITE_SCHEDULE_API_BASE || '') : ''
 ).replace(/\/$/,'')
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
 
-// Tiny diagnostics helpers (read-only)
+// Minimal diagnostics
 export function getApiBase(){ return API_BASE }
+<<<<<<< HEAD
+export function isOfflineMode(){ return OFFLINE }
+=======
 export function isUsingDevProxy(){ return false }
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 export function getApiPrefix(){ return API_PREFIX }
 
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
@@ -34,8 +45,12 @@ export function getCsrfDiagnostics(){
   return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: !!getCsrfToken() }
 }
 
-// Unified login/logout that work in dev (proxy) and prod (Cloudflare/API)
+// Unified login/logout. In dev (DEV_MODE=1 on Worker) password succeeds immediately and returns CSRF.
 export async function login(password: string){
+  if( OFFLINE ){
+    try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true, offline: true } })) }catch{}
+    return { ok: true, status: 200 }
+  }
   try{
   const r = await fetch(`${API_BASE}${API_PREFIX}/login`,{
       method:'POST',
@@ -45,8 +60,6 @@ export async function login(password: string){
     })
     if(r.ok){
       try{ const j = await r.clone().json(); if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf } }catch{}
-      // Best-effort: some servers also require a site session for reads/writes
-      try{ await ensureSiteSession(password) }catch{}
   try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
     }
     return { ok: r.ok, status: r.status }
@@ -56,10 +69,16 @@ export async function login(password: string){
 }
 
 export async function logout(){
+  if( OFFLINE ){
+    try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false, offline: true } })) }catch{}
+    return
+  }
   try{ await fetch(`${API_BASE}${API_PREFIX}/logout`,{ method:'POST', credentials:'include' }) }catch{}
   try{ CSRF_TOKEN_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
 }
 
+<<<<<<< HEAD
+=======
 // Magic link: request a sign-in link to be emailed (dev echo may return link)
 export async function requestMagicLink(
   email: string,
@@ -88,8 +107,18 @@ export async function loginSite(password: string): Promise<{ ok: boolean; status
 export async function logoutSite(){
   try{ await fetch(`${API_BASE}${API_PREFIX}/logout-site`,{ method:'POST', credentials:'include' }) }catch{}
 }
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
+<<<<<<< HEAD
+export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; schemaVersion?: number} | null>{
+  if( OFFLINE ){
+    // Provide empty doc; caller layers in sample data already.
+    return { shifts: [], pto: [], calendarSegs: [], agents: [], schemaVersion: 2 }
+  }
+  if(!API_BASE) return null
+=======
 export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>; schemaVersion?: number} | null>{
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   try{
     // Server exposes /api/schedule (cookie session aware).
     const url = `${API_BASE}${API_PREFIX}/schedule`
@@ -102,9 +131,25 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; override
 
 export type CloudPostResult = { ok: boolean; status?: number; error?: string; bodyText?: string }
 
+<<<<<<< HEAD
+export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; updatedAt: string}): Promise<CloudPostResult>{
+  if( OFFLINE ){
+    try{ localStorage.setItem('schedule_offline_last_post', JSON.stringify(data)) }catch{}
+    return { ok: true, status: 200 }
+  }
+  if(!API_BASE) return { ok: false, error: 'no_api_base' }
+=======
 export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>; updatedAt: string}): Promise<CloudPostResult>{
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   try{
     // Writes require cookie session + CSRF; legacy password header is removed.
+<<<<<<< HEAD
+  // Expect prod server to implement /api/schedule with cookies+CSRF.
+  // If cookie isn't readable due to HttpOnly or subdomain scope, we also accept a token captured from login response.
+  const csrf = getCsrfToken()
+  if(!csrf){ console.warn('[cloudPost] CSRF token missing; writes disabled.'); return { ok:false, error:'missing_csrf' } }
+  const url = `${API_BASE}${API_PREFIX}/schedule`
+=======
     // Expect prod server to implement /api/schedule with cookies+CSRF.
     // In dev, if VITE_DEV_BEARER_TOKEN is set, send Authorization and skip CSRF/cookies friction.
     const csrf = getCsrfToken()
@@ -113,6 +158,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; over
       return { ok:false, error:'missing_csrf' }
     }
     const url = `${API_BASE}${API_PREFIX}/schedule`
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
@@ -145,7 +191,15 @@ export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; overrides?: 
 }
 
 // Agents-only write to avoid schedule conflicts when toggling hidden or renaming agents
+<<<<<<< HEAD
+export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>): Promise<boolean>{
+  if( OFFLINE ){
+    try{ localStorage.setItem('schedule_offline_agents', JSON.stringify(agents)) }catch{}
+    return true
+  }
+=======
 export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>): Promise<boolean>{
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   try{
     // Prefer v2 PATCH /agents if available (idempotent upsert). Fallback to legacy POST /agents.
     const csrf = getCsrfToken()
@@ -179,6 +233,9 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
   }catch{ return false }
 }
 
+<<<<<<< HEAD
+// No ensureSiteSession logic needed; dev/prod unified server handles sessions.
+=======
 // v2 shifts batch write (idempotent upserts + optional deletes); merges into doc for now
 export async function cloudPostShiftsBatch(input: { upserts?: Array<{ id: string; person: string; agentId?: string; day: string; start: string; end: string; endDay?: string }>; deletes?: string[] }): Promise<boolean>{
   try{
@@ -209,6 +266,7 @@ export async function ensureSiteSession(password?: string){
     })
   }catch{}
 }
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
 // Proposals (MVP)
 export async function cloudCreateProposal(input: {

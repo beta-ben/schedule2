@@ -1,7 +1,13 @@
+import { toMin, minToHHMM, uid, startOfWeek, addDays, fmtDateRange, fmtYMD, nowInTZ, tzAbbrev, shiftsForDayInTZ, agentDisplayName, agentIdByName } from '../lib/utils'
+import { hasPersonShiftConflict } from '../lib/overlap'
 import React from 'react'
 import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
+<<<<<<< HEAD
+import { cloudPost, cloudPostDetailed, login, logout, getApiBase, getApiPrefix, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents } from '../lib/api'
+=======
 import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 import WeekEditor from '../components/v2/WeekEditor'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import ProposalDiffVisualizer from '../components/ProposalDiffVisualizer'
@@ -15,11 +21,18 @@ import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
 
+<<<<<<< HEAD
+export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void }){
+  // Auto-unlocked in dev; in prod we still require login once.
+=======
 export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, overrides, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto, setOverrides }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; overrides: Override[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void; setOverrides: (f:(prev:Override[])=>Override[])=>void }){
   // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const [unlocked, setUnlocked] = React.useState(false)
-  const [pwInput, setPwInput] = React.useState('')
+  const [autoTried, setAutoTried] = React.useState(false)
   const [msg, setMsg] = React.useState('')
+<<<<<<< HEAD
+=======
   // Lightweight toast state for publish notifications
   const toastTimerRef = React.useRef<number | null>(null)
   const [toast, setToast] = React.useState<null | { text: string; kind: 'success'|'error' }>(null)
@@ -34,9 +47,18 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   React.useEffect(()=>{
     if(hasCsrfToken()){ setUnlocked(true); setMsg('') }
   },[])
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const apiBase = React.useMemo(()=> getApiBase(), [])
   const apiPrefix = React.useMemo(()=> getApiPrefix(), [])
-  const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
+  React.useEffect(()=>{
+    if(hasCsrfToken()){
+      setUnlocked(true); setMsg('')
+    } else if(!autoTried){
+      setAutoTried(true)
+      // Attempt implicit dev auto-login with blank password (DEV_MODE server accepts)
+      login('').then(r=>{ if(r.ok && hasCsrfToken()) setUnlocked(true) })
+    }
+  },[autoTried])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
   const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Proposals'] as const
@@ -217,7 +239,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setWorkingShifts(shifts)
       setIsDirty(false)
       startedFromLiveRef.current = false
+<<<<<<< HEAD
+      try{ localStorage.removeItem(DRAFT_KEY) }catch{}
+=======
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     }
+<<<<<<< HEAD
+=======
   }, [shiftUndoStack, workingShifts, shifts])
   const redoShifts = React.useCallback(()=>{
     if(shiftRedoStack.length===0) return
@@ -422,7 +450,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     // Include any names present on PTO records
     for(const p of pto){ if(p.person) set.add(p.person) }
     return Array.from(set).sort()
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   }, [localAgents, shifts, calendarSegs, pto])
+  // If still not unlocked, show fast, minimal status (rare in dev).
+  if(!unlocked){
+    return <section className={["rounded-2xl p-6", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
+      <div className="text-sm opacity-70">Initializing session… {msg}</div>
+    </section>
+  }
   const activeTasks = React.useMemo(()=> tasks.filter(t=>!t.archived), [tasks])
   const [assignee, setAssignee] = React.useState<string>('')
   const [assignDay, setAssignDay] = React.useState<typeof DAYS[number]>('Mon' as any)
@@ -594,18 +629,42 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           <div className="text-lg font-semibold">Protected — Manage Data</div>
           <p className="text-sm opacity-80">Sign in to your session.</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-      const res = await login(pwInput)
+            setMsg('')
+            const res = await login(pwInput)
             if(res.ok){
+              // Try to establish site session (dev proxy may need different password; we optimistically reuse admin pw)
               try{ await ensureSiteSession(pwInput) }catch{}
+              // Extra probe: confirm schedule readable (site session gate)
+              let siteOk = true
+              try{
+                const r2 = await fetch(`${apiBase}${apiPrefix}/schedule`, { method:'GET', credentials:'include' })
+                if(!r2.ok){
+                  siteOk = false
+                  if(r2.status===401){
+                    try{ const j = await r2.clone().json(); if(j?.error==='missing_site_session'){
+                      setMsg('Admin session ok but secondary session missing; reload if persists.')
+                    } }catch{}
+                  }
+                }
+              }catch{}
               const diag = getCsrfDiagnostics()
-              if(hasCsrfToken()){
+              if(hasCsrfToken() && siteOk){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
+<<<<<<< HEAD
+                // Proactively push agents metadata so Hidden flags propagate immediately post-login
+                try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))) }catch{}
+              } else if(!siteOk){
+                setUnlocked(false)
+=======
         // Proactively push agents metadata so Hidden flags propagate immediately post-login
         try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId ?? null, notes: (a as any).notes }))) }catch{}
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
               } else {
                 setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
               }
-            } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
+            } else {
+              setMsg(res.status===401?'Incorrect password':'Login failed')
+            }
           })() }}>
             <div className="flex gap-2">
               <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />
@@ -1300,7 +1359,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           if(assignEndDay===assignDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                         const dayShiftsLocal = shiftsForDayInTZ(shifts, assignDay as any, tz.offset).filter(s=>s.person===assignee)
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
+<<<<<<< HEAD
+                        const overlaps = !hasPersonShiftConflict(dayShiftsLocal as any, assignee, assignDay as any, assignStart, assignEnd, assignEndDay as any)
+                        if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.'); }
+=======
                         // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
                           setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
                       }}
                       className={["h-10 rounded-xl border font-medium px-4", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}
@@ -1422,7 +1486,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           if(eaEndDay===eaDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                           const dayShiftsLocal = shiftsForDayInTZ(shifts, eaDay as any, tz.offset).filter(s=>s.person===eaPerson)
                           const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE=s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
+<<<<<<< HEAD
+                          const overlaps = !hasPersonShiftConflict(dayShiftsLocal as any, eaPerson, eaDay as any, eaStart, eaEnd, eaEndDay as any)
+                          if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.') }
+=======
                           // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
                           setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, endDay: eaEndDay, start: eaStart, end: eaEnd, taskId: eaTaskId } as any : cs))
                           setEditingIdx(null)
                         }} className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>

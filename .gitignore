@@ -1,8 +1,21 @@
-# env and local dev-server data
+node_modules/
+dist/
+coverage/
+.vite/
+.DS_Store
+*.log
+*.tsbuildinfo
+
+# Local editor junk
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Generated artifacts
+flatten-conflicts.txt
+# env and local dev vars
 .env
 **/.env
-dev-server/.env
-dev-server/data.json
 
 node_modules
 dist

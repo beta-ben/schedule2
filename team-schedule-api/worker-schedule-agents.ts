@@ -1,13 +1,11 @@
 /// <reference types="@cloudflare/workers-types" />
 /*
-  Cloudflare Worker: Schedule API with agents support (hidden flag persists)
+  Cloudflare Worker: Schedule API (single-session model)
 
   Endpoints:
     - POST /api/login        : admin login (sets sid + csrf cookies)
     - POST /api/logout       : admin logout
-    - POST /api/login-site   : view login (sets site_sid cookie)
-    - POST /api/logout-site  : view logout
-    - GET  /api/schedule     : read schedule (requires site session if REQUIRE_SITE_SESSION=true)
+    - GET  /api/schedule     : read schedule (no view/site secondary session)
     - POST /api/schedule     : write schedule (requires admin session + CSRF)
 
   Storage:
@@ -18,12 +16,10 @@
   Env bindings required (wrangler.toml):
     - SCHEDULE_KV = { binding = "SCHEDULE_KV", id = "<kv id>" }
     - ADMIN_PASSWORD = "<admin password>"
-    - SITE_PASSWORD = "<view password>"
     - (optional) ALLOWED_ORIGINS = "https://teamschedule.cc,https://your.dev"
     - (optional) COOKIE_DOMAIN = ".teamschedule.cc" (omit for dev)
     - (optional) COOKIE_SECURE = "true" | "false" (default true)
     - (optional) COOKIE_SAMESITE = "Lax" | "None" | "Strict" (default Lax)
-    - (optional) REQUIRE_SITE_SESSION = "true" | "false" (default true)
     - (optional) DATA_KEY = "schedule.json"
 
   Notes:
@@ -40,17 +36,19 @@
 export interface Env {
   SCHEDULE_KV?: KVNamespace
   ADMIN_PASSWORD: string
-  SITE_PASSWORD: string
   ALLOWED_ORIGINS?: string
   CORS_ORIGINS?: string
   COOKIE_DOMAIN?: string
   COOKIE_SECURE?: string
   COOKIE_SAMESITE?: string
-  REQUIRE_SITE_SESSION?: string
+  // Removed: site session model deprecated
   DATA_KEY?: string
   // Optional during migration to D1
   DB?: D1Database
   USE_D1?: string
+<<<<<<< HEAD
+  DEV_MODE?: string
+=======
   // Dev convenience: include sid in login body for tooling
   RETURN_SID_IN_BODY?: string
   // Dev bearer mode (skip CSRF/cookies; accept Authorization: Bearer <token>)
@@ -67,6 +65,7 @@ export interface Env {
   MAGIC_FROM_EMAIL?: string
   // App redirect base for magic verify (e.g., http://localhost:5173 or https://teamschedule.cc)
   APP_REDIRECT_BASE?: string
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 }
 
 // Types
@@ -99,11 +98,10 @@ export default {
     const url = new URL(req.url)
     const path = url.pathname.replace(/\/$/,'')
 
+  const DEV = (env.DEV_MODE||'').toLowerCase()==='1'
     try {
-      if (req.method === 'POST' && path === '/api/login') return loginAdmin(req, env, cors)
-      if (req.method === 'POST' && path === '/api/logout') return logoutAdmin(req, env, cors)
-      if (req.method === 'POST' && path === '/api/login-site') return loginSite(req, env, cors)
-      if (req.method === 'POST' && path === '/api/logout-site') return logoutSite(req, env, cors)
+  if (req.method === 'POST' && path === '/api/login') return loginAdmin(req, env, cors)
+  if (req.method === 'POST' && path === '/api/logout') return logoutAdmin(req, env, cors)
 
   // Lightweight diagnostics during KV -> D1 migration
   if (req.method === 'GET' && path === '/api/_health') return health(req, env, cors)
@@ -118,6 +116,7 @@ export default {
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
+  if (req.method === 'GET' && path === '/api/events') return sseEvents(req, env, cors)
   // v2 (D1) read-only endpoints for canary/parity
   if (req.method === 'GET' && path === '/api/v2/agents') return getAgentsV2(req, env, cors)
   if (req.method === 'GET' && path === '/api/v2/shifts') return getShiftsV2(req, env, cors)
@@ -376,6 +375,11 @@ function authDevBearerOk(req: Request, env: Env){
 
 // Sessions (D1 when enabled, otherwise KV)
 const TTL_MS = 8 * 60 * 60 * 1000
+<<<<<<< HEAD
+async function putSession(env: Env, kind: 'admin', sid: string, data: any){ await env.SCHEDULE_KV.put(`${kind}:${sid}`, JSON.stringify({ ...data, exp: Date.now()+TTL_MS }), { expirationTtl: Math.ceil(TTL_MS/1000) }) }
+async function getSession(env: Env, kind: 'admin', sid: string){ const raw = await env.SCHEDULE_KV.get(`${kind}:${sid}`); if(!raw) return null; try{ const j = JSON.parse(raw); if(j.exp && j.exp < Date.now()){ await env.SCHEDULE_KV.delete(`${kind}:${sid}`); return null } return j }catch{ return null } }
+async function delSession(env: Env, kind: 'admin', sid: string){ await env.SCHEDULE_KV.delete(`${kind}:${sid}`) }
+=======
 async function putSession(env: Env, kind: 'admin'|'site', sid: string, data: any){
   if(useD1(env)) return putSessionD1(env, kind, sid, data)
   const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
@@ -396,6 +400,7 @@ async function delSession(env: Env, kind: 'admin'|'site', sid: string){
   if(!kvNs) return
   await kvNs.delete(`${kind}:${sid}`)
 }
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
 async function putSessionD1(env: Env, kind: 'admin'|'site', sid: string, data: any){
   if(!env.DB) throw new Error('d1_unavailable')
@@ -589,40 +594,17 @@ async function logoutAdmin(req: Request, env: Env, cors: Headers){
   headers.append('Set-Cookie', clearCookie('csrf', base))
   return json({ ok:true }, 200, headers)
 }
-async function loginSite(req: Request, env: Env, cors: Headers){
-  const base = cookieBase(env)
-  const { password } = await safeJson<{ password?: string }>(req)
-  if(typeof password !== 'string' || password.length < 3) return json({ error:'invalid_input' }, 400, cors)
-  if(password !== env.SITE_PASSWORD) return json({ error:'bad_password' }, 401, cors)
-  const sid = nanoid(24)
-  await putSession(env,'site',sid,{})
-  const headers = new Headers(cors)
-  headers.append('Set-Cookie', setCookie('site_sid', sid, { ...base, maxAge: TTL_MS/1000 }))
-  return json({ ok:true }, 200, headers)
-}
-async function logoutSite(req: Request, env: Env, cors: Headers){
-  const base = cookieBase(env)
-  const cookies = getCookieMap(req)
-  const sid = cookies.get('site_sid')
-  if(sid) await delSession(env,'site',sid)
-  const headers = new Headers(cors)
-  headers.append('Set-Cookie', clearCookie('site_sid', base))
-  return json({ ok:true }, 200, headers)
-}
+// Removed site login/logout (single-session model)
 
 // Guards
-async function requireSite(req: Request, env: Env){
-  if((env.REQUIRE_SITE_SESSION||'true').toLowerCase() !== 'true') return { ok:true }
-  const cookies = getCookieMap(req)
-  const sid = cookies.get('site_sid')
-  if(!sid) return { ok:false, status: 401, body: { error:'missing_site_session' } }
-  const sess = await getSession(env,'site',sid)
-  if(!sess) return { ok:false, status: 401, body: { error:'expired_site_session' } }
-  return { ok:true }
-}
+async function requireSite(req: Request, env: Env){ return { ok:true } }
 async function requireAdmin(req: Request, env: Env){
+<<<<<<< HEAD
+  if((env.DEV_MODE||'').toLowerCase()==='1') return { ok:true }
+=======
   // Dev bearer: bypass cookie+CSRF when enabled
   if(authDevBearerOk(req, env)) return { ok:true }
+>>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const cookies = getCookieMap(req)
   const sid = cookies.get('sid')
   const csrfHeader = req.headers.get('x-csrf-token') || ''
@@ -674,6 +656,33 @@ async function postSchedule(req: Request, env: Env, cors: Headers){
 
   await writeDoc(env, toWrite)
   return json({ ok:true, updatedAt: toWrite.updatedAt }, 200, cors)
+}
+
+// Simple SSE endpoint: polls KV every 2.5s and emits 'updated' when updatedAt changes.
+async function sseEvents(req: Request, env: Env, cors: Headers){
+  const gate = await requireSite(req, env)
+  if(!gate.ok) return json(gate.body, gate.status, cors)
+  const stream = new ReadableStream({
+    async start(controller){
+      let last = ''
+      const enc = (msg:string)=> controller.enqueue(new TextEncoder().encode(msg))
+      enc(`:ok\n`) // comment to open
+      const interval = 2500
+      async function tick(){
+        try{
+          const raw = await env.SCHEDULE_KV.get(dataKey(env))
+          if(raw){
+            try{ const j = JSON.parse(raw); if(j && j.updatedAt && j.updatedAt !== last){ last = j.updatedAt; enc(`event: updated\n`); enc(`data: ${JSON.stringify({ updatedAt: last })}\n\n`) } }catch{}
+          }
+        }catch{}
+      }
+      const handle = setInterval(tick, interval)
+      await tick()
+      // Close after 2 minutes to encourage client reconnects
+      setTimeout(()=>{ clearInterval(handle); try{ controller.close() }catch{} }, 2*60*1000)
+    }
+  })
+  return new Response(stream, { status:200, headers: { 'content-type':'text/event-stream', 'cache-control':'no-cache', 'connection':'keep-alive', ...(Object.fromEntries(cors.entries())) } })
 }
 
 // Body parser

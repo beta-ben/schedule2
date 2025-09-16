@@ -1,4 +1,5 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
+dotenv.config({ override: true })
 import fs from 'fs'
 import path from 'path'
 import express from 'express'
@@ -20,8 +21,9 @@ const ORIGINS = (process.env.DEV_ALLOWED_ORIGINS || ORIGIN)
 if (ORIGINS.includes('http://localhost:5173') && !ORIGINS.includes('http://127.0.0.1:5173')) {
   ORIGINS.push('http://127.0.0.1:5173')
 }
-const ADMIN_PW = process.env.DEV_ADMIN_PASSWORD
-const SITE_PW = process.env.DEV_SITE_PASSWORD || process.env.DEV_VIEW_PASSWORD
+// Normalize passwords to avoid CRLF/whitespace mismatches on Windows-created .env files
+const ADMIN_PW = (process.env.DEV_ADMIN_PASSWORD || '').replace(/\r/g,'').trim()
+const SITE_PW = ((process.env.DEV_SITE_PASSWORD || process.env.DEV_VIEW_PASSWORD || '')).replace(/\r/g,'').trim()
 if (!ADMIN_PW) {
   console.error('DEV_ADMIN_PASSWORD is required in dev-server/.env')
   process.exit(1)
@@ -30,6 +32,8 @@ if (!SITE_PW) {
   console.error('DEV_SITE_PASSWORD (or DEV_VIEW_PASSWORD) is required in dev-server/.env')
   process.exit(1)
 }
+// Diagnostics: confirm env loaded (do not print secrets)
+console.log(`[dev-proxy] Passwords loaded: site len=${SITE_PW?.length||0}, admin len=${ADMIN_PW?.length||0}`)
 
 const dataDir = path.join(process.cwd(), 'dev-server')
 const dataset = process.env.DATASET || 'data' // data | demo | snapshot
@@ -37,6 +41,12 @@ const dataBase = dataset.endsWith('.json') ? dataset.replace(/\.json$/,'') : dat
 const dataFile = path.join(dataDir, `${dataBase}.json`)
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true })
 if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, JSON.stringify({ schemaVersion: 2, agents: [], shifts: [], pto: [], calendarSegs: [], updatedAt: new Date().toISOString() }, null, 2), 'utf8')
+// Lightweight ETag + file change broadcast for instant reload
+let __lastStat = null; let __lastEtag = null
+function __computeEtag(buf){ let h=0; for(let i=0;i<buf.length;i++){ h=(h*31+buf[i])>>>0 } return 'W/"'+h.toString(16)+'-'+buf.length+'"' }
+function __statData(){ try{ const st=fs.statSync(dataFile); if(!__lastStat || st.mtimeMs!==__lastStat.mtimeMs || st.size!==__lastStat.size){ const buf=fs.readFileSync(dataFile); __lastEtag=__computeEtag(buf); __lastStat=st } }catch{} }
+__statData()
+try{ fs.watch(dataFile,{persistent:true},()=>{ __statData(); try{ sseBroadcast('updated',{ ts: new Date().toISOString(), reason:'file_change' }) }catch{} }) }catch{}
 
 // Cookie attributes (configurable for parity with production)
 // Default: dev over HTTP on localhost (secure=false, no domain)
@@ -248,7 +258,10 @@ app.get('/api/_info', (req, res) => {
 // Read requires site login (view gate)
 app.get('/api/schedule', requireSite, (req, res) => {
   try {
+    __statData()
+    if(__lastEtag && req.headers['if-none-match'] === __lastEtag){ return res.status(304).end() }
     const raw = fs.readFileSync(dataFile, 'utf8')
+    if(__lastEtag) res.setHeader('ETag', __lastEtag)
     res.type('application/json').send(raw)
   } catch {
     res.status(500).json({ error: 'read_failed' })
