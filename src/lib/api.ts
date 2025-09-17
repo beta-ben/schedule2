@@ -13,6 +13,34 @@ const API_BASE = (
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/, '')
 const USING_DEV_PROXY = !PROD && !FORCE && !OFFLINE && API_BASE === ''
 
+const V2_UNSUPPORTED_STATUSES = new Set([404, 405, 501])
+let V2_SUPPORT: boolean | null = USING_DEV_PROXY ? true : null
+let V2_SUPPORT_PROMISE: Promise<boolean> | null = null
+
+function markV2Unsupported(){ V2_SUPPORT = false }
+function isV2UnsupportedStatus(status?: number){ return typeof status === 'number' && V2_UNSUPPORTED_STATUSES.has(status) }
+async function ensureV2Support(): Promise<boolean>{
+  if(OFFLINE) return false
+  if(V2_SUPPORT === true) return true
+  if(V2_SUPPORT === false) return false
+  if(V2_SUPPORT_PROMISE) return V2_SUPPORT_PROMISE
+  // Relative paths still work when API_BASE is empty (dev proxy)
+  const probeUrl = `${API_BASE}${API_PREFIX}/v2/agents?__probe=1`
+  V2_SUPPORT_PROMISE = (async()=>{
+    try{
+      const res = await fetch(probeUrl, { method:'GET', credentials:'include', headers:{ 'accept':'application/json' } })
+      if(isV2UnsupportedStatus(res.status)) V2_SUPPORT = false
+      else V2_SUPPORT = true
+    }catch{
+      V2_SUPPORT = false
+    }finally{
+      V2_SUPPORT_PROMISE = null
+    }
+    return V2_SUPPORT === true
+  })()
+  return V2_SUPPORT_PROMISE
+}
+
 // Minimal diagnostics
 export function getApiBase(){ return API_BASE }
 export function isOfflineMode(){ return OFFLINE }
@@ -187,15 +215,21 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
       return payload
     })
 
-    try{
-      const r2 = await fetch(`${API_BASE}${API_PREFIX}/v2/agents`,{
-        method:'PATCH',
-        credentials:'include',
-        headers,
-        body: JSON.stringify({ agents: normalizedAgents })
-      })
-      if(r2.ok) return true
-    }catch{}
+    const useV2 = await ensureV2Support()
+    if(useV2){
+      try{
+        const r2 = await fetch(`${API_BASE}${API_PREFIX}/v2/agents`,{
+          method:'PATCH',
+          credentials:'include',
+          headers,
+          body: JSON.stringify({ agents: normalizedAgents })
+        })
+        if(r2.ok) return true
+        if(isV2UnsupportedStatus(r2.status)) markV2Unsupported()
+      }catch{
+        markV2Unsupported()
+      }
+    }
     const r = await fetch(`${API_BASE}${API_PREFIX}/agents`,{
       method:'POST', credentials:'include', headers, body: JSON.stringify({ agents: normalizedAgents })
     })
@@ -210,10 +244,18 @@ export async function cloudPostShiftsBatch(input: { upserts?: Array<{ id: string
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    const r = await fetch(`${API_BASE}${API_PREFIX}/v2/shifts/batch`, {
-      method:'POST', credentials:'include', headers, body: JSON.stringify({ upserts: input.upserts||[], deletes: input.deletes||[] })
-    })
-    return r.ok
+    if(await ensureV2Support()){
+      try{
+        const r = await fetch(`${API_BASE}${API_PREFIX}/v2/shifts/batch`, {
+          method:'POST', credentials:'include', headers, body: JSON.stringify({ upserts: input.upserts||[], deletes: input.deletes||[] })
+        })
+        if(r.ok) return true
+        if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
+      }catch{
+        markV2Unsupported()
+      }
+    }
+    return false
   }catch{ return false }
 }
 
@@ -249,6 +291,7 @@ export async function cloudCreateProposal(input: {
   calendarSegs?: CalendarSegment[];
   agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>;
 }): Promise<{ ok: boolean; id?: string; status?: number; error?: string }>{
+  if(!(await ensureV2Support())) return { ok:false, status: 404, error: 'unsupported' }
   try{
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
@@ -260,32 +303,50 @@ export async function cloudCreateProposal(input: {
     let id: string | undefined
     try{ const j = await r.clone().json(); if(j && typeof j.id==='string') id = j.id }catch{}
     if(r.ok) return { ok:true, id, status:r.status }
+    if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
     return { ok:false, status:r.status }
-  }catch{ return { ok:false } }
+  }catch{
+    markV2Unsupported()
+    return { ok:false }
+  }
 }
 
 export async function cloudListProposals(): Promise<{ ok: boolean; proposals?: Array<{ id:string; title?:string; status:string; createdAt:number; updatedAt:number; weekStart?:string; tzId?:string }>; status?: number }>{
+  if(!(await ensureV2Support())) return { ok:false, status: 404 }
   try{
     const csrf = getCsrfToken()
     const headers: Record<string,string> = {}
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals`,{ method:'GET', credentials:'include', headers })
-    if(!r.ok) return { ok:false, status: r.status }
+    if(!r.ok){
+      if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
+      return { ok:false, status: r.status }
+    }
     const j = await r.json()
     return { ok:true, proposals: Array.isArray(j?.proposals) ? j.proposals : [] }
-  }catch{ return { ok:false } }
+  }catch{
+    markV2Unsupported()
+    return { ok:false }
+  }
 }
 
 export async function cloudGetProposal(id: string): Promise<{ ok: boolean; proposal?: any; status?: number }>{
+  if(!(await ensureV2Support())) return { ok:false, status: 404 }
   try{
     const csrf = getCsrfToken()
     const headers: Record<string,string> = {}
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}`,{ method:'GET', credentials:'include', headers })
-    if(!r.ok) return { ok:false, status: r.status }
+    if(!r.ok){
+      if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
+      return { ok:false, status: r.status }
+    }
     const j = await r.json()
     return { ok:true, proposal: j?.proposal }
-  }catch{ return { ok:false } }
+  }catch{
+    markV2Unsupported()
+    return { ok:false }
+  }
 }
