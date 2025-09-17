@@ -40,7 +40,10 @@ export type Override = {
   recurrence?: { rule?: 'weekly'|'monthly'|'custom'; until?: string; count?: number; byDay?: Day[] }
 }
 
-export type TZOpt = { id: string; label: string; offset: number }
+export type TZOpt = { id: string; label: string; offset: number; name?: string }
+
+// Weekly meetings represent recurring team syncs; rename these labels to match your org structure.
+export type MeetingCohort = 'Morning Meeting' | 'Midday Meeting' | 'Afternoon Meeting'
 
 export type Posture = 'phones' | 'chat' | 'email' | 'qa' | 'training' | 'meeting' | 'break' | 'other'
 

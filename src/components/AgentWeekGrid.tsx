@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { COLS, DAYS } from '../constants'
+import { DAYS } from '../constants'
 import { addDays, fmtYMD, minToHHMM, nowInTZ, parseYMD, toMin, convertShiftsToTZ, mergeSegments, agentDisplayName } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'

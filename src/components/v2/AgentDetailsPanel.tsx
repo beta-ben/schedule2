@@ -1,6 +1,7 @@
 import React from 'react'
 import Toggle from '../Toggle'
 import { TZ_OPTS } from '../../constants'
+import type { MeetingCohort } from '../../types'
 
 export default function AgentDetailsPanel({
   dark,
@@ -11,8 +12,10 @@ export default function AgentDetailsPanel({
   isSupervisor,
   supervisorId,
   hidden,
+  meetingCohort,
   notes,
   agents,
+  meetingOptions,
   selectedIdx,
   onFirst,
   onLast,
@@ -20,6 +23,7 @@ export default function AgentDetailsPanel({
   onIsSup,
   onSupId,
   onHidden,
+  onMeeting,
   onNotes,
   onSave,
   onDelete,
@@ -32,8 +36,10 @@ export default function AgentDetailsPanel({
   isSupervisor: boolean
   supervisorId: string
   hidden: boolean
+  meetingCohort: MeetingCohort | ''
   notes: string
   agents: Array<{ id?: string; firstName?: string; lastName?: string; isSupervisor?: boolean }>
+  meetingOptions: readonly MeetingCohort[]
   selectedIdx: number | null
   onFirst: (v:string)=>void
   onLast: (v:string)=>void
@@ -41,6 +47,7 @@ export default function AgentDetailsPanel({
   onIsSup: (v:boolean)=>void
   onSupId: (v:string)=>void
   onHidden: (v:boolean)=>void
+  onMeeting: (v: MeetingCohort | '')=>void
   onNotes: (v:string)=>void
   onSave: ()=>void
   onDelete: ()=>void
@@ -74,6 +81,19 @@ export default function AgentDetailsPanel({
             <span className="opacity-70 mb-1">Timezone</span>
             <select className={["border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300"].join(' ')} value={tzId} onChange={e=>onTz(e.target.value)}>
               {TZ_OPTS.map(o=> <option key={o.id} value={o.id}>{tzFullName(o.id)}</option>)}
+            </select>
+          </label>
+          <label className="text-sm flex flex-col">
+            <span className="opacity-70 mb-1">Weekly meeting</span>
+            <select
+              className={["border rounded px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300"].join(' ')}
+              value={meetingCohort || ''}
+              onChange={(e)=> onMeeting(e.target.value as MeetingCohort | '')}
+            >
+              <option value="">—</option>
+              {meetingOptions.map(opt=> (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </label>
           <label className="text-sm flex flex-col">

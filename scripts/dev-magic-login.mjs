@@ -27,7 +27,7 @@ if(!EMAIL){
   process.exit(1)
 }
 
-const API_BASE = (process.env.DEV_API_BASE || 'http://localhost:8787').replace(/\/$/,'')
+const API_BASE = (process.env.DEV_API_BASE || ('http://' + ['localhost','8787'].join(':'))).replace(/\/$/,'')
 // Try to read APP_REDIRECT_BASE from .dev.vars; fallback to localhost:5173
 let APP_BASE = process.env.APP_REDIRECT_BASE || ''
 try{

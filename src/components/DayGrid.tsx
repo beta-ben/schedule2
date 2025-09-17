@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { COLS, DAYS, TZ_OPTS } from '../constants'
-import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
 import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
 import { shiftsOverlap } from '../lib/overlap'
 import type { PTO, Shift, Task } from '../types'

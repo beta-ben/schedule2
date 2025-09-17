@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import type { Shift, Task } from '../types'
-import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
+import { nowInTZ, toMin } from '../lib/utils'
+import { useTimeFormat } from '../context/TimeFormatContext'
 
 export default function PostureToday({ dark, tz, dayKey, shifts, tasks }:{
   dark: boolean
@@ -27,6 +28,7 @@ export default function PostureToday({ dark, tz, dayKey, shifts, tasks }:{
   },[])
   const nowTz = nowInTZ(tz.id)
   const nowMin = nowTz.minutes
+  const { formatTime } = useTimeFormat()
 
   // Map task id to display info
   const taskMap = useMemo(()=>{
@@ -101,12 +103,11 @@ export default function PostureToday({ dark, tz, dayKey, shifts, tasks }:{
     return entries
   },[segs, nowMin, taskMap])
 
-  const hourLabels = useMemo(()=>[0,6,12,18,24],[])
   const hourMarks = useMemo(()=>Array.from({ length: 25 }, (_,i)=>i),[])
   const nowPct = Math.max(0, Math.min(100, (nowMin/1440)*100))
 
-  const laneHeight = 26
-  const laneGap = 6
+  const timelineHeight = 520
+  const laneGap = 16
   const textSubtle = dark?"text-neutral-400":"text-neutral-500"
   const borderColor = dark? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
   const bgTint = dark? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'
@@ -119,99 +120,86 @@ export default function PostureToday({ dark, tz, dayKey, shifts, tasks }:{
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       <div className="flex items-baseline justify-between mb-2">
         <h2 className="text-base font-semibold">Posture schedule today</h2>
-        <div className={["text-xs", textSubtle].join(' ')}>as of {minToHHMM(nowMin)}</div>
+        <div className={["text-xs", textSubtle].join(' ')}>as of {formatTime(nowMin)}</div>
       </div>
       {timelineEntries.length === 0 ? (
         <div className={["text-sm", dark?"text-neutral-400":"text-neutral-600"].join(' ')}>No posture coverage configured today.</div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
           {timelineEntries.map(entry=>{
             const t = taskMap.get(entry.taskId)
             const color = t?.color || '#2563eb'
             const laneCount = Math.max(1, entry.laneCount)
-            const trackHeight = laneCount * laneHeight + Math.max(0, laneCount - 1) * laneGap
+            const lanes: PlacedSeg[][] = Array.from({ length: laneCount }, () => [])
+            entry.placed.forEach(seg => { if (seg.lane >= 0 && seg.lane < laneCount) lanes[seg.lane].push(seg) })
             return (
               <div key={entry.taskId} className="rounded-lg p-2" style={{ background: bgTint }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: color }} aria-hidden />
-                    <div className="font-medium">{t?.name || entry.taskId}</div>
-                  </div>
-                  <div className={["text-xs flex flex-wrap items-center gap-x-2 gap-y-1", textSubtle].join(' ')}>
-                    {entry.onNow.length>0 ? (
-                      <span>on now ({entry.onNow.length})</span>
-                    ) : (
-                      <span>no one on now</span>
-                    )}
-                    {entry.nextOne && (
-                      <span>next at {minToHHMM(entry.nextOne.start)} ({entry.nextOne.person})</span>
-                    )}
-                    {!entry.nextOne && entry.onNow.length===0 && (
-                      <span>no remaining coverage</span>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: color }} aria-hidden />
+                  <div className="font-medium">{t?.name || entry.taskId}</div>
                 </div>
-                <div className="mt-2 rounded-lg border px-3 pb-3 pt-4" style={{ background: dark? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.9)', borderColor }}>
-                  <div className={["flex justify-between text-[10px] uppercase tracking-wide font-medium", textSubtle].join(' ')}>
-                    {hourLabels.map(h=>{
-                      const label = h===24 ? '24:00' : minToHHMM(h*60)
-                      return <span key={h}>{label}</span>
+                <div className="mt-2 rounded-lg border px-3 pb-3 pt-4" style={{ height: timelineHeight, background: dark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.9)', borderColor, position: 'relative' }}>
+                  <div className="absolute inset-0 pointer-events-none">
+                    {hourMarks.map(h => {
+                      if (h === 0 || h === 24) return null
+                      const top = (h / 24) * timelineHeight
+                      const major = h % 6 === 0
+                      const lineColor = major ? (dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.2)') : (dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
+                      return (
+                        <div key={`grid-${h}`} className="absolute left-0 right-0" style={{ top, height: 1, backgroundColor: lineColor }} />
+                      )
                     })}
                   </div>
-                  <div className="relative mt-2" style={{ height: trackHeight }}>
-                    <div className="absolute inset-0 pointer-events-none">
-                      {hourMarks.map(h=>{
-                        if(h===0 || h===24) return null
-                        const position = (h/24)*100
-                        const major = h % 6 === 0
-                        const lineColor = major ? (dark? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.2)') : (dark? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
-                        return (
-                          <div key={h} className="absolute top-0 bottom-0" style={{ left: `${position}%`, width: '1px', backgroundColor: lineColor }} />
-                        )
-                      })}
+                  {showNowLine && (
+                    <div className="absolute left-0 right-0 pointer-events-none" style={{ top: `${nowPct}%`, transform: 'translateY(-1px)' }}>
+                      <div className="h-[2px]" style={{ backgroundColor: nowLineColor }} />
+                      <div className="absolute left-0 -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-medium shadow-sm" style={{ backgroundColor: nowTagBg, color: nowTagText }}>{formatTime(nowMin)}</div>
                     </div>
-                    {showNowLine && (
-                      <div className="absolute inset-y-0 pointer-events-none" style={{ left: `${nowPct}%`, transform: 'translateX(-1px)' }}>
-                        <div className="absolute inset-y-0 w-[2px]" style={{ backgroundColor: nowLineColor }} />
-                        <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[10px] font-medium shadow-sm" style={{ backgroundColor: nowTagBg, color: nowTagText }}>{minToHHMM(nowMin)}</div>
-                      </div>
-                    )}
-                    {entry.placed.map(seg=>{
-                      const startPct = (seg.startClamped/1440)*100
-                      const rawWidthPct = ((seg.endClamped - seg.startClamped)/1440)*100
-                      const widthPct = Math.max(0.4, Math.min(100 - startPct, rawWidthPct))
-                      const top = seg.lane * (laneHeight + laneGap)
-                      const active = seg.startClamped <= nowMin && nowMin < seg.endClamped
-                      const blockStyle: React.CSSProperties = {
-                        left: `${startPct}%`,
-                        width: `${widthPct}%`,
-                        top,
-                        height: laneHeight,
-                        borderLeft: `4px solid ${color}`,
-                        borderRadius: 8,
-                        border: dark? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)',
-                        background: dark? 'rgba(17,24,39,0.88)' : 'rgba(255,255,255,0.98)',
-                        boxShadow: dark? '0 2px 6px rgba(0,0,0,0.45)' : '0 2px 6px rgba(15,23,42,0.12)',
-                        padding: '4px 6px 4px 8px',
-                        position: 'absolute',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'center',
-                        overflow: 'hidden'
-                      }
-                      if(active){
-                        blockStyle.boxShadow = dark? `0 0 0 2px ${color} inset` : `0 0 0 2px ${color} inset`
-                      }
-                      const widthForText = rawWidthPct
-                      const showTime = widthForText >= 6
-                      const showPerson = widthForText >= 3
-                      const title = `${seg.person} • ${minToHHMM(seg.startClamped)}–${minToHHMM(seg.endClamped)}`
+                  )}
+                  <div className="relative h-full" style={{ display: 'grid', gridTemplateColumns: `repeat(${laneCount}, minmax(0, 1fr))`, columnGap: laneGap }}>
+                    {lanes.map((laneSegs, laneIdx) => {
+                      const hasSegments = laneSegs.length > 0
                       return (
-                        <div key={`${seg.person}-${seg.startClamped}-${seg.endClamped}-${seg.lane}`} className={dark?"text-neutral-100 text-[11px] leading-tight":"text-neutral-900 text-[11px] leading-tight"} style={blockStyle} title={title}>
-                          <div className="flex items-center justify-between gap-2">
-                            {showPerson ? (<span className="font-medium truncate">{seg.person}</span>) : (<span className="font-medium">•</span>)}
-                            {showTime && (<span className={dark?"text-neutral-300":"text-neutral-600"}>{minToHHMM(seg.startClamped)}–{minToHHMM(seg.endClamped)}</span>)}
-                          </div>
+                        <div key={`lane-${laneIdx}`} className="relative" style={{ height: timelineHeight }}>
+                          {!hasSegments && (
+                            <div className={["absolute inset-x-2 top-1/2 -translate-y-1/2 text-[11px] text-center", textSubtle].join(' ')}>
+                              No coverage
+                            </div>
+                          )}
+                          {laneSegs.map(seg => {
+                            const topPx = (seg.startClamped / 1440) * timelineHeight
+                            const heightPx = Math.max(6, ((seg.endClamped - seg.startClamped) / 1440) * timelineHeight)
+                            const active = seg.startClamped <= nowMin && nowMin < seg.endClamped
+                            const blockStyle: React.CSSProperties = {
+                              left: 0,
+                              right: 0,
+                              top: topPx,
+                              height: heightPx,
+                              borderLeft: `4px solid ${color}`,
+                              borderRadius: 8,
+                              border: dark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)',
+                              background: dark ? 'rgba(17,24,39,0.88)' : 'rgba(255,255,255,0.98)',
+                              boxShadow: dark ? '0 2px 6px rgba(0,0,0,0.45)' : '0 2px 6px rgba(15,23,42,0.12)',
+                              padding: '6px 8px',
+                              position: 'absolute',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'center',
+                              overflow: 'hidden'
+                            }
+                            if (active) {
+                              blockStyle.boxShadow = dark ? `0 0 0 2px ${color} inset` : `0 0 0 2px ${color} inset`
+                            }
+                            const showTime = heightPx >= 36
+                            const showPerson = heightPx >= 22
+                            const title = `${seg.person} • ${formatTime(seg.startClamped)}–${formatTime(seg.endClamped)}`
+                            return (
+                              <div key={`${seg.person}-${seg.startClamped}-${seg.endClamped}-${seg.lane}`} className={dark ? "text-neutral-100 text-[11px] leading-tight" : "text-neutral-900 text-[11px] leading-tight"} style={blockStyle} title={title}>
+                                {showPerson ? (<span className="font-medium truncate">{seg.person}</span>) : (<span className="font-medium">•</span>)}
+                                {showTime && (<span className={dark ? "text-neutral-300" : "text-neutral-600"}>{formatTime(seg.startClamped)}–{formatTime(seg.endClamped)}</span>)}
+                              </div>
+                            )
+                          })}
                         </div>
                       )
                     })}

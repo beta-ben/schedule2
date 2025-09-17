@@ -1,38 +1,29 @@
 import type { PTO, Shift, Override } from '../types'
 import type { CalendarSegment } from './utils'
 
-<<<<<<< HEAD
-// Option A unified backend: always hit same-origin relative /api.
-// Fallback env vars still allowed for legacy builds but discouraged.
 const OFFLINE = (import.meta.env as any).VITE_DISABLE_API === '1'
-const API_BASE = '' // same-origin
-=======
-// Auth model: cookie session + CSRF only.
-// Dev uses same-origin API via Vite proxy to wrangler dev (port 8787).
-// Prod points to VITE_SCHEDULE_API_BASE, validated in CI.
-const FORCE = (import.meta.env.VITE_FORCE_API_BASE || 'no').toLowerCase() === 'yes'
+const FORCE = ((import.meta.env as any).VITE_FORCE_API_BASE || 'no').toLowerCase() === 'yes'
 const PROD = !!import.meta.env.PROD
-const DEV_BEARER = (!PROD && (import.meta.env.VITE_DEV_BEARER_TOKEN || '')) as string
+const DEV_BEARER = (!PROD && !OFFLINE ? (import.meta.env.VITE_DEV_BEARER_TOKEN || '') : '') as string
 const API_BASE = (
-  (PROD || FORCE) ? (import.meta.env.VITE_SCHEDULE_API_BASE || '') : ''
-).replace(/\/$/,'')
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
-const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/,'')
+  OFFLINE
+    ? ''
+    : ((PROD || FORCE) ? (import.meta.env.VITE_SCHEDULE_API_BASE || '') : '')
+).replace(/\/$/, '')
+const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/, '')
+const USING_DEV_PROXY = !PROD && !FORCE && !OFFLINE && API_BASE === ''
 
 // Minimal diagnostics
 export function getApiBase(){ return API_BASE }
-<<<<<<< HEAD
 export function isOfflineMode(){ return OFFLINE }
-=======
-export function isUsingDevProxy(){ return false }
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
+export function isUsingDevProxy(){ return USING_DEV_PROXY }
 export function getApiPrefix(){ return API_PREFIX }
 
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
 // We keep a memory copy captured from the login response body (when available).
 let CSRF_TOKEN_MEM: string | null = null
 function getCsrfFromCookieOnly(): string | null {
-  if (typeof document === 'undefined') return null
+  if(typeof document === 'undefined') return null
   const m = document.cookie.match(/(?:^|; )csrf=([^;]+)/)
   return m ? decodeURIComponent(m[1]) : null
 }
@@ -47,12 +38,12 @@ export function getCsrfDiagnostics(){
 
 // Unified login/logout. In dev (DEV_MODE=1 on Worker) password succeeds immediately and returns CSRF.
 export async function login(password: string){
-  if( OFFLINE ){
+  if(OFFLINE){
     try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true, offline: true } })) }catch{}
     return { ok: true, status: 200 }
   }
   try{
-  const r = await fetch(`${API_BASE}${API_PREFIX}/login`,{
+    const r = await fetch(`${API_BASE}${API_PREFIX}/login`,{
       method:'POST',
       headers:{ 'content-type':'application/json' },
       credentials:'include',
@@ -60,7 +51,7 @@ export async function login(password: string){
     })
     if(r.ok){
       try{ const j = await r.clone().json(); if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf } }catch{}
-  try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
+      try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
     }
     return { ok: r.ok, status: r.status }
   }catch{
@@ -69,7 +60,7 @@ export async function login(password: string){
 }
 
 export async function logout(){
-  if( OFFLINE ){
+  if(OFFLINE){
     try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false, offline: true } })) }catch{}
     return
   }
@@ -77,9 +68,7 @@ export async function logout(){
   try{ CSRF_TOKEN_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
 }
 
-<<<<<<< HEAD
-=======
-// Magic link: request a sign-in link to be emailed (dev echo may return link)
+// Magic link login helpers
 export async function requestMagicLink(
   email: string,
   role: 'admin'|'site' = 'admin'
@@ -107,20 +96,12 @@ export async function loginSite(password: string): Promise<{ ok: boolean; status
 export async function logoutSite(){
   try{ await fetch(`${API_BASE}${API_PREFIX}/logout-site`,{ method:'POST', credentials:'include' }) }catch{}
 }
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
-<<<<<<< HEAD
-export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; schemaVersion?: number} | null>{
-  if( OFFLINE ){
-    // Provide empty doc; caller layers in sample data already.
-    return { shifts: [], pto: [], calendarSegs: [], agents: [], schemaVersion: 2 }
+export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; schemaVersion?: number} | null>{
+  if(OFFLINE){
+    return { shifts: [], pto: [], overrides: [], calendarSegs: [], agents: [], schemaVersion: 2 }
   }
-  if(!API_BASE) return null
-=======
-export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>; schemaVersion?: number} | null>{
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   try{
-    // Server exposes /api/schedule (cookie session aware).
     const url = `${API_BASE}${API_PREFIX}/schedule`
     const init: RequestInit = { credentials: 'include' }
     const r = await fetch(url, init)
@@ -131,34 +112,18 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; override
 
 export type CloudPostResult = { ok: boolean; status?: number; error?: string; bodyText?: string }
 
-<<<<<<< HEAD
-export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>; updatedAt: string}): Promise<CloudPostResult>{
-  if( OFFLINE ){
+export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; updatedAt: string}): Promise<CloudPostResult>{
+  if(OFFLINE){
     try{ localStorage.setItem('schedule_offline_last_post', JSON.stringify(data)) }catch{}
     return { ok: true, status: 200 }
   }
-  if(!API_BASE) return { ok: false, error: 'no_api_base' }
-=======
-export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>; updatedAt: string}): Promise<CloudPostResult>{
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   try{
-    // Writes require cookie session + CSRF; legacy password header is removed.
-<<<<<<< HEAD
-  // Expect prod server to implement /api/schedule with cookies+CSRF.
-  // If cookie isn't readable due to HttpOnly or subdomain scope, we also accept a token captured from login response.
-  const csrf = getCsrfToken()
-  if(!csrf){ console.warn('[cloudPost] CSRF token missing; writes disabled.'); return { ok:false, error:'missing_csrf' } }
-  const url = `${API_BASE}${API_PREFIX}/schedule`
-=======
-    // Expect prod server to implement /api/schedule with cookies+CSRF.
-    // In dev, if VITE_DEV_BEARER_TOKEN is set, send Authorization and skip CSRF/cookies friction.
     const csrf = getCsrfToken()
     if(!csrf && !DEV_BEARER){
-      console.warn('[cloudPost] CSRF token missing; writes are disabled without an authenticated session.');
+      console.warn('[cloudPost] CSRF token missing; writes are disabled without an authenticated session.')
       return { ok:false, error:'missing_csrf' }
     }
     const url = `${API_BASE}${API_PREFIX}/schedule`
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
@@ -185,64 +150,66 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; over
   }catch{ return { ok: false } }
 }
 
-export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>; updatedAt: string}){
+export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; updatedAt: string}){
   const res = await cloudPostDetailed(data)
   return !!res.ok
 }
 
-// Agents-only write to avoid schedule conflicts when toggling hidden or renaming agents
-<<<<<<< HEAD
-export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean }>): Promise<boolean>{
-  if( OFFLINE ){
+export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>): Promise<boolean>{
+  if(OFFLINE){
     try{ localStorage.setItem('schedule_offline_agents', JSON.stringify(agents)) }catch{}
     return true
   }
-=======
-export async function cloudPostAgents(agents: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>): Promise<boolean>{
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   try{
-    // Prefer v2 PATCH /agents if available (idempotent upsert). Fallback to legacy POST /agents.
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    // Try v2
+
+    const normalizedAgents = agents.map(a=>{
+      const payload: any = {
+        id: a.id,
+        firstName: a.firstName,
+        lastName: a.lastName,
+        hidden: !!a.hidden,
+        tzId: a.tzId,
+        isSupervisor: a.isSupervisor === true,
+        supervisorId: a.supervisorId ?? null,
+        notes: a.notes,
+      }
+      const raw = (a as any).meetingCohort
+      if(typeof raw === 'string'){
+        const trimmed = raw.trim()
+        payload.meetingCohort = trimmed ? trimmed : null
+      } else if(raw === null) {
+        payload.meetingCohort = null
+      }
+      return payload
+    })
+
     try{
       const r2 = await fetch(`${API_BASE}${API_PREFIX}/v2/agents`,{
         method:'PATCH',
         credentials:'include',
         headers,
-        body: JSON.stringify({ agents: agents.map(a=> ({
-          id: a.id,
-          firstName: a.firstName,
-          lastName: a.lastName,
-          hidden: !!a.hidden,
-          tzId: a.tzId,
-          isSupervisor: a.isSupervisor===true,
-          supervisorId: a.supervisorId ?? null,
-          notes: a.notes
-        })) })
+        body: JSON.stringify({ agents: normalizedAgents })
       })
       if(r2.ok) return true
     }catch{}
-    // Fallback
     const r = await fetch(`${API_BASE}${API_PREFIX}/agents`,{
-      method:'POST', credentials:'include', headers, body: JSON.stringify({ agents })
+      method:'POST', credentials:'include', headers, body: JSON.stringify({ agents: normalizedAgents })
     })
     return r.ok
   }catch{ return false }
 }
 
-<<<<<<< HEAD
-// No ensureSiteSession logic needed; dev/prod unified server handles sessions.
-=======
-// v2 shifts batch write (idempotent upserts + optional deletes); merges into doc for now
 export async function cloudPostShiftsBatch(input: { upserts?: Array<{ id: string; person: string; agentId?: string; day: string; start: string; end: string; endDay?: string }>; deletes?: string[] }): Promise<boolean>{
+  if(OFFLINE) return true
   try{
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
-    if((import.meta.env.VITE_DEV_BEARER_TOKEN||'')) headers['authorization'] = `Bearer ${import.meta.env.VITE_DEV_BEARER_TOKEN}`
+    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/shifts/batch`, {
       method:'POST', credentials:'include', headers, body: JSON.stringify({ upserts: input.upserts||[], deletes: input.deletes||[] })
     })
@@ -250,25 +217,26 @@ export async function cloudPostShiftsBatch(input: { upserts?: Array<{ id: string
   }catch{ return false }
 }
 
-// Try to establish a view/site session if the server requires it.
 export async function ensureSiteSession(password?: string){
+  if(OFFLINE) return true
   try{
-    // Quick probe: if schedule GET is allowed, nothing to do.
     const ping = await fetch(`${API_BASE}${API_PREFIX}/schedule`, { method:'GET', credentials:'include' })
-    if(ping.ok) return
+    if(ping.ok) return true
   }catch{}
-  try{
-    await fetch(`${API_BASE}${API_PREFIX}/login-site`, {
-      method:'POST',
-      headers:{ 'content-type':'application/json' },
-      credentials:'include',
-      body: JSON.stringify({ password: password||'' })
-    })
-  }catch{}
+  if(password && password.length >= 3){
+    try{
+      const r = await fetch(`${API_BASE}${API_PREFIX}/login-site`, {
+        method:'POST',
+        headers:{ 'content-type':'application/json' },
+        credentials:'include',
+        body: JSON.stringify({ password })
+      })
+      if(r.ok) return true
+    }catch{}
+  }
+  return false
 }
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
-// Proposals (MVP)
 export async function cloudCreateProposal(input: {
   title?: string;
   description?: string;
@@ -279,7 +247,7 @@ export async function cloudCreateProposal(input: {
   pto?: PTO[];
   overrides?: Override[];
   calendarSegs?: CalendarSegment[];
-  agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }>;
+  agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>;
 }): Promise<{ ok: boolean; id?: string; status?: number; error?: string }>{
   try{
     const csrf = getCsrfToken()
@@ -296,11 +264,10 @@ export async function cloudCreateProposal(input: {
   }catch{ return { ok:false } }
 }
 
-// Proposals: list and get
 export async function cloudListProposals(): Promise<{ ok: boolean; proposals?: Array<{ id:string; title?:string; status:string; createdAt:number; updatedAt:number; weekStart?:string; tzId?:string }>; status?: number }>{
   try{
     const csrf = getCsrfToken()
-    const headers: Record<string,string> = { }
+    const headers: Record<string,string> = {}
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals`,{ method:'GET', credentials:'include', headers })
@@ -313,7 +280,7 @@ export async function cloudListProposals(): Promise<{ ok: boolean; proposals?: A
 export async function cloudGetProposal(id: string): Promise<{ ok: boolean; proposal?: any; status?: number }>{
   try{
     const csrf = getCsrfToken()
-    const headers: Record<string,string> = { }
+    const headers: Record<string,string> = {}
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}`,{ method:'GET', credentials:'include', headers })

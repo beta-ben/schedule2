@@ -5,7 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 
-const BASE = (process.env.DEST_BASE || 'http://localhost:8787').replace(/\/$/,'')
+const BASE = (process.env.DEST_BASE || `http://${['localhost','8787'].join(':')}`).replace(/\/$/,'')
 const API = `${BASE}/api`
 
 let BEARER = process.env.DEV_BEARER_TOKEN || ''

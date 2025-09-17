@@ -1,15 +1,14 @@
 import React from 'react'
 import DeleteAllShiftsModals from './DeleteAllShiftsModals'
 import AgentDetailsPanel from './AgentDetailsPanel'
-import { TZ_OPTS, DAYS } from '../../constants'
+import { TZ_OPTS, DAYS, MEETING_COHORTS } from '../../constants'
 import { convertShiftsToTZ, tzAbbrev } from '../../lib/utils'
-import AgentWeekGrid from '../AgentWeekGrid'
-import AgentWeekColumns from '../AgentWeekColumns'
+import { hasAnyOverlap, shiftDurationMinutes } from '../../lib/overlap'
 import AgentWeekLinear from '../AgentWeekLinear'
-import type { PTO, Shift, Task } from '../../types'
+import type { PTO, Shift, Task, MeetingCohort } from '../../types'
 import type { CalendarSegment } from '../../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
 
 function tzFullName(id?: string){
 	switch(id){
@@ -35,6 +34,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const [eSupId, setESupId] = React.useState<string>('')
 	const [eNotes, setENotes] = React.useState<string>('')
 	const [eHidden, setEHidden] = React.useState<boolean>(false)
+	const [eMeeting, setEMeeting] = React.useState<MeetingCohort | ''>('')
 
 	// Selected agent for right panel (controlled if provided)
 	const [selectedIdxLocal, setSelectedIdxLocal] = React.useState<number|null>(null)
@@ -56,8 +56,10 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		setESupId((a.supervisorId as any) || '')
 		setENotes(a.notes || '')
 		setEHidden(!!a.hidden)
+		const mc = (a as any).meetingCohort
+		setEMeeting(typeof mc === 'string' ? mc as MeetingCohort : '')
 	}
-	function cancelEdit(){ setEditingIdx(null) }
+	function cancelEdit(){ setEditingIdx(null); setEMeeting('') }
 	function saveEdit(){
 		if(editingIdx==null) return
 		onUpdateAgent?.(editingIdx, {
@@ -67,17 +69,18 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 			hidden: eHidden,
 			isSupervisor: eIsSup,
 			supervisorId: eSupId ? eSupId : null,
-			notes: eNotes
+			notes: eNotes,
+			meetingCohort: eMeeting || undefined
 		})
 		setEditingIdx(null)
 	}
 
 	// When selection changes, sync right-panel editor with selected agent
 	React.useEffect(()=>{
-		if(selectedIdx==null){ setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEIsSup(false); setESupId(''); setENotes(''); setEHidden(false); return }
+		if(selectedIdx==null){ setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEIsSup(false); setESupId(''); setENotes(''); setEHidden(false); setEMeeting(''); return }
 		const a = agents[selectedIdx]
-		if(!a){ setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEIsSup(false); setESupId(''); setENotes(''); setEHidden(false); return }
-		setEf(a.firstName||''); setEl(a.lastName||''); setEt(a.tzId||TZ_OPTS[0]?.id||'UTC'); setEIsSup(!!a.isSupervisor); setESupId((a.supervisorId as any)||''); setENotes(a.notes||''); setEHidden(!!a.hidden)
+		if(!a){ setEf(''); setEl(''); setEt(TZ_OPTS[0]?.id || 'UTC'); setEIsSup(false); setESupId(''); setENotes(''); setEHidden(false); setEMeeting(''); return }
+		setEf(a.firstName||''); setEl(a.lastName||''); setEt(a.tzId||TZ_OPTS[0]?.id||'UTC'); setEIsSup(!!a.isSupervisor); setESupId((a.supervisorId as any)||''); setENotes(a.notes||''); setEHidden(!!a.hidden); setEMeeting(typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort as MeetingCohort : '')
 		setEditingIdx(selectedIdx)
 	}, [selectedIdx, agents])
 
@@ -126,7 +129,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 				setSelectedIdx(next.i)
 				setTimeout(()=>{
 					const ul = agentsListRef.current
-					const li = ul?.querySelector<HTMLLIElement>(`li[data-idx=\"${next.i}\"]`)
+					const li = ul?.querySelector<HTMLLIElement>(`li[data-idx='${next.i}']`)
 					li?.scrollIntoView({ block: 'nearest' })
 				}, 0)
 			}
@@ -222,8 +225,8 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		const endDay = (s as any).endDay || s.day
 		const endAbs0 = shiftDayIndex(endDay)*minutesInDay + toMinLocal(s.end)
 		const endAbs = endAbs0 <= startAbs ? endAbs0 + minutesInDay : endAbs0
-		let ns = startAbs + deltaMin
-		let ne = endAbs + deltaMin
+		const ns = startAbs + deltaMin
+		const ne = endAbs + deltaMin
 		// wrap within the same displayed week band (0..10080), but compute day/time by modulo
 		const nsDay = Math.floor(((ns/ minutesInDay)%7+7)%7)
 		const neDay = Math.floor(((ne/ minutesInDay)%7+7)%7)
@@ -237,7 +240,6 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	}
 
 	// Overlap + duration helpers centralized
-	import { hasAnyOverlap, shiftDurationMinutes } from '../../lib/overlap'
 	const shiftDurationMin = (s: Shift)=> shiftDurationMinutes(s)
 
 	const fmtDuration = (min: number)=>{
@@ -330,8 +332,12 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		const fn = firstName.trim()
 		const ln = lastName.trim()
 		if(!fn || !ln) return
-		setLastAddedAgentName(`${fn} ${ln}`.trim())
+		const fullCreated = `${fn} ${ln}`.trim()
+		setLastAddedAgentName(fullCreated)
 		onAddAgent?.({ firstName: fn, lastName: ln, tzId })
+		const normalizedCreated = fullCreated.toLowerCase()
+		const match = sortedAgents.find(({ a })=> `${a.firstName||''} ${a.lastName||''}`.trim().toLowerCase() === normalizedCreated)
+		if(match){ setSelectedIdx(match.i) }
 		setFirstName('')
 		setLastName('')
 	}
@@ -543,8 +549,10 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 												isSupervisor={eIsSup}
 												supervisorId={eSupId}
 												hidden={eHidden}
+												meetingCohort={eMeeting}
 												notes={eNotes}
 												agents={agents as any}
+												meetingOptions={MEETING_COHORTS}
 												selectedIdx={selectedIdx as any}
 												onFirst={(v)=> setEf(v)}
 												onLast={(v)=> setEl(v)}
@@ -552,6 +560,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 												onIsSup={(v)=> setEIsSup(v)}
 												onSupId={(v)=> setESupId(v)}
 												onHidden={(v)=> setEHidden(v)}
+												onMeeting={(v)=> setEMeeting(v as MeetingCohort | '')}
 												onNotes={(v)=> setENotes(v)}
 												onSave={saveEdit}
 												onDelete={()=> selectedIdx!=null && setDeleteIdx(selectedIdx)}

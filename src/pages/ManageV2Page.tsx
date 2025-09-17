@@ -1,38 +1,25 @@
-import { toMin, minToHHMM, uid, startOfWeek, addDays, fmtDateRange, fmtYMD, nowInTZ, tzAbbrev, shiftsForDayInTZ, agentDisplayName, agentIdByName } from '../lib/utils'
-import { hasPersonShiftConflict } from '../lib/overlap'
 import React from 'react'
 import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-<<<<<<< HEAD
-import { cloudPost, cloudPostDetailed, login, logout, getApiBase, getApiPrefix, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents } from '../lib/api'
-=======
-import { cloudPost, cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfCookie, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
+import { cloudPostDetailed, ensureSiteSession, login, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import ProposalDiffVisualizer from '../components/ProposalDiffVisualizer'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
-import type { PTO, Shift, Task, Override } from '../types'
+import type { PTO, Shift, Task, Override, MeetingCohort } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
-import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, minToHHMM } from '../lib/utils'
+import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, minToHHMM, applyOverrides } from '../lib/utils'
 
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
+type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
 
-<<<<<<< HEAD
-export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void }){
-  // Auto-unlocked in dev; in prod we still require login once.
-=======
 export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, overrides, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto, setOverrides }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; overrides: Override[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void; setOverrides: (f:(prev:Override[])=>Override[])=>void }){
   // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const [unlocked, setUnlocked] = React.useState(false)
-  const [autoTried, setAutoTried] = React.useState(false)
+  const [pwInput, setPwInput] = React.useState('')
   const [msg, setMsg] = React.useState('')
-<<<<<<< HEAD
-=======
   // Lightweight toast state for publish notifications
   const toastTimerRef = React.useRef<number | null>(null)
   const [toast, setToast] = React.useState<null | { text: string; kind: 'success'|'error' }>(null)
@@ -47,18 +34,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   React.useEffect(()=>{
     if(hasCsrfToken()){ setUnlocked(true); setMsg('') }
   },[])
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const apiBase = React.useMemo(()=> getApiBase(), [])
   const apiPrefix = React.useMemo(()=> getApiPrefix(), [])
-  React.useEffect(()=>{
-    if(hasCsrfToken()){
-      setUnlocked(true); setMsg('')
-    } else if(!autoTried){
-      setAutoTried(true)
-      // Attempt implicit dev auto-login with blank password (DEV_MODE server accepts)
-      login('').then(r=>{ if(r.ok && hasCsrfToken()) setUnlocked(true) })
-    }
-  },[autoTried])
+  const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
   const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Proposals'] as const
@@ -167,7 +145,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         try{ localStorage.removeItem(LEGACY_DRAFT_KEY) }catch{}
       }
     }catch{}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [UNPUB_KEY, LEGACY_DRAFT_KEY])
   // Autosave unpublished changes (debounced)
   React.useEffect(()=>{
@@ -239,13 +216,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setWorkingShifts(shifts)
       setIsDirty(false)
       startedFromLiveRef.current = false
-<<<<<<< HEAD
-      try{ localStorage.removeItem(DRAFT_KEY) }catch{}
-=======
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     }
-<<<<<<< HEAD
-=======
   }, [shiftUndoStack, workingShifts, shifts])
   const redoShifts = React.useCallback(()=>{
     if(shiftRedoStack.length===0) return
@@ -275,145 +246,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // - Time overrides: replace the agent's shifts on the covered day(s) with the provided time window.
   // Weekly recurrence is respected.
   const effectiveWorkingShifts = React.useMemo(()=>{
-    try{
-      const orig: Shift[] = Array.isArray(workingShifts) ? workingShifts : []
-      // Pre-split any overnight shifts into day-bounded pieces so day-level replacement is precise
-      const pieces: Shift[] = []
-      for(const s of orig){
-        const sMin = toMin(s.start)
-        const eMinRaw = s.end==='24:00' ? 1440 : toMin(s.end)
-        const crosses = typeof (s as any).endDay === 'string' ? ((s as any).endDay !== s.day) : (eMinRaw < sMin && s.end !== '24:00')
-        if(crosses){
-          const endDay = (s as any).endDay || (['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const)[((['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const).indexOf(s.day as any)+1)%7]
-          pieces.push({ ...s, end: '24:00', endDay } as any)
-          pieces.push({ ...s, day: endDay as any, start: '00:00', end: s.end, endDay } as any)
-        }else{
-          pieces.push(s)
-        }
-      }
-      const ovs: Override[] = Array.isArray(workingOverrides) ? workingOverrides : []
-      if(ovs.length===0) return pieces
-      const week0 = parseYMD(weekStart)
-      const week6 = addDays(week0, 6)
-      const inWeek = (ymd: string)=> ymd >= fmtYMD(week0) && ymd <= fmtYMD(week6)
-      const dayStr = (d: Date)=> ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] as any
-      const addDaysY = (d: Date, n: number)=> addDays(d, n)
-      const toY = (d: Date)=> fmtYMD(d)
-      const skipAddForYmd = new Set<string>()
-      const removeWindowFor = (person:string, day:string, rmStartMin:number, rmEndMin:number)=>{
-        const clamp = (n:number)=> Math.max(0, Math.min(1440, n))
-        const R0 = clamp(rmStartMin), R1 = clamp(rmEndMin)
-        if(!(R1>R0)) return
-        for(let i=pieces.length-1; i>=0; i--){
-          const p = pieces[i]
-          if(p.person!==person || p.day!==day) continue
-          const pS = toMin(p.start)
-          const pE = p.end==='24:00' ? 1440 : toMin(p.end)
-          const L = Math.max(pS, R0)
-          const U = Math.min(pE, R1)
-          if(!(U> L)) continue
-          // overlap exists: split/trim
-          const beforeLen = L - pS
-          const afterLen = pE - U
-          // Remove the original
-          pieces.splice(i,1)
-          const makePiece = (startMin:number, endMin:number, suffix:string)=>{
-            const endStr = endMin>=1440 ? '24:00' : `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`
-            const startStr = `${String(Math.floor(startMin/60)).padStart(2,'0')}:${String(startMin%60).padStart(2,'0')}`
-            const np: any = { ...p, id: `${p.id}${suffix}`, start: startStr, end: endStr }
-            // If not ending at 24:00 anymore, ensure no cross-midnight flag remains
-            if(endStr !== '24:00' && np.endDay && np.endDay !== np.day){ delete np.endDay }
-            return np as Shift
-          }
-          // Push in reverse order to maintain original relative ordering after splice
-          if(afterLen>0){ pieces.splice(i, 0, makePiece(U, pE, '-b')) }
-          if(beforeLen>0){ pieces.splice(i, 0, makePiece(pS, L, '-a')) }
-        }
-      }
-      const applyOccurrence = (start: Date, end: Date, ov: Override)=>{
-        // iterate each day of this occurrence
-        let cur = new Date(start)
-        const last = new Date(end)
-        while(cur <= last){
-          const ymd = toY(cur)
-          if(inWeek(ymd)){
-            const dStr = dayStr(cur)
-            if(ov.start && ov.end){
-              // Replace the whole day for this person, then add the override window
-              for(let i = pieces.length - 1; i >= 0; i--){
-                const p = pieces[i]
-                if(p.person === ov.person && p.day === dStr) pieces.splice(i,1)
-              }
-              if(!skipAddForYmd.has(ymd)){
-                const s = ov.start
-                const e = ov.end
-                const sMin = toMin(s)
-                const eMin = toMin(e)
-                const overnight = (eMin <= sMin) && !(e==='24:00')
-                const endDay = overnight ? dayStr(addDaysY(cur, 1)) : undefined
-                pieces.push({
-                  id: `ov:${ov.id}:${ymd}`,
-                  person: ov.person,
-                  agentId: agentIdByName(localAgents as any, ov.person),
-                  day: dStr,
-                  start: s,
-                  end: e,
-                  ...(endDay ? { endDay } : {})
-                } as any)
-                if(overnight){
-                  // On the following day, trim from 00:00 up to max(end, 08:00)
-                  const nextDay = dayStr(addDaysY(cur, 1))
-                  const blackoutEnd = Math.max(eMin % 1440, 480) // minutes
-                  removeWindowFor(ov.person, nextDay, 0, blackoutEnd)
-                  // Avoid double-adding on the next day when loop advances
-                  const nextY = fmtYMD(addDaysY(cur, 1))
-                  skipAddForYmd.add(nextY)
-                }
-              }
-            } else {
-              // No-time override: trim 8 hours starting at earliest shift start on that day
-              let anchor: number | null = null
-              for(const p of pieces){
-                if(p.person===ov.person && p.day===dStr){
-                  const st = toMin(p.start)
-                  if(anchor==null || st < anchor) anchor = st
-                }
-              }
-              if(anchor!=null){
-                removeWindowFor(ov.person, dStr, anchor, anchor + 480)
-              }
-            }
-          }
-          cur = addDaysY(cur, 1)
-        }
-      }
-      for(const ov of ovs){
-        let s = parseYMD(ov.startDate)
-        let e = parseYMD(ov.endDate)
-        if(ov.recurrence?.rule === 'weekly'){
-          const until = ov.recurrence.until ? parseYMD(ov.recurrence.until) : null
-          // fast-forward whole range by weeks until it overlaps the current week window
-          let guard = 0
-          while(e < week0 && guard < 200){
-            s = addDaysY(s, 7)
-            e = addDaysY(e, 7)
-            guard++
-            if(until && s > until) break
-          }
-          // Push each weekly occurrence that starts within or before the week and overlaps it
-          while(s <= week6 && (!until || s <= until)){
-            applyOccurrence(s, e, ov)
-            s = addDaysY(s, 7)
-            e = addDaysY(e, 7)
-          }
-        } else {
-          applyOccurrence(s, e, ov)
-        }
-      }
-      return pieces
-    }catch{
-      return workingShifts
-    }
+    try{ return applyOverrides(workingShifts, workingOverrides, weekStart, localAgents as any) }
+    catch{ return workingShifts }
   }, [workingShifts, workingOverrides, weekStart, localAgents])
   // When switching into Shifts tab, if there are no local edits pending, refresh from live
   React.useEffect(()=>{
@@ -450,14 +284,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     // Include any names present on PTO records
     for(const p of pto){ if(p.person) set.add(p.person) }
     return Array.from(set).sort()
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   }, [localAgents, shifts, calendarSegs, pto])
-  // If still not unlocked, show fast, minimal status (rare in dev).
-  if(!unlocked){
-    return <section className={["rounded-2xl p-6", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-      <div className="text-sm opacity-70">Initializing session… {msg}</div>
-    </section>
-  }
   const activeTasks = React.useMemo(()=> tasks.filter(t=>!t.archived), [tasks])
   const [assignee, setAssignee] = React.useState<string>('')
   const [assignDay, setAssignDay] = React.useState<typeof DAYS[number]>('Mon' as any)
@@ -529,7 +356,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       hidden: !!a.hidden,
       isSupervisor: !!(a as any).isSupervisor,
       supervisorId: (a as any).supervisorId ?? null,
-      notes: (a as any).notes
+      notes: (a as any).notes,
+      meetingCohort: typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort : undefined
     }))
     const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
     if(res.ok){
@@ -569,7 +397,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       hidden: !!a.hidden,
       isSupervisor: !!(a as any).isSupervisor,
       supervisorId: (a as any).supervisorId ?? null,
-      notes: (a as any).notes
+      notes: (a as any).notes,
+      meetingCohort: typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort : undefined
     }))
     const res = await cloudCreateProposal({
       title,
@@ -614,7 +443,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     setProposalDetail(res.proposal)
   }
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
-  onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
+  onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
   },[onAddAgent])
   const handleUpdate = React.useCallback((index:number, a:AgentRow)=>{
     onUpdateAgent?.(index, a); setLocalAgents(prev=> prev.map((row,i)=> i===index ? a : row))
@@ -629,42 +458,18 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           <div className="text-lg font-semibold">Protected — Manage Data</div>
           <p className="text-sm opacity-80">Sign in to your session.</p>
           <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-            setMsg('')
-            const res = await login(pwInput)
+      const res = await login(pwInput)
             if(res.ok){
-              // Try to establish site session (dev proxy may need different password; we optimistically reuse admin pw)
               try{ await ensureSiteSession(pwInput) }catch{}
-              // Extra probe: confirm schedule readable (site session gate)
-              let siteOk = true
-              try{
-                const r2 = await fetch(`${apiBase}${apiPrefix}/schedule`, { method:'GET', credentials:'include' })
-                if(!r2.ok){
-                  siteOk = false
-                  if(r2.status===401){
-                    try{ const j = await r2.clone().json(); if(j?.error==='missing_site_session'){
-                      setMsg('Admin session ok but secondary session missing; reload if persists.')
-                    } }catch{}
-                  }
-                }
-              }catch{}
               const diag = getCsrfDiagnostics()
-              if(hasCsrfToken() && siteOk){
+              if(hasCsrfToken()){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
-<<<<<<< HEAD
-                // Proactively push agents metadata so Hidden flags propagate immediately post-login
-                try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden }))) }catch{}
-              } else if(!siteOk){
-                setUnlocked(false)
-=======
         // Proactively push agents metadata so Hidden flags propagate immediately post-login
-        try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId ?? null, notes: (a as any).notes }))) }catch{}
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
+        try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId ?? null, notes: (a as any).notes, meetingCohort: typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort : undefined }))) }catch{}
               } else {
                 setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
               }
-            } else {
-              setMsg(res.status===401?'Incorrect password':'Login failed')
-            }
+            } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
           })() }}>
             <div className="flex gap-2">
               <input type="password" autoFocus className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pwInput} onChange={(e)=>setPwInput(e.target.value)} placeholder="Password" />
@@ -1217,7 +1022,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 const sd = idxOf(s.day); const ed = idxOf((s as any).endDay || s.day)
                 const sAbs = sd*1440 + toMin(s.start)
                 let eAbs = ed*1440 + toMin(s.end); if(eAbs<=sAbs) eAbs+=1440
-                let ns = sAbs+delta; let ne = eAbs+delta
+                const ns = sAbs+delta; const ne = eAbs+delta
                 const nsDay = Math.floor(((ns/1440)%7+7)%7)
                 const neDay = Math.floor(((ne/1440)%7+7)%7)
                 const nsMin = ((ns%1440)+1440)%1440
@@ -1359,12 +1164,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           if(assignEndDay===assignDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                         const dayShiftsLocal = shiftsForDayInTZ(shifts, assignDay as any, tz.offset).filter(s=>s.person===assignee)
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
-<<<<<<< HEAD
-                        const overlaps = !hasPersonShiftConflict(dayShiftsLocal as any, assignee, assignDay as any, assignStart, assignEnd, assignEndDay as any)
-                        if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.'); }
-=======
                         // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
                           setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
                       }}
                       className={["h-10 rounded-xl border font-medium px-4", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}
@@ -1486,12 +1286,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           if(eaEndDay===eaDay && !(aE>aS)) return alert('End must be after start (or choose a later End Day)')
                           const dayShiftsLocal = shiftsForDayInTZ(shifts, eaDay as any, tz.offset).filter(s=>s.person===eaPerson)
                           const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE=s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
-<<<<<<< HEAD
-                          const overlaps = !hasPersonShiftConflict(dayShiftsLocal as any, eaPerson, eaDay as any, eaStart, eaEnd, eaEndDay as any)
-                          if(!overlaps){ alert('No shift overlaps that time for this agent on that day. This posture will be saved but won\'t display until there is an overlapping shift.') }
-=======
                           // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
                           setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, endDay: eaEndDay, start: eaStart, end: eaEnd, taskId: eaTaskId } as any : cs))
                           setEditingIdx(null)
                         }} className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>

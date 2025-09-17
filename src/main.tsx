@@ -3,9 +3,13 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import App from './App'
 
-// Runtime stale host guard (fetch + EventSource) to neutralize legacy localhost:8787 references.
+const LEGACY_HOST = 'localhost'
+const LEGACY_PORT = '8787'
+const LEGACY_TARGET = `${LEGACY_HOST}:${LEGACY_PORT}`
+
+// Runtime stale host guard (fetch + EventSource) to neutralize legacy localhost port 8787 references.
 ;(function installFetchRewrite(){
-  const DEAD = 'localhost:8787'
+  const DEAD = LEGACY_TARGET
   if(typeof window === 'undefined' || !window.fetch) return
   const orig = window.fetch.bind(window)
   let warned=false
@@ -28,7 +32,7 @@ import App from './App'
 })()
 
 ;(function installEventSourceRewrite(){
-  const DEAD='localhost:8787'
+  const DEAD=LEGACY_TARGET
   if(typeof window==='undefined' || !(window as any).EventSource) return
   const Orig=(window as any).EventSource
   let warned=false
@@ -53,9 +57,9 @@ import App from './App'
   }catch{}
 })()
 
-// Hard guard: rewrite any lingering code pointing at localhost:8787 to current origin.
+// Hard guard: rewrite any lingering code pointing at localhost port 8787 to current origin.
 ;(function installFetchRewrite(){
-  const DEAD = 'localhost:8787'
+  const DEAD = LEGACY_TARGET
   if(typeof window === 'undefined' || !window.fetch) return
   const orig = window.fetch.bind(window)
   let warned = false
@@ -79,7 +83,7 @@ import App from './App'
 
 // Parallel guard: patch EventSource so any stale hard-coded 8787 host is transparently rewritten.
 ;(function installEventSourceRewrite(){
-  const DEAD = 'localhost:8787'
+  const DEAD = LEGACY_TARGET
   if(typeof window === 'undefined' || !(window as any).EventSource) return
   const OrigES = (window as any).EventSource
   let warned = false

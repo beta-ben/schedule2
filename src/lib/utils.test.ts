@@ -1,38 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { minToHHMM, toMin, convertShiftsToTZ } from './utils'
-import type { Shift } from '../types'
-
-describe('time conversions', () => {
-  it('round trips minutes', () => {
-    for (const m of [0,1,59,60,61,1439,1440,-1,1500]) {
-      const hhmm = minToHHMM(m)
-      const back = toMin(hhmm)
-      expect(minToHHMM(back)).toEqual(hhmm)
-    }
-  })
-})
-
-describe('convertShiftsToTZ', () => {
-  const base: Shift[] = [
-    { id:'s1', person:'A', day:'Mon', start:'22:00', end:'02:00', segments:[] },
-    { id:'s2', person:'A', day:'Tue', start:'00:00', end:'24:00', segments:[] },
-  ] as any
-  it('handles positive offset crossing midnight', () => {
-    const r = convertShiftsToTZ(base, +5)
-    expect(r.length).toBeGreaterThan(2)
-    for (const s of r) {
-      expect(/\d{2}:\d{2}|24:00/.test(s.start)).toBeTruthy()
-      expect(/\d{2}:\d{2}|24:00/.test(s.end)).toBeTruthy()
-    }
-  })
-  it('handles negative offset crossing previous day', () => {
-    const r = convertShiftsToTZ(base, -7)
-    expect(r.length).toBeGreaterThan(2)
-  })
-})
-import { describe, it, expect } from 'vitest'
-import { convertShiftsToTZ, minToHHMM, toMin } from './utils'
-import type { Shift } from '../types'
+import { convertShiftsToTZ, minToHHMM, toMin, applyOverrides } from './utils'
+import type { Shift, Override } from '../types'
 
 // Minimal stub of Shift type for tests (aligning with existing shape)
 function mkShift(partial: Partial<Shift>): Shift {
@@ -99,5 +67,45 @@ describe('convertShiftsToTZ', () => {
     // Because entire shift moves into next day without wrapping, should remain single segment on Sat
     expect(res).toHaveLength(1)
     expect(res[0]).toMatchObject({ day: 'Sat', start: '02:00', end: '07:00' })
+  })
+})
+
+describe('applyOverrides', () => {
+  const weekStart = '2025-09-14' // Sunday
+  const agents: { id?: string; firstName?: string; lastName?: string }[] = []
+
+  it('removes day shifts and inserts override window (same day)', () => {
+    const base: Shift[] = [
+      mkShift({ id: 'a', person: 'Alice', day: 'Mon', start: '09:00', end: '17:00' }),
+      mkShift({ id: 'b', person: 'Alice', day: 'Tue', start: '09:00', end: '17:00' })
+    ]
+    const ovs: Override[] = [{ id: 'ov1', person: 'Alice', startDate: '2025-09-15', endDate: '2025-09-15', start: '10:00', end: '16:00' } as any]
+    const out = applyOverrides(base, ovs, weekStart, agents)
+    // Monday original removed, replaced with 10-16
+    const mon = out.filter(s=> s.day==='Mon' && s.person==='Alice')
+    expect(mon).toHaveLength(1)
+    expect(mon[0]).toMatchObject({ start: '10:00', end: '16:00' })
+    // Tuesday unaffected
+    const tue = out.find(s=> s.id==='b')
+    expect(tue).toBeTruthy()
+  })
+
+  it('handles overnight override and trims next morning blackout up to max(end, 08:00)', () => {
+    const base: Shift[] = [
+      mkShift({ id: 'x', person: 'Bob', day: 'Tue', start: '07:00', end: '15:00' }),
+      mkShift({ id: 'y', person: 'Bob', day: 'Wed', start: '08:00', end: '12:00' })
+    ]
+    // Override Tue 22:00 -> Wed 02:00: removes Tue shifts; adds Tue 22-02 with endDay Wed.
+    // On Wed, blackout from 00:00 to max(02:00, 08:00)=08:00, trimming the 08:00-12:00 shift start to 08:00 unaffected.
+    const ovs: Override[] = [{ id: 'ov2', person: 'Bob', startDate: '2025-09-16', endDate: '2025-09-16', start: '22:00', end: '02:00' } as any]
+    const out = applyOverrides(base, ovs, weekStart, agents)
+    const tue = out.filter(s=> s.person==='Bob' && s.day==='Tue')
+    // Original Tue shift removed; only override exists
+    expect(tue).toHaveLength(1)
+    expect(tue[0]).toMatchObject({ start: '22:00', end: '02:00', endDay: 'Wed' })
+    // Wed shift should be trimmed to remove 00:00-08:00 blackout; original Wed 08:00-12:00 remains since blackout ends at 08:00
+    const wed = out.filter(s=> s.person==='Bob' && s.day==='Wed')
+    // Expect exactly one Wed segment 08:00-12:00 (unchanged)
+    expect(wed.some(s=> s.start==='08:00' && s.end==='12:00')).toBe(true)
   })
 })

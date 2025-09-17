@@ -1,23 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
-import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev } from '../lib/utils'
-import type { PTO, Shift, Task } from '../types'
+import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev, applyOverrides } from '../lib/utils'
+import type { PTO, Shift, Task, Override } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import OnDeck from '../components/OnDeck'
 import UpNext from '../components/UpNext'
 import PostureToday from '../components/PostureToday'
-import AgentWeek from '../components/AgentWeek'
 import AgentWeekGrid from '../components/AgentWeekGrid'
 // Legend removed from Schedule page
 
-export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents, slimline }:{ 
+export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, overrides, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents, slimline }:{ 
   dark: boolean
   weekStart: string
   dayIndex: number
   setDayIndex: (i:number)=>void
   shifts: Shift[]
   pto: PTO[]
+  overrides?: Override[]
   tasks: Task[]
   calendarSegs: CalendarSegment[]
   tz: { id:string; label:string; offset:number }
@@ -28,6 +28,8 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   agents?: Array<{ id?: string; firstName?: string; lastName?: string; hidden?: boolean }>
   slimline?: boolean
 }){
+  // Apply overrides for the visible week so the schedule reflects them
+  const effectiveShifts = React.useMemo(()=> applyOverrides(shifts, overrides||[], weekStart, agents||[]), [shifts, overrides, weekStart, agents])
   const today = new Date()
   const weekStartDate = parseYMD(weekStart)
   const selectedDate = addDays(weekStartDate, dayIndex)
@@ -41,7 +43,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     return set
   }, [agents])
   const dayShifts = useMemo(()=>{
-    const baseAll = shiftsForDayInTZ(shifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+    const baseAll = shiftsForDayInTZ(effectiveShifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
     const base = baseAll
     const filtered = base.filter(s=> !hiddenNames.has(s.person))
     // Merge calendar segments into each shift for display
@@ -52,12 +54,12 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
     })
-  },[shifts,dayKey,tz.offset,calendarSegs, hiddenNames])
+  },[effectiveShifts,dayKey,tz.offset,calendarSegs, hiddenNames])
   const people = useMemo(()=>Array.from(new Set(dayShifts.map(s=>s.person))),[dayShifts])
   const allPeople = useMemo(()=>{
-    const names = Array.from(new Set(shifts.map(s=>s.person))).sort()
+    const names = Array.from(new Set(effectiveShifts.map(s=>s.person))).sort()
     return names.filter(n=> !hiddenNames.has(n))
-  },[shifts, hiddenNames])
+  },[effectiveShifts, hiddenNames])
   const [agentView, setAgentView] = useState<string>('')
   const [showAgentMenu, setShowAgentMenu] = useState(false)
   const agentMenuRef = React.useRef<HTMLDivElement|null>(null)
@@ -82,7 +84,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   const nowTz = nowInTZ(tz.id)
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
   const todayShifts = useMemo(()=>{
-    const baseAll = shiftsForDayInTZ(shifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
+    const baseAll = shiftsForDayInTZ(effectiveShifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
     const filtered = baseAll.filter(s=> !hiddenNames.has(s.person))
     return filtered.map(s=>{
       const cal = calendarSegs
@@ -91,7 +93,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
     })
-  },[shifts,todayKey,tz.offset,calendarSegs, hiddenNames])
+  },[effectiveShifts,todayKey,tz.offset,calendarSegs, hiddenNames])
 
   // Live clock in selected timezone (12-hour + meridiem)
   const [nowClock, setNowClock] = useState(()=>{
@@ -307,7 +309,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         tz={tz}
         weekStart={weekStart}
         agent={agentView}
-        shifts={shifts}
+        shifts={effectiveShifts}
         pto={pto}
   tasks={tasks}
   calendarSegs={calendarSegs}

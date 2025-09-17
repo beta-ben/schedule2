@@ -3,7 +3,7 @@ import ThemeSelector from './ThemeSelector'
 import { addDays, fmtDateRange, parseYMD, tzAbbrev, fmtYMD, startOfWeek } from '../lib/utils'
 import { TZ_OPTS } from '../constants'
 
-export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode, liveMeta }:{ 
+export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
   view: 'schedule'|'teams'|'manageV2'
@@ -15,20 +15,11 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   canEdit: boolean
   editMode: boolean
   setEditMode: React.Dispatch<React.SetStateAction<boolean>>
-  liveMeta?: { loading:boolean; lastUpdate?: number; onRefresh?: ()=>void }
 }){
   const isoLike = /^\d{4}-\d{2}-\d{2}$/
   const wsValid = isoLike.test(weekStart) && !Number.isNaN(parseYMD(weekStart).getTime())
   const safeWeekStartDate = wsValid ? parseYMD(weekStart) : startOfWeek(new Date())
   const weekEndDate = addDays(safeWeekStartDate, 6)
-<<<<<<< HEAD
-  const devBadge = (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold tracking-wide uppercase bg-amber-500/10 border-amber-400 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300 dark:border-amber-500">
-      <svg aria-hidden width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m17 7-10 10"/><path d="m8 7 9 9"/></svg>
-      DEV
-    </span>
-  )
-=======
   // Small-screen consolidated menu state
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement|null>(null)
@@ -43,7 +34,6 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
     document.addEventListener('keydown', onKey)
     return ()=>{ document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey) }
   }, [menuOpen])
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   return (
     <>
     <header className="mb-1">
@@ -97,42 +87,13 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
           </button>
         </div>
 
-<<<<<<< HEAD
-        {/* Center: page title above date range + live status */}
-  <div className="text-center whitespace-nowrap overflow-visible">
-    <div className={dark?"text-neutral-400 flex items-center gap-2":"text-neutral-600 flex items-center gap-2"} style={{ fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.05 }}>
-      Customer Care Team Schedule {devBadge}
-    </div>
-=======
         {/* Center: page title above date range (or portal header in manage) */}
   <div className="text-center whitespace-nowrap overflow-visible leading-tight">
     <div className={[dark?"text-neutral-400":"text-neutral-600","font-semibold","text-[0.88rem] sm:text-[0.95rem]"].join(' ')}>Customer Care Team Schedule</div>
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   {view==='manageV2' ? (
     <div className={["font-bold tracking-wide", dark?"text-red-300":"text-red-600","text-[1.15rem] sm:text-[1.35rem]"].join(' ')} style={{ letterSpacing: '0.02em' }}>PORTAL OF POWER</div>
   ) : (
-<<<<<<< HEAD
-    <div className="flex flex-col items-center gap-1">
-      <div className="font-medium tabular-nums" style={{ letterSpacing: '0.005em', fontSize: '1.35rem', lineHeight: 1.12 }}>{fmtDateRange(safeWeekStartDate, weekEndDate)}</div>
-      {liveMeta && (
-        <button
-          type="button"
-          onClick={()=> liveMeta.onRefresh && liveMeta.onRefresh()}
-          className={["group inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition", dark?"border-neutral-600 bg-neutral-900 text-neutral-300 hover:border-neutral-400":"border-neutral-300 bg-white text-neutral-600 hover:border-neutral-500"].join(' ')}
-          title={liveMeta.loading? 'Loading latest schedule…' : 'Click to refresh now'}
-          aria-live="polite"
-        >
-          <span className={"inline-block w-2 h-2 rounded-full " + (liveMeta.loading? 'animate-pulse bg-amber-400' : 'bg-green-500')}></span>
-          {liveMeta.loading ? 'Syncing…' : 'Live'}
-          {(!liveMeta.loading && liveMeta.lastUpdate) && (
-            <span className="opacity-70 tabular-nums">{timeAgo(liveMeta.lastUpdate)}</span>
-          )}
-        </button>
-      )}
-    </div>
-=======
     <div className={["font-medium tabular-nums","text-[1.15rem] sm:text-[1.35rem]"].join(' ')} style={{ letterSpacing: '0.005em' }}>{fmtDateRange(safeWeekStartDate, weekEndDate)}</div>
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   )}
   </div>
 
@@ -278,13 +239,4 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
     
     </>
   )
-}
-
-function timeAgo(ts:number){
-  const s = Math.max(0, Math.floor((Date.now()-ts)/1000))
-  if(s < 60) return s + 's'
-  const m = Math.floor(s/60)
-  if(m < 60) return m + 'm'
-  const h = Math.floor(m/60)
-  return h + 'h'
 }

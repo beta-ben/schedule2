@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { useScheduleLive } from './hooks/useScheduleLive'
-import { fmtYMD, startOfWeek } from './lib/utils'
-import { cloudGet, cloudPost, hasCsrfCookie, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite } from './lib/api'
-import type { PTO, Shift, Task, Override } from './types'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import { fmtYMD, startOfWeek, formatMinutes, TimeFormat } from './lib/utils'
+import { cloudGet, cloudPost, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession } from './lib/api'
+import type { PTO, Shift, Task, Override, MeetingCohort } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
 import SchedulePage from './pages/SchedulePage'
@@ -11,33 +10,48 @@ import ManageV2Page from './pages/ManageV2Page'
 import TeamsPage from './pages/TeamsPage'
 import { generateSample } from './sample'
 // sha256Hex removed from App; keep local hashing only in components that need it
-import { TZ_OPTS } from './constants'
+import { TZ_OPTS, MEETING_COHORTS } from './constants'
+import { TimeFormatProvider } from './context/TimeFormatContext'
 
 const SAMPLE = generateSample()
 const USE_SAMPLE = (import.meta.env.VITE_USE_SAMPLE || 'no').toLowerCase() === 'yes'
 const ALLOW_DOC_FALLBACK = (import.meta.env.VITE_ALLOW_DOC_FALLBACK || 'no').toLowerCase() === 'yes'
 
 export default function App(){
-<<<<<<< HEAD
-  // Unified backend: site always unlocked (server enforces if needed)
-  const hashToView = (hash:string): 'schedule'|'manageV2' => {
-=======
+  const autoUnlock = Boolean(import.meta.env?.DEV && import.meta.env.VITE_REQUIRE_SITE_PASSWORD !== '1')
+  const devSitePassword = autoUnlock ? (import.meta.env.VITE_DEV_SITE_PASSWORD || import.meta.env.VITE_SITE_PASSWORD || '').trim() : ''
   // Site-wide gate: if /api/schedule requires a site session, prompt for password.
-  // Default to locked until probe confirms access
+  // Default to locked until probe confirms access (auto-unlock in dev still waits for ensureSiteSession).
   const [siteUnlocked, setSiteUnlocked] = useState<boolean>(false)
+  const [autoUnlocking, setAutoUnlocking] = useState<boolean>(autoUnlock)
   const [sitePw, setSitePw] = useState('')
   const [siteMsg, setSiteMsg] = useState('')
-  useEffect(()=>{ (async()=>{
-    try{
-      const base = getApiBase()
-      const prefix = getApiPrefix()
-      const url = `${base}${prefix}/schedule`
-      const r = await fetch(url, { method: 'GET', credentials: 'include' })
-      setSiteUnlocked(r.ok)
-    }catch{ setSiteUnlocked(false) }
-  })() }, [])
+  useEffect(()=>{
+    if(autoUnlock){
+      (async()=>{
+        setAutoUnlocking(true)
+        try{
+          const ok = await ensureSiteSession(devSitePassword || undefined)
+          setSiteUnlocked(ok)
+        }catch{
+          setSiteUnlocked(false)
+        }finally{
+          setAutoUnlocking(false)
+        }
+      })()
+      return
+    }
+    (async()=>{
+      try{
+        const base = getApiBase()
+        const prefix = getApiPrefix()
+        const url = `${base}${prefix}/schedule`
+        const r = await fetch(url, { method: 'GET', credentials: 'include' })
+        setSiteUnlocked(r.ok)
+      }catch{ setSiteUnlocked(false) }
+    })()
+  }, [autoUnlock, devSitePassword])
   const hashToView = (hash:string): 'schedule'|'teams'|'manageV2' => {
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     const h = (hash||'').toLowerCase()
     if(h.includes('teams')) return 'teams'
     if(h.includes('manage2')) return 'manageV2'
@@ -69,6 +83,21 @@ export default function App(){
       return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
     }catch{ return true }
   })
+  const [timeFormat, setTimeFormat] = useState<TimeFormat>(()=>{
+    if(typeof window !== 'undefined'){
+      try{
+        const stored = localStorage.getItem('schedule_time_format')
+        if(stored === '12h' || stored === '24h') return stored as TimeFormat
+      }catch{}
+    }
+    return '24h'
+  })
+  useEffect(()=>{
+    try{ localStorage.setItem('schedule_time_format', timeFormat) }catch{}
+  }, [timeFormat])
+  const formatTimeFn = useCallback((minutes: number)=> formatMinutes(minutes, timeFormat), [timeFormat])
+  const timeFormatValue = useMemo(()=> ({ timeFormat, setTimeFormat, formatTime: formatTimeFn }), [timeFormat, formatTimeFn])
+
   useEffect(()=>{
     const handler = (e: Event)=>{
       const any = e as CustomEvent
@@ -92,8 +121,7 @@ export default function App(){
     }
     window.addEventListener('schedule:set-theme', handler as any)
     return ()=> window.removeEventListener('schedule:set-theme', handler as any)
-  },[])
-  // React to OS theme changes when preference is 'system'
+  },[])  // React to OS theme changes when preference is 'system'
   useEffect(()=>{
     if(!window.matchMedia) return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -123,16 +151,10 @@ export default function App(){
     // default
     return dark? `${baseCls} bg-neutral-950 text-neutral-100` : `${baseCls} bg-neutral-100 text-neutral-900`
   }, [effectiveTheme, dark])
-<<<<<<< HEAD
-  // Live schedule state (replaced later by draft overrides if editing)
-  const [shifts, setShifts] = useState<Shift[]>(SAMPLE.shifts)
-  const [pto, setPto] = useState<PTO[]>(SAMPLE.pto)
-=======
   // Start empty to avoid placeholder flicker; only use sample when explicitly enabled
   const [shifts, setShifts] = useState<Shift[]>(USE_SAMPLE ? SAMPLE.shifts : [])
   const [pto, setPto] = useState<PTO[]>(USE_SAMPLE ? SAMPLE.pto : [])
   const [overrides, setOverrides] = useState<Override[]>([])
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   const [tz, setTz] = useState(TZ_OPTS[0])
   const [slimline, setSlimline] = useState<boolean>(()=>{
     try{ const v = localStorage.getItem('schedule_slimline'); if(v===null) return false; return v==='1' }
@@ -149,7 +171,7 @@ export default function App(){
     return ()=> window.removeEventListener('schedule:set-slimline', handler as any)
   },[])
   // v2: dedicated agents list (temporary local persistence)
-  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string }
+  type AgentRow = { id?: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
   const [agentsV2, setAgentsV2] = useState<AgentRow[]>(()=>{
     try{
       const raw = localStorage.getItem('schedule_agents_v2_v1')
@@ -318,10 +340,6 @@ export default function App(){
     return ()=> window.removeEventListener('schedule:auth', onAuth as any)
   }, [agentsV2])
 
-<<<<<<< HEAD
-  // Initial load handled by live hook (below) instead of bespoke effect
-  useEffect(()=>{ setLoadedFromCloud(true) },[])
-=======
   useEffect(()=>{ (async()=>{
     if(!siteUnlocked) return
     const data=await cloudGet();
@@ -340,7 +358,6 @@ export default function App(){
       setLoadedFromCloud(true)
     }
   })() },[siteUnlocked])
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   // Keep view in sync with URL hash and vice versa
   useEffect(()=>{
     const handler = ()=> setView(hashToView(window.location.hash))
@@ -376,7 +393,6 @@ export default function App(){
         { id: 'meetings', name: 'Meetings', color: '#16a34a' },
       ])
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[])
 
   // Persist postures locally
@@ -466,31 +482,10 @@ export default function App(){
     return ()=> clearTimeout(t)
   }, [agentsV2, loadedFromCloud, canEdit])
 
-<<<<<<< HEAD
-  // Live schedule subscription (poll + SSE) active only on schedule view
-  const live = useScheduleLive({
-    enabled: view==='schedule',
-    sse: true,
-    intervalMs: 5 * 60 * 1000
-  })
-  const [lastLiveUpdate,setLastLiveUpdate] = useState<number|undefined>(undefined)
-  // Reconcile live.doc into state (unless draft active which isolates editing)
-=======
   // Auto-refresh schedule view every 5 minutes from the cloud (read-only)
   // Use refs to avoid creating a render loop when setting state inside this effect.
   const lastJsonRef = React.useRef<{ shifts: string; pto: string; overrides: string; cal: string; agents: string }>({ shifts: '', pto: '', overrides: '', cal: '', agents: '' })
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
   useEffect(()=>{
-<<<<<<< HEAD
-    if(!live.doc) return
-    if(draftActive) return
-    setShifts(live.doc.shifts)
-    setPto(live.doc.pto)
-    setCalendarSegs(live.doc.calendarSegs as any)
-    if(Array.isArray(live.doc.agents)){
-      setAgentsV2(live.doc.agents as any)
-      try{ localStorage.setItem('schedule_agents_v2_v1', JSON.stringify(live.doc.agents)) }catch{}
-=======
     if(view!== 'schedule') return
     if(!siteUnlocked) return
     let stopped = false
@@ -512,12 +507,7 @@ export default function App(){
         try{ localStorage.setItem('schedule_agents_v2_v1', a) }catch{}
       }
       try{ prevShiftIdsRef.current = new Set((data.shifts||[]).map((s:any)=> s.id).filter(Boolean)) }catch{}
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
     }
-<<<<<<< HEAD
-    setLastLiveUpdate(Date.now())
-  }, [live.doc, draftActive])
-=======
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)
     // No SSE in unified Worker path; polling is sufficient
@@ -561,7 +551,6 @@ export default function App(){
     })
     if(changedC) setCalendarSegs(remapCal as any)
   }, [loadedFromCloud, agentsV2, shifts, pto, calendarSegs])
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
   // Derived: list of unique agent names
   const agents = useMemo(()=> Array.from(new Set(shifts.map(s=>s.person))).sort(), [shifts])
@@ -589,41 +578,47 @@ export default function App(){
     }
   }, [loadedFromCloud, shifts, agentsV2])
 
-<<<<<<< HEAD
-  // Site password gate removed (unified dev mode)
-=======
   if(!siteUnlocked){
     const dark = true
+    const showUnlocking = autoUnlock || autoUnlocking
     return (
       <div className={dark?"min-h-screen w-full bg-neutral-950 text-neutral-100":"min-h-screen w-full bg-neutral-100 text-neutral-900"}>
         <div className="max-w-md mx-auto p-6">
           <section className={["rounded-2xl p-6 space-y-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-            <div className="text-lg font-semibold">Protected — Enter Site Password</div>
-            <p className="text-sm opacity-80">Sign in to view the schedule.</p>
-            <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-              const { ok, status } = await loginSite(sitePw)
-              if(ok){ setSiteUnlocked(true); setSiteMsg(''); try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
-              else if(status===401){ setSiteMsg('Incorrect password') }
-              else if(status===403){ setSiteMsg('Forbidden by server policy') }
-              else if(status===404){ setSiteMsg('API endpoint not found') }
-              else { setSiteMsg('Network error. Is the API running?') }
-            })() }}>
-              <div className="flex gap-2">
-                <input type="password" autoFocus className="flex-1 border rounded-xl px-3 py-2 bg-neutral-900 border-neutral-700" value={sitePw} onChange={(e)=>setSitePw(e.target.value)} placeholder="Password" />
-                <button type="submit" className="rounded-xl px-4 py-2 font-medium border bg-neutral-800 border-neutral-700">Sign in</button>
-              </div>
-            </form>
-            {siteMsg && (<div className="text-sm text-red-300">{siteMsg}</div>)}
-            <div className="pt-3 border-t border-neutral-800 mt-3">
-              <div className="text-sm font-medium mb-1">Or email me a magic link</div>
-              <MagicLoginPanelLite dark={dark} role="site" />
-            </div>
+            {showUnlocking ? (
+              <>
+                <div className="text-lg font-semibold">Unlocking dev session…</div>
+                <p className="text-sm opacity-80">Connecting to the worker.</p>
+              </>
+            ) : (
+              <>
+                <div className="text-lg font-semibold">Protected — Enter Site Password</div>
+                <p className="text-sm opacity-80">Sign in to view the schedule.</p>
+                <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
+                  const { ok, status } = await loginSite(sitePw)
+                  if(ok){ setSiteUnlocked(true); setSiteMsg(''); try{ localStorage.setItem('site_unlocked_hint','1') }catch{} }
+                  else if(status===401){ setSiteMsg('Incorrect password') }
+                  else if(status===403){ setSiteMsg('Forbidden by server policy') }
+                  else if(status===404){ setSiteMsg('API endpoint not found') }
+                  else { setSiteMsg('Network error. Is the API running?') }
+                })() }}>
+                  <div className="flex gap-2">
+                    <input type="password" autoFocus className="flex-1 border rounded-xl px-3 py-2 bg-neutral-900 border-neutral-700" value={sitePw} onChange={(e)=>setSitePw(e.target.value)} placeholder="Password" />
+                    <button type="submit" className="rounded-xl px-4 py-2 font-medium border bg-neutral-800 border-neutral-700">Sign in</button>
+                  </div>
+                </form>
+                {siteMsg && (<div className="text-sm text-red-300">{siteMsg}</div>)}
+                <div className="pt-3 border-t border-neutral-800 mt-3">
+                  <div className="text-sm font-medium mb-1">Or email me a magic link</div>
+                  <MagicLoginPanelLite dark={dark} role="site" />
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>
     )
   }
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 
   // Show a simple loader until cloud data is fetched to avoid placeholder flicker
   if(!loadedFromCloud){
@@ -641,7 +636,8 @@ export default function App(){
   }
 
   return (
-    <ErrorCatcher dark={dark}>
+    <TimeFormatProvider value={timeFormatValue}>
+      <ErrorCatcher dark={dark}>
   <div className={rootCls} data-theme={effectiveTheme}>
         <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
           <TopBar
@@ -652,7 +648,6 @@ export default function App(){
           canEdit={canEdit}
           editMode={editMode}
           setEditMode={setEditMode}
-          liveMeta={view==='schedule' ? { loading: live.loading, lastUpdate: lastLiveUpdate, onRefresh: ()=> live.refresh() } : undefined}
           />
 
           {view==='schedule' ? (
@@ -663,6 +658,7 @@ export default function App(){
               setDayIndex={setDayIndex}
               shifts={shifts}
               pto={pto}
+              overrides={overrides}
               tasks={tasks}
               calendarSegs={calendarSegs}
               tz={tz}
@@ -691,9 +687,9 @@ export default function App(){
                 if(!newFull){ alert('Enter a first and/or last name'); return }
                 const dup = agentsV2.some(row=> nameKey(fullNameOf(row))===nameKey(newFull))
                 if(dup){ alert('An agent with that name already exists.'); return }
-                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false }]))
+                setAgentsV2(prev=> prev.concat([{ id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
               }}
-              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string })=>{
+              onUpdateAgent={(index:number, a:{ firstName:string; lastName:string; tzId?:string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null })=>{
                 // Compute names and check duplicates (excluding self)
                 const cur = agentsV2[index]
                 if(!cur){ return }
@@ -704,6 +700,17 @@ export default function App(){
                 if(!newFull){ alert('Enter a first and/or last name'); return }
                 const dup = agentsV2.some((row,i)=> i!==index && nameKey(fullNameOf(row))===nameKey(newFull))
                 if(dup){ alert('An agent with that name already exists.'); return }
+
+                const rawMeeting = (a as any).meetingCohort
+                const nextMeeting: MeetingCohort | undefined = (() => {
+                  if(rawMeeting === undefined) return cur.meetingCohort ?? undefined
+                  if(rawMeeting === null) return undefined
+                  if(typeof rawMeeting === 'string'){
+                    const trimmed = rawMeeting.trim()
+                    return MEETING_COHORTS.includes(trimmed as MeetingCohort) ? trimmed as MeetingCohort : undefined
+                  }
+                  return undefined
+                })()
 
                 // Propagate rename across current dataset (draft-aware via routed setters)
                 if(nameKey(newFull) !== nameKey(oldFull)){
@@ -724,6 +731,7 @@ export default function App(){
                   isSupervisor: a.isSupervisor!=null ? !!a.isSupervisor : r.isSupervisor,
                   supervisorId: (a.supervisorId!==undefined) ? (a.supervisorId ?? null) : r.supervisorId,
                   notes: a.notes!==undefined ? a.notes : r.notes,
+                  meetingCohort: nextMeeting,
                 } : r))
               }}
               onDeleteAgent={(index:number)=> setAgentsV2(prev=>{
@@ -763,7 +771,8 @@ export default function App(){
           )}
         </div>
       </div>
-    </ErrorCatcher>
+      </ErrorCatcher>
+    </TimeFormatProvider>
   )
 }
 

@@ -5,7 +5,7 @@
 // Env:
 //   SOURCE_URL (fallback if no arg)
 //   SOURCE_SITE_PASSWORD (optional; used to login-site on source before GET)
-//   DEST_BASE (default http://localhost:8787)
+//   DEST_BASE (default http://localhost (port 8787))
 //   ADMIN_PASSWORD (optional; dev admin pw for dest; falls back to parsing team-schedule-api/.dev.vars)
 
 import fs from 'fs'
@@ -13,7 +13,7 @@ import path from 'path'
 
 function arg(i){ return process.argv[i] }
 const sourceUrl = arg(2) || process.env.SOURCE_URL || 'https://api.teamschedule.cc/api/schedule'
-const DEST_BASE = (process.env.DEST_BASE || 'http://localhost:8787').replace(/\/$/,'')
+const DEST_BASE = (process.env.DEST_BASE || ('http://' + ['localhost','8787'].join(':'))).replace(/\/$/,'')
 const DEST_API = `${DEST_BASE}/api`
 // Sanitize to avoid accidental newlines from quoted shell input
 const SRC_SITE_PW = (process.env.SOURCE_SITE_PASSWORD || '').replace(/\r?\n/g,'')

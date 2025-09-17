@@ -12,16 +12,6 @@ binding = "SCHEDULE_KV"
 id = "a99ca3fba4c04b32bb9f138a64b2c95a"
 
 [vars]
-<<<<<<< HEAD
-# These can be overridden in Cloudflare dashboard (Settings > Variables).
-# ADMIN_PASSWORD = ""
-# ALLOWED_ORIGINS = "https://teamschedule.cc,https://schedule.your-dev-domain"
-# COOKIE_DOMAIN = ".teamschedule.cc"
-# COOKIE_SECURE = "true"
-# COOKIE_SAMESITE = "Lax"
-# DATA_KEY = "schedule.json"
-# Prefer KV by default; we’ll flip this during cutover
-=======
 # Non‑secret defaults for Production. Secrets (e.g., RESEND_API_KEY, ADMIN_PASSWORD,
 # SITE_PASSWORD) must be set via `wrangler secret put` or the Dashboard.
 
@@ -44,10 +34,30 @@ MAGIC_ALLOWED_DOMAINS = "betabionics.com"
 MAGIC_FROM_EMAIL = "Team Schedule <auth@teamschedule.cc>"
 
 # Prefer D1 by default; KV remains a fallback if USE_D1="0"
->>>>>>> c76a6b2a8c4404b7ec7131ea39ccd1b1d3b55a13
 USE_D1 = "0"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "schedule2"
 database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"
+
+[env.preview]
+  [[env.preview.kv_namespaces]]
+  binding = "SCHEDULE_KV"
+  id = "a99ca3fba4c04b32bb9f138a64b2c95a"
+
+  [[env.preview.d1_databases]]
+  binding = "DB"
+  database_name = "schedule2"
+  database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"
+
+  [env.preview.vars]
+  REQUIRE_SITE_SESSION = "false"
+  ALLOWED_ORIGINS = "*"
+  COOKIE_DOMAIN = ""
+  COOKIE_SECURE = "true"
+  COOKIE_SAMESITE = "None"
+  APP_REDIRECT_BASE = "https://preview.schedule2-staging.pages.dev"
+  MAGIC_ALLOWED_DOMAINS = "betabionics.com"
+  MAGIC_FROM_EMAIL = "Team Schedule <auth@teamschedule.cc>"
+  USE_D1 = "0"

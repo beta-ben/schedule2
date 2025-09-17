@@ -1,9 +1,24 @@
 import { Day, Shift } from '../types'
+import type { Override } from '../types'
 import { DAYS } from '../constants'
 
 export function uid(){ return Math.random().toString(36).slice(2,9) }
 export function toMin(hhmm: string){ const [h,m]=hhmm.split(':').map(Number); return h*60+(m||0) }
 export function minToHHMM(min: number){ const m=((min%1440)+1440)%1440; const h=Math.floor(m/60); const mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}` }
+
+export type TimeFormat = '12h' | '24h'
+export function formatMinutes(min: number, format: TimeFormat = '24h'){
+  const normalized = ((min % 1440) + 1440) % 1440
+  if(format === '12h'){
+    const hours24 = Math.floor(normalized / 60)
+    const minutes = normalized % 60
+    const suffix = hours24 >= 12 ? 'PM' : 'AM'
+    const hour12 = hours24 % 12 === 0 ? 12 : hours24 % 12
+    return `${hour12}:${String(minutes).padStart(2,'0')} ${suffix}`
+  }
+  return minToHHMM(normalized)
+}
+
 export function isValidHHMM(v: string){ if(!/^\d{2}:\d{2}$/.test(v)) return false; const [h,m]=v.split(':').map(Number); if(h<0||h>24) return false; if(m<0||m>59) return false; if(h===24 && m!==0) return false; return true }
 export function parseYMD(s: string){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d) }
 export function addDays(d: Date, n: number){ const nd=new Date(d); nd.setDate(d.getDate()+n); return nd }
@@ -225,4 +240,151 @@ export async function sha256Hex(s: string){
     }
   }catch{}
   return 'plain:'+s
+}
+
+// Apply Overrides to a base list of weekly shifts for a given week window.
+// Behavior matches ManageV2Page logic:
+// - Time overrides (with start+end): remove the agent's shifts on covered days and add an override shift window.
+//   If the window is overnight (end<=start and end!=='24:00'), set endDay to the next day and trim early next-day hours
+//   from 00:00 up to max(endMin, 08:00).
+// - No-time overrides: remove 8 hours starting at the earliest shift start on that day for the agent.
+export function applyOverrides(
+  baseShifts: Shift[],
+  overrides: Override[] | undefined,
+  weekStart: string,
+  agents: { id?: string; firstName?: string; lastName?: string }[]
+): Shift[]{
+  const pieces: Shift[] = []
+  // Pre-split any overnight shifts into day-bounded pieces so day-level replacement is precise
+  for(const s of (Array.isArray(baseShifts)? baseShifts : [])){
+    const sMin = toMin(s.start)
+    const eMinRaw = s.end==='24:00' ? 1440 : toMin(s.end)
+    const crosses = typeof (s as any).endDay === 'string' ? ((s as any).endDay !== s.day) : (eMinRaw < sMin && s.end !== '24:00')
+    if(crosses){
+      const DAYS_ = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
+      const endDay = (s as any).endDay || DAYS_[(DAYS_.indexOf(s.day as any)+1)%7]
+      pieces.push({ ...s, end: '24:00', endDay } as any)
+      pieces.push({ ...s, day: endDay as any, start: '00:00', end: s.end, endDay } as any)
+    }else{
+      pieces.push(s)
+    }
+  }
+  const ovs: Override[] = Array.isArray(overrides) ? overrides : []
+  if(ovs.length===0) return pieces
+  const week0 = parseYMD(weekStart)
+  const week6 = addDays(week0, 6)
+  const inWeek = (ymd: string)=> ymd >= fmtYMD(week0) && ymd <= fmtYMD(week6)
+  const dayStr = (d: Date)=> ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] as any
+  const addDaysY = (d: Date, n: number)=> addDays(d, n)
+  const toY = (d: Date)=> fmtYMD(d)
+  const skipAddForYmd = new Set<string>()
+  const removeWindowFor = (person:string, day:string, rmStartMin:number, rmEndMin:number)=>{
+    const clamp = (n:number)=> Math.max(0, Math.min(1440, n))
+    const R0 = clamp(rmStartMin), R1 = clamp(rmEndMin)
+    if(!(R1>R0)) return
+    for(let i=pieces.length-1; i>=0; i--){
+      const p = pieces[i]
+      if(p.person!==person || p.day!==day) continue
+      const pS = toMin(p.start)
+      const pE = p.end==='24:00' ? 1440 : toMin(p.end)
+      const L = Math.max(pS, R0)
+      const U = Math.min(pE, R1)
+      if(!(U> L)) continue
+      // overlap exists: split/trim
+      const beforeLen = L - pS
+      const afterLen = pE - U
+      // Remove the original
+      pieces.splice(i,1)
+      const makePiece = (startMin:number, endMin:number, suffix:string)=>{
+        const endStr = endMin>=1440 ? '24:00' : `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`
+        const startStr = `${String(Math.floor(startMin/60)).padStart(2,'0')}:${String(startMin%60).padStart(2,'0')}`
+        const np: any = { ...p, id: `${p.id}${suffix}`, start: startStr, end: endStr }
+        // If not ending at 24:00 anymore, ensure no cross-midnight flag remains
+        if(endStr !== '24:00' && np.endDay && np.endDay !== np.day){ delete np.endDay }
+        return np as Shift
+      }
+      // Push in reverse order to maintain original relative ordering after splice
+      if(afterLen>0){ pieces.splice(i, 0, makePiece(U, pE, '-b')) }
+      if(beforeLen>0){ pieces.splice(i, 0, makePiece(pS, L, '-a')) }
+    }
+  }
+  const applyOccurrence = (start: Date, end: Date, ov: Override)=>{
+    // iterate each day of this occurrence
+    let cur = new Date(start)
+    const last = new Date(end)
+    while(cur <= last){
+      const ymd = toY(cur)
+      if(inWeek(ymd)){
+        const dStr = dayStr(cur)
+        if(ov.start && ov.end){
+          // Replace the whole day for this person, then add the override window
+          for(let i = pieces.length - 1; i >= 0; i--){
+            const p = pieces[i]
+            if(p.person === ov.person && p.day === dStr) pieces.splice(i,1)
+          }
+          if(!skipAddForYmd.has(ymd)){
+            const s = ov.start
+            const e = ov.end
+            const sMin = toMin(s)
+            const eMin = toMin(e)
+            const overnight = (eMin <= sMin) && !(e==='24:00')
+            const endDay = overnight ? dayStr(addDaysY(cur, 1)) : undefined
+            pieces.push({
+              id: `ov:${ov.id}:${ymd}`,
+              person: ov.person,
+              agentId: agentIdByName(agents as any, ov.person),
+              day: dStr,
+              start: s,
+              end: e,
+              ...(endDay ? { endDay } : {})
+            } as any)
+            if(overnight){
+              // On the following day, trim from 00:00 up to max(end, 08:00)
+              const nextDay = dayStr(addDaysY(cur, 1))
+              const blackoutEnd = Math.max(eMin % 1440, 480) // minutes
+              removeWindowFor(ov.person, nextDay, 0, blackoutEnd)
+              // Avoid double-adding on the next day when loop advances
+              const nextY = fmtYMD(addDaysY(cur, 1))
+              skipAddForYmd.add(nextY)
+            }
+          }
+        } else {
+          // No-time override: trim 8 hours starting at earliest shift start on that day
+          let anchor: number | null = null
+          for(const p of pieces){
+            if(p.person===ov.person && p.day===dStr){
+              const st = toMin(p.start)
+              if(anchor==null || st < anchor) anchor = st
+            }
+          }
+          if(anchor!=null){ removeWindowFor(ov.person, dStr, anchor, anchor + 480) }
+        }
+      }
+      cur = addDaysY(cur, 1)
+    }
+  }
+  for(const ov of ovs){
+    let s = parseYMD(ov.startDate)
+    let e = parseYMD(ov.endDate)
+    if(ov.recurrence?.rule === 'weekly'){
+      const until = ov.recurrence.until ? parseYMD(ov.recurrence.until) : null
+      // fast-forward whole range by weeks until it overlaps the current week window
+      let guard = 0
+      while(e < week0 && guard < 200){
+        s = addDaysY(s, 7)
+        e = addDaysY(e, 7)
+        guard++
+        if(until && s > until) break
+      }
+      // Push each weekly occurrence that starts within or before the week and overlaps it
+      while(s <= week6 && (!until || s <= until)){
+        applyOccurrence(s, e, ov)
+        s = addDaysY(s, 7)
+        e = addDaysY(e, 7)
+      }
+    } else {
+      applyOccurrence(s, e, ov)
+    }
+  }
+  return pieces
 }

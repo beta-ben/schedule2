@@ -1,12 +1,13 @@
 import React from 'react'
-import type { PTO, Task, Override } from '../types'
+import type { PTO, Task, Override, MeetingCohort } from '../types'
 import type { CalendarSegment } from '../lib/utils'
-import { DAYS } from '../constants'
 import WeeklyPTOCalendar from '../components/WeeklyPTOCalendar'
 import WeeklyOverridesCalendar from '../components/WeeklyOverridesCalendar'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
+import AccordionSection from '../components/AccordionSection'
+import { MEETING_COHORTS } from '../constants'
 
-type AgentRow = { id?: string; firstName?: string; lastName?: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null }
+type AgentRow = { id?: string; firstName?: string; lastName?: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; meetingCohort?: MeetingCohort | null }
 
 export default function TeamsPage({
   dark,
@@ -83,12 +84,44 @@ export default function TeamsPage({
   }, [agents])
   const tagBase = 'inline-flex items-center gap-2 px-2 py-1 rounded border text-sm'
   const tagIdle = dark? 'border-neutral-700 bg-neutral-900 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'
+  const isValidCohort = (value: string): value is MeetingCohort => MEETING_COHORTS.includes(value as MeetingCohort)
+  const meetingFor = React.useCallback((a?: AgentRow): MeetingCohort | '' => {
+    const raw = (a as any)?.meetingCohort
+    if(typeof raw === 'string'){
+      const trimmed = raw.trim()
+      return isValidCohort(trimmed) ? trimmed as MeetingCohort : ''
+    }
+    return ''
+  }, [])
+  const renderCohortBadge = (value: MeetingCohort | '')=>{
+    if(!value) return null
+    return (
+      <span className={["inline-flex items-center px-1.5 py-0.5 rounded border text-[11px] font-medium", dark?"border-blue-500/40 text-blue-200":"border-blue-500/50 text-blue-700 bg-blue-50"].join(' ')}>
+        {value}
+      </span>
+    )
+  }
+  const cohortBuckets = React.useMemo(()=>{
+    const assigned = new Map<MeetingCohort, AgentRow[]>(MEETING_COHORTS.map(label=> [label, [] as AgentRow[]]))
+    const unassigned: AgentRow[] = []
+    for(const agent of visibleAgents){
+      const cohort = meetingFor(agent)
+      if(cohort && assigned.has(cohort)){
+        assigned.get(cohort)!.push(agent)
+      } else {
+        unassigned.push(agent)
+      }
+    }
+    for(const list of assigned.values()){
+      list.sort((a,b)=> fullName(a).localeCompare(fullName(b)))
+    }
+    unassigned.sort((a,b)=> fullName(a).localeCompare(fullName(b)))
+    return { assigned, unassigned }
+  }, [visibleAgents, meetingFor])
 
   return (
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
-      {/* Teams roster */}
-      <div className="mb-3">
-        <div className={["text-lg font-semibold mb-2", dark?"text-neutral-200":"text-neutral-900"].join(' ')}>Teams</div>
+      <AccordionSection title="Teams" dark={dark} className="mb-3">
         {/* Single row of supervisor columns; horizontally scrollable */}
         <div className="overflow-x-auto">
           <div className="flex items-start gap-3 min-w-full pb-1">
@@ -113,9 +146,18 @@ export default function TeamsPage({
                     </div>
                     {kids.length>0 ? (
                       <ul className="space-y-1">
-                        {kids.map(a=> (
-                          <li key={a.id || fullName(a)} className={["px-2 py-1 rounded border text-sm text-left", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>{fullName(a) || a.id}</li>
-                        ))}
+                        {kids.map(a=> {
+                          const cohort = meetingFor(a)
+                          const nameCls = [a.hidden ? (dark?"text-neutral-400":"text-neutral-500") : ''].filter(Boolean).join(' ')
+                          return (
+                            <li key={a.id || fullName(a)} className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
+                                {renderCohortBadge(cohort)}
+                              </div>
+                            </li>
+                          )
+                        })}
                       </ul>
                     ) : (
                       <div className={["text-sm", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>No direct reports</div>
@@ -128,19 +170,76 @@ export default function TeamsPage({
               <div className={["shrink-0 w-56 md:w-64 rounded-xl p-2 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
                 <div className={["font-medium mb-2", dark?"text-neutral-100":"text-neutral-900"].join(' ')}>Unassigned</div>
                 <ul className="space-y-1">
-                  {unassigned.slice().sort((a,b)=> fullName(a).localeCompare(fullName(b))).map(a=> (
-                    <li key={a.id || fullName(a)} className={["px-2 py-1 rounded border text-sm text-left", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>{fullName(a) || a.id}</li>
-                  ))}
+                  {unassigned.slice().sort((a,b)=> fullName(a).localeCompare(fullName(b))).map(a=>{
+                    const cohort = meetingFor(a)
+                    const nameCls = [a.hidden ? (dark?"text-neutral-400":"text-neutral-500") : ''].filter(Boolean).join(' ')
+                    return (
+                      <li key={a.id || fullName(a)} className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
+                          {renderCohortBadge(cohort)}
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </AccordionSection>
 
-      {/* Calendars section */}
-      <div className="mt-4">
-        <div className={["text-lg font-semibold mb-2", dark?"text-neutral-200":"text-neutral-900"].join(' ')}>Calendars</div>
+      <AccordionSection title="Weekly meetings" dark={dark} className="mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {MEETING_COHORTS.map(label=>{
+            const attendees = cohortBuckets.assigned.get(label) || []
+            return (
+              <div key={label} className={["rounded-xl p-2 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium">{label}</span>
+                  <span className={["text-xs px-1.5 py-0.5 rounded border", dark?"border-neutral-700 text-neutral-300":"border-neutral-300 text-neutral-600"].join(' ')}>{attendees.length}</span>
+                </div>
+                {attendees.length>0 ? (
+                  <ul className="space-y-1">
+                    {attendees.map(agent=>{
+                      const nm = fullName(agent) || agent.id
+                      const nameCls = [agent.hidden ? (dark?"text-neutral-400":"text-neutral-500") : ''].filter(Boolean).join(' ')
+                      return (
+                        <li key={agent.id || nm} className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>
+                          <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{nm}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <div className={["text-sm", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>No attendees yet</div>
+                )}
+              </div>
+            )
+          })}
+          {cohortBuckets.unassigned.length>0 && (
+            <div className={["rounded-xl p-2 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium">Unassigned</span>
+                <span className={["text-xs px-1.5 py-0.5 rounded border", dark?"border-neutral-700 text-neutral-300":"border-neutral-300 text-neutral-600"].join(' ')}>{cohortBuckets.unassigned.length}</span>
+              </div>
+              <ul className="space-y-1">
+                {cohortBuckets.unassigned.map(agent=>{
+                  const nm = fullName(agent) || agent.id
+                  const nameCls = [agent.hidden ? (dark?"text-neutral-400":"text-neutral-500") : ''].filter(Boolean).join(' ')
+                  return (
+                    <li key={agent.id || nm} className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>
+                      <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{nm}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      </AccordionSection>
+
+      <AccordionSection title="Calendars" dark={dark} className="mt-4">
         <WeeklyPTOCalendar dark={dark} weekStart={weekStart} pto={pto} agents={agents} />
         <WeeklyOverridesCalendar dark={dark} weekStart={weekStart} overrides={(overrides||[]) as any} agents={agents} />
         {(()=>{
@@ -157,12 +256,11 @@ export default function TeamsPage({
               tasks={tasks}
               agents={agents}
               filterTaskId={t.id}
-              packed
               title={`Weekly ${t.name} calendar`}
             />
           ))
         })()}
-      </div>
+      </AccordionSection>
     </section>
   )
 }
