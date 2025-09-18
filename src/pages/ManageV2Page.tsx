@@ -12,6 +12,7 @@ import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
 import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, minToHHMM, applyOverrides } from '../lib/utils'
+import { mapAgentsToPayloads } from '../lib/agents'
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
 
@@ -348,17 +349,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   }
   async function publishWorkingToLive(){
     // Include agents in publish so metadata like supervisor persists
-    const agentsPayload = localAgents.map(a=> ({
-      id: (a as any).id || Math.random().toString(36).slice(2),
-      firstName: a.firstName||'',
-      lastName: a.lastName||'',
-      tzId: a.tzId,
-      hidden: !!a.hidden,
-      isSupervisor: !!(a as any).isSupervisor,
-      supervisorId: (a as any).supervisorId ?? null,
-      notes: (a as any).notes,
-      meetingCohort: typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort : undefined
-    }))
+    const agentsPayload = mapAgentsToPayloads(localAgents)
     const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
     if(res.ok){
       setIsDirty(false)
@@ -389,17 +380,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   async function createProposalFromWorking(){
     const title = prompt('Proposal title', new Date().toLocaleString()) || new Date().toLocaleString()
     // Include agents to preserve metadata like hidden/supervisor on review
-    const agentsPayload = localAgents.map(a=> ({
-      id: (a as any).id || Math.random().toString(36).slice(2),
-      firstName: a.firstName||'',
-      lastName: a.lastName||'',
-      tzId: a.tzId,
-      hidden: !!a.hidden,
-      isSupervisor: !!(a as any).isSupervisor,
-      supervisorId: (a as any).supervisorId ?? null,
-      notes: (a as any).notes,
-      meetingCohort: typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort : undefined
-    }))
+    const agentsPayload = mapAgentsToPayloads(localAgents)
     const res = await cloudCreateProposal({
       title,
       weekStart,
@@ -465,7 +446,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               if(hasCsrfToken()){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
         // Proactively push agents metadata so Hidden flags propagate immediately post-login
-        try{ cloudPostAgents(agents.map(a=> ({ id: (a as any).id || Math.random().toString(36).slice(2), firstName: a.firstName||'', lastName: a.lastName||'', tzId: a.tzId, hidden: !!a.hidden, isSupervisor: !!(a as any).isSupervisor, supervisorId: (a as any).supervisorId ?? null, notes: (a as any).notes, meetingCohort: typeof (a as any).meetingCohort === 'string' ? (a as any).meetingCohort : undefined }))) }catch{}
+        try{ cloudPostAgents(mapAgentsToPayloads(agents)) }catch{}
               } else {
                 setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
               }

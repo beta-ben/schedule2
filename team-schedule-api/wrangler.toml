@@ -1,6 +1,7 @@
 name = "team-schedule-api"
 main = "worker-schedule-agents.ts"
 compatibility_date = "2025-08-28"
+preview_urls = false
 
 # If you want to test via `npm run dev`, Wrangler will use these bindings locally.
 # Put secrets in `.dev.vars` (not committed) or set via `wrangler secret put`.

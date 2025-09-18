@@ -108,4 +108,45 @@ describe('applyOverrides', () => {
     // Expect exactly one Wed segment 08:00-12:00 (unchanged)
     expect(wed.some(s=> s.start==='08:00' && s.end==='12:00')).toBe(true)
   })
+
+  it('applies weekly recurring overrides within the week window', () => {
+    const base: Shift[] = [
+      mkShift({ id: 'wk1', person: 'Cara', day: 'Mon', start: '09:00', end: '17:00' })
+    ]
+    const ovs: Override[] = [{
+      id: 'ov-rec',
+      person: 'Cara',
+      startDate: '2025-09-08',
+      endDate: '2025-09-08',
+      start: '10:00',
+      end: '16:00',
+      recurrence: { rule: 'weekly', until: '2025-09-29' }
+    } as any]
+    const out = applyOverrides(base, ovs, weekStart, agents)
+    const monday = out.filter(s=> s.day==='Mon' && s.person==='Cara')
+    expect(monday).toHaveLength(1)
+    expect(monday[0]).toMatchObject({ start: '10:00', end: '16:00' })
+  })
+
+  it('respects weekly recurring overnight overrides with blackout trimming', () => {
+    const base: Shift[] = [
+      mkShift({ id: 'r-tue', person: 'Dana', day: 'Tue', start: '07:00', end: '15:00' }),
+      mkShift({ id: 'r-wed', person: 'Dana', day: 'Wed', start: '08:00', end: '12:00' })
+    ]
+    const ovs: Override[] = [{
+      id: 'ov-night',
+      person: 'Dana',
+      startDate: '2025-09-09',
+      endDate: '2025-09-09',
+      start: '22:00',
+      end: '02:00',
+      recurrence: { rule: 'weekly', until: '2025-09-30' }
+    } as any]
+    const out = applyOverrides(base, ovs, weekStart, agents)
+    const tue = out.filter(s=> s.person==='Dana' && s.day==='Tue')
+    expect(tue).toHaveLength(1)
+    expect(tue[0]).toMatchObject({ start: '22:00', end: '02:00', endDay: 'Wed' })
+    const wed = out.filter(s=> s.person==='Dana' && s.day==='Wed')
+    expect(wed.some(s=> s.start==='08:00' && s.end==='12:00')).toBe(true)
+  })
 })

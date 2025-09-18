@@ -25,6 +25,7 @@
     "deploy": "gh-pages -d dist",
     "deploy:gh": "npm run predeploy:gh && gh-pages -d dist",
     "deploy:domain": "npm run predeploy:domain && gh-pages -d dist",
+    "deploy:api": "node ./scripts/deploy-api.mjs",
     "deploy:gh:force": "gh-pages -d dist -b gh-pages -f",
     "smoke": "node ./scripts/smoke.mjs",
     "validate:prod": "node ./scripts/validate-prod.mjs",

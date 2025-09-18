@@ -1,5 +1,6 @@
 import type { PTO, Shift, Override } from '../types'
 import type { CalendarSegment } from './utils'
+import { mapAgentsToPayloads } from './agents'
 
 const OFFLINE = (import.meta.env as any).VITE_DISABLE_API === '1'
 const FORCE = ((import.meta.env as any).VITE_FORCE_API_BASE || 'no').toLowerCase() === 'yes'
@@ -194,26 +195,7 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
     if(csrf) headers['x-csrf-token'] = csrf
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
 
-    const normalizedAgents = agents.map(a=>{
-      const payload: any = {
-        id: a.id,
-        firstName: a.firstName,
-        lastName: a.lastName,
-        hidden: !!a.hidden,
-        tzId: a.tzId,
-        isSupervisor: a.isSupervisor === true,
-        supervisorId: a.supervisorId ?? null,
-        notes: a.notes,
-      }
-      const raw = (a as any).meetingCohort
-      if(typeof raw === 'string'){
-        const trimmed = raw.trim()
-        payload.meetingCohort = trimmed ? trimmed : null
-      } else if(raw === null) {
-        payload.meetingCohort = null
-      }
-      return payload
-    })
+    const normalizedAgents = mapAgentsToPayloads(agents)
 
     const useV2 = await ensureV2Support()
     if(useV2){

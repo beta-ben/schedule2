@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { fmtYMD, startOfWeek, formatMinutes, TimeFormat } from './lib/utils'
 import { cloudGet, cloudPost, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession } from './lib/api'
+import { pushAgentsToCloud, mapAgentsToPayloads } from './lib/agents'
+import { publishDraftBundle } from './lib/drafts'
 import type { PTO, Shift, Task, Override, MeetingCohort } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
@@ -246,30 +248,22 @@ export default function App(){
   const discardDraft = ()=>{ setDraft(null); saveDraftLocal(null) }
   const publishDraft = async ()=>{
     if(!draft) return false
-    const now = new Date().toISOString()
-    const shiftsWithIds = draft.data.shifts.map(s=> s.agentId ? s : ({ ...s, agentId: agentIdByFullName(s.person) }))
-    const ptoWithIds = draft.data.pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
-  const agentsPayload = agentsV2.map(a=> ({
-    id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
-    firstName: a.firstName||'',
-    lastName: a.lastName||'',
-    tzId: a.tzId,
-    hidden: !!a.hidden,
-    isSupervisor: a.isSupervisor===true,
-    supervisorId: a.supervisorId ?? null,
-    notes: a.notes
-  }))
-  const ok = await cloudPost({ shifts: shiftsWithIds, pto: ptoWithIds, overrides: draft.data.overrides, calendarSegs: draft.data.calendarSegs, agents: agentsPayload, updatedAt: now })
-    if(ok){
-      setShifts(shiftsWithIds)
-      setPto(ptoWithIds)
-      setCalendarSegs(draft.data.calendarSegs)
-      setOverrides(draft.data.overrides)
-      const published: Draft = { ...draft, meta: { ...draft.meta, updatedAt: now, publishedAt: now } }
+    const result = await publishDraftBundle({
+      draft: draft.data,
+      agents: agentsV2,
+      cloudPost,
+      agentIdByFullName
+    })
+    if(result.ok){
+      setShifts(result.payload.shifts)
+      setPto(result.payload.pto)
+      setCalendarSegs(result.payload.calendarSegs)
+      setOverrides(result.payload.overrides)
+      const published: Draft = { ...draft, meta: { ...draft.meta, updatedAt: result.payload.updatedAt, publishedAt: result.payload.updatedAt } }
       try{ localStorage.setItem('schedule_last_published', JSON.stringify(published.meta)) }catch{}
       setDraft(null); saveDraftLocal(null)
     }
-    return ok
+    return result.ok
   }
 
   // Wrapped setters to edit draft when active, otherwise live
@@ -323,16 +317,7 @@ export default function App(){
       setCanEdit(ok)
       if(ok){
         // Push current agents metadata so other users see changes
-        const payload = agentsV2.map(a=> ({
-          id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
-          firstName: a.firstName||'',
-          lastName: a.lastName||'',
-          tzId: a.tzId,
-          hidden: !!a.hidden,
-          isSupervisor: a.isSupervisor===true,
-          supervisorId: a.supervisorId ?? null,
-          notes: a.notes
-        }))
+        const payload = mapAgentsToPayloads(agentsV2)
         cloudPostAgents(payload)
       }
     }
@@ -443,16 +428,7 @@ export default function App(){
         } else if(ALLOW_DOC_FALLBACK) {
           const ptoWithIds = pto.map(p=> (p as any).agentId ? p : ({ ...p, agentId: agentIdByFullName(p.person) }))
           const overridesWithIds = overrides.map(o=> (o as any).agentId ? o : ({ ...o, agentId: agentIdByFullName(o.person) }))
-          const agentsPayload = agentsV2.map(a=> ({
-            id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
-            firstName: a.firstName||'',
-            lastName: a.lastName||'',
-            tzId: a.tzId,
-            hidden: !!a.hidden,
-            isSupervisor: a.isSupervisor===true,
-            supervisorId: a.supervisorId ?? null,
-            notes: a.notes
-          }))
+          const agentsPayload = mapAgentsToPayloads(agentsV2)
           await cloudPost({shifts: shiftsWithIds, pto: ptoWithIds, overrides: overridesWithIds as any, calendarSegs, agents: agentsPayload, updatedAt:new Date().toISOString()})
         }
       }catch{}
@@ -466,18 +442,7 @@ export default function App(){
     if(!loadedFromCloud || !canEdit) return
     const t = setTimeout(()=>{
       // Prefer agents-only endpoint to avoid schedule conflicts
-      cloudPostAgents(
-        agentsV2.map(a=> ({
-          id: a.id || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)),
-          firstName: a.firstName||'',
-          lastName: a.lastName||'',
-          tzId: a.tzId,
-          hidden: !!a.hidden,
-          isSupervisor: a.isSupervisor===true,
-          supervisorId: a.supervisorId ?? null,
-          notes: a.notes
-        }))
-      )
+      pushAgentsToCloud(agentsV2, cloudPostAgents)
     }, 600)
     return ()=> clearTimeout(t)
   }, [agentsV2, loadedFromCloud, canEdit])
