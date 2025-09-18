@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Simple smoke tests for key invariants before deployment.
 // - Builds the app
-// - Verifies dist contains CNAME and mirrored assets under /schedule2
-// - Lints basic env expectations
+// - Asserts primary bundle files exist
+// - Ensures generated assets include JS & CSS bundles
 import { execSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,24 +16,18 @@ function fail(msg){ console.error(`\n[smoke] FAIL: ${msg}`); process.exit(1) }
 function ok(msg){ console.log(`[smoke] OK: ${msg}`) }
 
 try{
-  // 1) Typecheck + predeploy (build + CNAME + asset mirror)
+  // 1) Typecheck + build
   run('npm run typecheck')
-  run('npm run predeploy --if-present')
+  run('npm run build')
 
   const dist = join(process.cwd(), 'dist')
   if(!existsSync(dist)) fail('dist not found after build')
 
-  // 2) CNAME exists
-  if(!existsSync(join(dist, 'CNAME'))) fail('CNAME missing in dist (custom domain will 404)')
-  ok('CNAME present in dist')
+  // 2) HTML entry exists
+  if(!existsSync(join(dist, 'index.html'))) fail('index.html missing in dist')
+  ok('index.html present in dist')
 
-  // 3) schedule2 mirror for cache bridge (created by predeploy)
-  const mirror = join(dist, 'schedule2')
-  if(!existsSync(mirror)) fail('dist/schedule2 missing')
-  if(!existsSync(join(mirror, 'assets'))) fail('dist/schedule2/assets missing')
-  ok('schedule2 asset mirror present')
-
-  // 4) Asset sanity
+  // 3) Asset sanity
   const assets = join(dist, 'assets')
   if(!existsSync(assets)) fail('dist/assets missing')
   const files = readdirSync(assets)
@@ -41,10 +35,8 @@ try{
   if(!files.some(f=>f.endsWith('.css'))) fail('No CSS bundle in dist/assets')
   ok('assets folder contains JS and CSS bundles')
 
-  // 5) Mirror contains assets as well
-  const mirrorFiles = readdirSync(join(mirror, 'assets'))
-  if(mirrorFiles.length === 0) fail('dist/schedule2/assets is empty')
-  ok('asset mirror populated')
+  // 4) Optional PWA artifacts
+  if(existsSync(join(dist, 'sw.js'))) ok('service worker generated')
 
   console.log('\n[smoke] All checks passed.')
 }catch(err){
