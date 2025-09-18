@@ -42,6 +42,28 @@ binding = "DB"
 database_name = "schedule2"
 database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"
 
+[env.staging]
+  [[env.staging.kv_namespaces]]
+  binding = "SCHEDULE_KV"
+  id = "a99ca3fba4c04b32bb9f138a64b2c95a"
+
+  [[env.staging.d1_databases]]
+  binding = "DB"
+  database_name = "schedule2"
+  database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"
+
+  [env.staging.vars]
+  # Allow both the workers.dev preview branch and any custom staging domain
+  ALLOWED_ORIGINS = "https://schedule2-staging.pages.dev,https://staging.teamschedule.cc"
+  APP_REDIRECT_BASE = "https://schedule2-staging.pages.dev"
+  COOKIE_DOMAIN = ""
+  COOKIE_SECURE = "true"
+  COOKIE_SAMESITE = "None"
+  REQUIRE_SITE_SESSION = "false"
+  MAGIC_ALLOWED_DOMAINS = "betabionics.com"
+  MAGIC_FROM_EMAIL = "Team Schedule <auth@teamschedule.cc>"
+  USE_D1 = "0"
+
 [env.preview]
   [[env.preview.kv_namespaces]]
   binding = "SCHEDULE_KV"
