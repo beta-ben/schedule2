@@ -17,7 +17,7 @@ id = "a99ca3fba4c04b32bb9f138a64b2c95a"
 # SITE_PASSWORD) must be set via `wrangler secret put` or the Dashboard.
 
 # CORS allowlist for the web app (Pages origin + custom domain)
-ALLOWED_ORIGINS = "https://teamschedule.cc,https://teamschedulecc.pages.dev"
+ALLOWED_ORIGINS = "https://teamschedule.cc,https://www.teamschedule.cc,https://teamschedulecc.pages.dev"
 
 # Cookies across app + API subdomains
 COOKIE_DOMAIN = ".teamschedule.cc"
