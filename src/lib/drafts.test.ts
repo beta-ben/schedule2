@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { publishDraftBundle } from './drafts'
+import type { PublishDraftResult } from './drafts'
 
 const agentIdByFullName = (name: string) => ({
   'Alice Smith': 'agent-alice',
@@ -8,7 +9,7 @@ const agentIdByFullName = (name: string) => ({
 
 describe('publishDraftBundle', () => {
   it('sends agent cohorts and notes when publishing', async () => {
-    const cloudPost = vi.fn(async () => true)
+    const cloudPost = vi.fn<(payload: PublishDraftResult['payload']) => Promise<boolean>>(async () => true)
     const draft = {
       shifts: [{ id: 's1', person: 'Alice Smith', day: 'Mon', start: '09:00', end: '17:00' }],
       pto: [{ id: 'p1', person: 'Bob Stone', startDate: '2025-09-15', endDate: '2025-09-15' }],
@@ -22,13 +23,19 @@ describe('publishDraftBundle', () => {
     const result = await publishDraftBundle({ draft, agents, cloudPost, agentIdByFullName })
     expect(result.ok).toBe(true)
     expect(cloudPost).toHaveBeenCalledTimes(1)
-    const payload = cloudPost.mock.calls[0][0]
+    const firstCall = cloudPost.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    const payload = firstCall![0]
     expect(payload.agents).toEqual([
       expect.objectContaining({ id: 'agent-alice', meetingCohort: 'Morning Meeting', notes: 'Trainer' }),
       expect.objectContaining({ id: 'agent-bob', meetingCohort: null, notes: 'Night shift' })
     ])
-    expect(payload.shifts[0].agentId).toBe('agent-alice')
-    expect(payload.pto[0].agentId).toBe('agent-bob')
+    const [firstShift] = payload.shifts
+    expect(firstShift).toBeDefined()
+    expect(firstShift!.agentId).toBe('agent-alice')
+    const [firstPto] = payload.pto
+    expect(firstPto).toBeDefined()
+    expect(firstPto!.agentId).toBe('agent-bob')
   })
 
   it('reflects cloud failure status', async () => {

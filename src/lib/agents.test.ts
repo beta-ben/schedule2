@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { agentToPayload, normalizeMeetingCohort, pushAgentsToCloud } from './agents'
+import type { AgentPayload } from './agents'
 
 describe('agents helpers', () => {
   it('normalizes meeting cohorts', () => {
@@ -22,14 +23,16 @@ describe('agents helpers', () => {
   })
 
   it('pushAgentsToCloud forwards normalized payloads', async () => {
-    const poster = vi.fn(async () => true)
+    const poster = vi.fn<(payload: AgentPayload[]) => Promise<boolean>>(async () => true)
     const ok = await pushAgentsToCloud([
       { id: 'a1', firstName: 'Sam', lastName: 'Hill', meetingCohort: ' Afternoon ' },
       { id: 'a2', firstName: 'Lee', lastName: 'Jones', meetingCohort: null }
     ], poster)
     expect(ok).toBe(true)
     expect(poster).toHaveBeenCalledTimes(1)
-    const [payload] = poster.mock.calls[0]
+    const firstCall = poster.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    const [payload] = firstCall!
     expect(payload).toEqual([
       expect.objectContaining({ id: 'a1', meetingCohort: 'Afternoon' }),
       expect.objectContaining({ id: 'a2', meetingCohort: null })
