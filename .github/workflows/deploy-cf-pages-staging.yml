@@ -75,38 +75,24 @@ jobs:
 
       - name: Wrangler info (diagnostic)
         run: |
-          npx --yes wrangler@3.90.0 --version
-          npx --yes wrangler@3.90.0 whoami || true
-          npx --yes wrangler@3.90.0 pages project list | grep -E "^${PRJ}\b" || true
+          npx --yes wrangler@4.38.0 --version
+          npx --yes wrangler@4.38.0 whoami || true
+          npx --yes wrangler@4.38.0 pages project list | grep -E "^${PRJ}\b" || true
 
       - name: Ensure Cloudflare Pages project exists (idempotent)
         run: |
-          npx --yes wrangler@3.90.0 pages project create "${PRJ}" \
+          npx --yes wrangler@4.38.0 pages project create "${PRJ}" \
             --production-branch=staging || true
-
-      - name: Ensure production branch is 'staging' (idempotent)
-        run: |
-          npx --yes wrangler@3.90.0 pages project update "${PRJ}" \
-            --production-branch=staging || true
-
-      - name: Ensure custom domain attached (idempotent)
-        run: |
-          DOMAIN="staging.teamschedule.cc"
-          npx --yes wrangler@3.90.0 pages domain add "${PRJ}" "$DOMAIN" || true
 
       - name: "Publish to Cloudflare Pages (preview: branch=staging)"
         run: |
-          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --branch staging --commit-dirty=true
+          npx --yes wrangler@4.38.0 pages deploy ./dist --project-name "${PRJ}" --branch staging --commit-dirty=true
 
       - name: Publish to Cloudflare Pages (production)
         run: |
-          npx --yes wrangler@3.90.0 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true
-
-      - name: List Pages domains (diagnostic)
-        run: |
-          npx --yes wrangler@3.90.0 pages domain list "${PRJ}"
+          npx --yes wrangler@4.38.0 pages deploy ./dist --project-name "${PRJ}" --production --commit-dirty=true
 
       - name: List deployments (diagnostic)
         run: |
-          echo "Production deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" --production || true
-          echo "Preview deployments:" && npx --yes wrangler@3 pages deployment list "${PRJ}" || true
+          echo "Production deployments:" && npx --yes wrangler@4.38.0 pages deployment list --project-name "${PRJ}" --environment production || true
+          echo "Preview deployments:" && npx --yes wrangler@4.38.0 pages deployment list --project-name "${PRJ}" --environment preview || true

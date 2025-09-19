@@ -1,6 +1,6 @@
 # Architecture & Developer Guide
 
-This document complements the user-facing README with data model, flows, and DX conventions.
+This document complements the user-facing README with data model, flows, and DX conventions. For a fast orientation to file locations and responsibilities, see `PROJECT_MAP.md`.
 
 ## High-Level Pieces
 

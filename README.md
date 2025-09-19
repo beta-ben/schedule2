@@ -124,7 +124,7 @@ Visual calendar
 
 —
 
-For developers: build/deploy and environment details are in STAGING.md and comments in the source. If you need the old README content, check the Git history.
+For developers: a quick orientation to the codebase lives in `PROJECT_MAP.md`, while build/deploy and environment details are in `STAGING.md` and comments in the source. If you need the old README content, check the Git history.
 
 ## Developer Quick Start
 ### Zero-Config Dev (Unified Backend)

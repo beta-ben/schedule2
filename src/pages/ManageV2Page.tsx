@@ -1295,6 +1295,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                     filterTaskId={t.id}
                     packed
                     title={`Weekly ${t.name} calendar`}
+                    subtitle={`All times ${tz.label}`}
                   />
                 ))}
             </div>

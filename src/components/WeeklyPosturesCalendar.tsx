@@ -29,13 +29,21 @@ export default function WeeklyPosturesCalendar({
 }){
   const week0 = React.useMemo(()=> parseYMD(weekStart), [weekStart])
   const ymds = React.useMemo(()=> DAYS.map((_,i)=> fmtYMD(addDays(week0, i))), [week0])
-  const PX_PER_HOUR = 40
-  const H_PX = PX_PER_HOUR * 24 // calendar body height in pixels
-  const hrColor = dark? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
-  const hourLabelEvery = 2
-  const timeAxisPx = 72
-  const dayMinWidthPx = 156
-  const hourMarks = React.useMemo(()=> Array.from({length:25},(_,i)=>i), [])
+  const pxPerHour = packed ? 24 : 30
+  const calendarHeightPx = pxPerHour * 24
+  const hrColor = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
+  const quarterHrColor = dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.035)'
+  const hourLabelEvery = packed ? 3 : 2
+  const showHalfHours = !packed
+  const timeAxisPx = packed ? 56 : 68
+  const dayMinWidthPx = packed ? 140 : 156
+  const minGridWidthPx = packed ? 720 : 840
+  const hourMarks = React.useMemo(()=> Array.from({ length: 25 }, (_, i)=> i), [])
+  const hourLabelClass = packed ? 'text-[10px]' : 'text-[11px]'
+  const segmentLabelClass = packed ? 'text-[10px]' : 'text-[11px]'
+  const timeLabelClass = packed ? 'text-[10px]' : 'text-[11px]'
+  const columnPaddingX = packed ? 'px-1.5' : 'px-2'
+  const columnPaddingBottom = packed ? 'pb-2.5' : 'pb-3'
   const taskMap = React.useMemo(()=> new Map(tasks.map(t=>[t.id,t])), [tasks])
   const perDay = React.useMemo(()=>{
     return DAYS.map((day, di)=>{
@@ -72,9 +80,9 @@ export default function WeeklyPosturesCalendar({
     if(h===24) return '12a'
     return `${hour12}${suffix}`
   }
-  const axisLabelCls = dark? 'text-neutral-400' : 'text-neutral-500'
-  const axisBorderColor = dark? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
-  const dayBgCls = dark? 'bg-neutral-950 border-neutral-800' : 'bg-white border-neutral-200 shadow-sm'
+  const axisLabelCls = dark ? 'text-neutral-400' : 'text-neutral-500'
+  const axisBorderColor = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
+  const dayBgCls = dark ? 'bg-neutral-950 border-neutral-800' : 'bg-white border-neutral-200 shadow-sm'
 
   return (
     <div className={["mt-3 rounded-xl p-3", dark?"bg-neutral-900":"bg-white"].join(' ')}>
@@ -82,148 +90,127 @@ export default function WeeklyPosturesCalendar({
         <div className="text-sm font-medium">{title}</div>
         {subtitle && (<div className="text-xs opacity-70">{subtitle}</div>)}
       </div>
-      {packed ? (
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
-          {perDay.map(({ day, ymd, dayItems })=> (
-            <div key={day} className={["rounded-lg p-2", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
-              <div className="font-medium mb-2 flex items-baseline justify-between">
-                <span>{day}</span>
-                <span className="text-xs opacity-70">{parseInt(ymd.slice(8), 10)}</span>
-              </div>
-              <div className="space-y-1">
-                {dayItems.map((it)=>{
-                  const t = taskMap.get(it.taskId)
-                  const color = t?.color || '#888'
-                  const dispName = agentDisplayName(agents as any, (it as any).agentId, it.person)
-                  return (
-                    <div key={`${(it as any)._idx}-${it.person}-${it.start}-${it.end}`} className={["group relative rounded-md px-2 py-1", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')}>
-                      <div className="flex items-center gap-1.5 text-[11px] leading-tight">
-                        <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
-                        <span className="truncate">{dispName}</span>
-                      </div>
-                      <div className="text-[11px] opacity-70 leading-tight truncate">{it.start}–{it.end}</div>
-                      <div className={["pointer-events-none absolute -top-6 left-0 z-10 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap", dark?"bg-neutral-800 border border-neutral-700 text-neutral-100":"bg-white border border-neutral-300 text-neutral-900","opacity-0 group-hover:opacity-100 transition-none shadow-sm"].join(' ')}>
-                        {(t?.name || (it as any).taskId)} • {it.start}–{it.end}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-3 overflow-x-auto">
-          <div className="min-w-[860px]">
-            <div
-              className="grid gap-x-3 text-sm"
-              style={{
-                gridTemplateColumns: `${timeAxisPx}px repeat(${DAYS.length}, minmax(${dayMinWidthPx}px, 1fr))`,
-                gridTemplateRows: `auto ${H_PX}px`,
-              }}
-            >
-              <div />
-              {perDay.map(({ day, dateObj })=>{
-                const monthLabel = dateObj.toLocaleDateString(undefined, { month: 'short' })
-                return (
-                  <div key={`${day}-header`} className="pb-2 pl-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold">{day}</span>
-                      <span className="text-xs opacity-70">{monthLabel} {dateObj.getDate()}</span>
-                    </div>
+      <div className="mt-3 overflow-x-auto">
+        <div style={{ minWidth: `${minGridWidthPx}px` }}>
+          <div
+            className="grid gap-x-3 text-sm"
+            style={{
+              gridTemplateColumns: `${timeAxisPx}px repeat(${DAYS.length}, minmax(${dayMinWidthPx}px, 1fr))`,
+              gridTemplateRows: `auto ${calendarHeightPx}px`,
+            }}
+          >
+            <div />
+            {perDay.map(({ day, dateObj })=>{
+              const monthLabel = dateObj.toLocaleDateString(undefined, { month: 'short' })
+              return (
+                <div key={`${day}-header`} className="pb-2 pl-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-semibold">{day}</span>
+                    <span className="text-xs opacity-70">{monthLabel} {dateObj.getDate()}</span>
                   </div>
-                )
-              })}
-              <div className="relative" style={{ height: `${H_PX}px` }}>
-                <div className="absolute inset-y-0 right-0" style={{ borderRight: `1px solid ${axisBorderColor}` }} />
-                {hourMarks.map((h)=>{
-                  if(h===24) return null
-                  const top = h * PX_PER_HOUR
-                  const showLabel = h % hourLabelEvery === 0
-                  return (
-                    <div
-                      key={`axis-${h}`}
-                      className="absolute inset-x-0 flex justify-end pr-2"
-                      style={{ top: `${top}px` }}
-                    >
-                      {showLabel && (
-                        <span
-                          className={["text-[11px] font-medium", axisLabelCls].join(' ')}
-                          style={{ transform: h===0 ? 'translateY(0)' : 'translateY(-50%)' }}
-                        >
-                          {formatHourLabel(h)}
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-              {perDay.map(({ day, dayItems, placed, laneCount })=>{
-                const laneWidthPct = 100 / laneCount
+                </div>
+              )
+            })}
+            <div className="relative" style={{ height: `${calendarHeightPx}px` }}>
+              <div className="absolute inset-y-0 right-0" style={{ borderRight: `1px solid ${axisBorderColor}` }} />
+              {hourMarks.map((h)=>{
+                if(h===24) return null
+                const top = h * pxPerHour
+                const showLabel = h % hourLabelEvery === 0
                 return (
                   <div
-                    key={`${day}-column`}
-                    className={["relative rounded-xl border overflow-hidden", dayBgCls].join(' ')}
-                    style={{ height: `${H_PX}px` }}
+                    key={`axis-${h}`}
+                    className="absolute inset-x-0 flex justify-end pr-2"
+                    style={{ top: `${top}px` }}
                   >
-                    <div className="absolute inset-0 pointer-events-none">
-                      {hourMarks.map((h)=>{
-                        const top = h * PX_PER_HOUR
-                        return (
-                          <div key={`${day}-grid-${h}`} className="absolute inset-x-0" style={{ top: `${top}px` }}>
-                            <div style={{ borderTop: `1px solid ${hrColor}`, opacity: h % hourLabelEvery === 0 ? 0.5 : 0.2 }} />
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="relative h-full px-2 pb-3 pt-1">
-                      {dayItems.length===0 && (
-                        <div className="absolute inset-0 flex items-center justify-center text-xs opacity-60">
-                          No coverage
-                        </div>
-                      )}
-                      {placed.map(({ it, lane, s, e })=>{
-                        const topPx = (s/60) * PX_PER_HOUR
-                        const heightPx = Math.max(18, ((e - s)/60) * PX_PER_HOUR)
-                        const left = `calc(${lane * laneWidthPct}% + 2px)`
-                        const width = `calc(${laneWidthPct}% - 4px)`
-                        const t = taskMap.get(it.taskId)
-                        const color = t?.color || '#888'
-                        const dispName = agentDisplayName(agents as any, (it as any).agentId, it.person)
-                        return (
-                          <div
-                            key={`${(it as any)._idx}-${it.person}-${it.start}-${it.end}`}
-                            className={[
-                              "group absolute rounded-md px-2 py-1 overflow-hidden border",
-                              dark?"bg-neutral-800 text-neutral-100 border-neutral-700":"bg-white text-neutral-900 border-neutral-300 shadow-sm",
-                            ].join(' ')}
-                            style={{ top: `${topPx}px`, height: `${heightPx}px`, left, width }}
-                          >
-                            <div className="flex items-center gap-1.5 text-[11px] leading-tight">
-                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
-                              <span className="truncate">{dispName}</span>
-                            </div>
-                            <div className="text-[11px] opacity-70 leading-tight truncate">{it.start}–{it.end}</div>
-                            <div
-                              className={[
-                                "pointer-events-none absolute -top-6 left-0 z-10 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap",
-                                dark?"bg-neutral-800 border border-neutral-700 text-neutral-100":"bg-white border border-neutral-300 text-neutral-900",
-                                "opacity-0 group-hover:opacity-100 transition-none shadow-sm",
-                              ].join(' ')}
-                            >
-                              {(t?.name || (it as any).taskId)} • {it.start}–{it.end}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                    {showLabel && (
+                      <span
+                        className={[hourLabelClass, 'font-medium', axisLabelCls].join(' ')}
+                        style={{ transform: h===0 ? 'translateY(0)' : 'translateY(-50%)' }}
+                      >
+                        {formatHourLabel(h)}
+                      </span>
+                    )}
                   </div>
                 )
               })}
             </div>
+            {perDay.map(({ day, dayItems, placed, laneCount })=>{
+              const laneWidthPct = 100 / laneCount
+              const halfMarks = Array.from({ length: 24 }, (_, idx)=> idx)
+              return (
+                <div
+                  key={`${day}-column`}
+                  className={["relative rounded-xl border overflow-hidden", dayBgCls].join(' ')}
+                  style={{ height: `${calendarHeightPx}px` }}
+                >
+                  <div className="absolute inset-0 pointer-events-none">
+                    {hourMarks.map((h)=>{
+                      if(h===24) return null
+                      const top = h * pxPerHour
+                      return (
+                        <div key={`${day}-grid-${h}`} className="absolute inset-x-0" style={{ top: `${top}px` }}>
+                          <div style={{ borderTop: `1px solid ${hrColor}`, opacity: h % hourLabelEvery === 0 ? 0.45 : 0.18 }} />
+                        </div>
+                      )
+                    })}
+                    {showHalfHours && halfMarks.map((h)=>{
+                      const top = (h * pxPerHour) + (pxPerHour / 2)
+                      if(top >= calendarHeightPx) return null
+                      return (
+                        <div key={`${day}-half-${h}`} className="absolute inset-x-0" style={{ top: `${top}px` }}>
+                          <div style={{ borderTop: `1px solid ${quarterHrColor}`, opacity: 0.22 }} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className={['relative h-full', columnPaddingX, columnPaddingBottom, 'pt-1'].join(' ')}>
+                    {dayItems.length===0 && (
+                      <div className="absolute inset-0 flex items-center justify-center text-xs opacity-60">
+                        No coverage
+                      </div>
+                    )}
+                    {placed.map(({ it, lane, s, e })=>{
+                      const topPx = (s/60) * pxPerHour
+                      const heightPx = Math.max(16, ((e - s)/60) * pxPerHour)
+                      const left = `calc(${lane * laneWidthPct}% + 2px)`
+                      const width = `calc(${laneWidthPct}% - 4px)`
+                      const t = taskMap.get(it.taskId)
+                      const color = t?.color || '#888'
+                      const dispName = agentDisplayName(agents as any, (it as any).agentId, it.person)
+                      return (
+                        <div
+                          key={`${(it as any)._idx}-${it.person}-${it.start}-${it.end}`}
+                          className={[
+                            'group absolute rounded-md border overflow-hidden flex flex-col',
+                            dark?"bg-neutral-800 text-neutral-100 border-neutral-700":"bg-white text-neutral-900 border-neutral-300 shadow-sm",
+                          ].join(' ')}
+                          style={{ top: `${topPx}px`, height: `${heightPx}px`, left, width }}
+                        >
+                          <div className={["flex items-center gap-1.5 leading-tight", segmentLabelClass].join(' ')}>
+                            <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
+                            <span className="truncate">{dispName}</span>
+                          </div>
+                          <div className={[timeLabelClass, 'opacity-70 leading-tight truncate'].join(' ')}>{it.start}–{it.end}</div>
+                          <div
+                            className={[
+                              'pointer-events-none absolute -top-6 left-0 z-10 px-1.5 py-0.5 rounded whitespace-nowrap',
+                              dark?"bg-neutral-800 border border-neutral-700 text-neutral-100":"bg-white border border-neutral-300 text-neutral-900",
+                              'text-[10px] opacity-0 group-hover:opacity-100 transition-none shadow-sm',
+                            ].join(' ')}
+                          >
+                            {(t?.name || (it as any).taskId)} • {it.start}–{it.end}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
