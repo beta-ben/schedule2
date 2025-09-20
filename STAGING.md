@@ -1,8 +1,10 @@
 ## Staging setup
 
+> Need the full dev → staging → prod playbook? See `docs/RELEASE_WORKFLOW.md`. This note stays focused on Cloudflare staging specifics.
+
 ### Cloudflare Pages (current)
 - Push to the `staging` branch.
-- Workflow `.github/workflows/deploy-cf-pages-staging.yml` builds the app and publishes to the Cloudflare Pages project (default: `schedule2-staging`).
+- Workflow `.github/workflows/deploy-cf-pages-staging.yml` builds the app and publishes to the Cloudflare Pages project `schedule2-staging`.
 - The workflow attaches the custom domain `staging.teamschedule.cc`; no GitHub Pages configuration is required.
 
 ### API configuration

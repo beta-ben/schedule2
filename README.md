@@ -124,7 +124,7 @@ Visual calendar
 
 —
 
-For developers: a quick orientation to the codebase lives in `PROJECT_MAP.md`, while build/deploy and environment details are in `STAGING.md` and comments in the source. If you need the old README content, check the Git history.
+For developers: a quick orientation to the codebase lives in `PROJECT_MAP.md`, while build/deploy and environment details are in `STAGING.md`. The authoritative Cloudflare resource map is in `docs/CLOUDFLARE_SETUP.md`, and the end-to-end release process is captured in `docs/RELEASE_WORKFLOW.md`. If you need the old README content, check the Git history.
 
 ## Developer Quick Start
 ### Zero-Config Dev (Unified Backend)
@@ -162,6 +162,13 @@ It verifies:
 ### Minimal .env setup
 
 Usually not needed. If you want to override the API prefix or force offline mode, see `.env.example`.
+
+### Release workflow (dev → staging → production)
+
+- Skim `docs/RELEASE_WORKFLOW.md` for the full playbook.
+- Run `npm run release:status` to see how far `main` and `staging` have drifted (local + remote).
+- Run `npm run release:preflight` before pushing to staging or main; it executes the same checks as our deploy workflows.
+- Deploy the Pages projects directly with Wrangler via `npm run deploy:pages:staging` or `npm run deploy:pages:prod` after exporting `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
 
 ### Flattening a nested duplicate project
 

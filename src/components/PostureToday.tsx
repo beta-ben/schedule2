@@ -113,8 +113,6 @@ export default function PostureToday({ dark, tz, dayKey, shifts, tasks }:{
   const bgTint = dark? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'
   const showNowLine = nowMin >= 0 && nowMin <= 1440
   const nowLineColor = dark ? 'rgba(239,68,68,0.75)' : 'rgba(220,38,38,0.75)'
-  const nowTagBg = dark ? 'rgba(239,68,68,0.9)' : 'rgba(220,38,38,0.9)'
-  const nowTagText = '#fff'
 
   return (
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
@@ -153,7 +151,6 @@ export default function PostureToday({ dark, tz, dayKey, shifts, tasks }:{
                   {showNowLine && (
                     <div className="absolute left-0 right-0 pointer-events-none" style={{ top: `${nowPct}%`, transform: 'translateY(-1px)' }}>
                       <div className="h-[2px]" style={{ backgroundColor: nowLineColor }} />
-                      <div className="absolute left-0 -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-medium shadow-sm" style={{ backgroundColor: nowTagBg, color: nowTagText }}>{formatTime(nowMin)}</div>
                     </div>
                   )}
                   <div className="relative h-full" style={{ display: 'grid', gridTemplateColumns: `repeat(${laneCount}, minmax(0, 1fr))`, columnGap: laneGap }}>
