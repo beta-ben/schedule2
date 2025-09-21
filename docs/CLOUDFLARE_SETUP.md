@@ -37,11 +37,11 @@ Both Pages projects use the Wrangler direct-upload flow. Required environment va
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN` (needs Pages write access)
 
-Deploy commands (run after `npm run build`):
+Deploy commands (run after building the matching bundle):
 
 ```
-npm run deploy:pages:staging   # project: schedule2-staging, branch: staging
-npm run deploy:pages:prod      # project: teamschedulecc, branch: main
+npm run build:staging && npm run deploy:pages:staging   # project: schedule2-staging, branch: staging
+npm run build && npm run deploy:pages:prod              # project: teamschedulecc, branch: main
 ```
 
 Flags are available via `node scripts/deploy-pages.mjs --help` if you need to override the default dist directory, branch, or project name.

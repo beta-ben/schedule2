@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { convertShiftsToTZ, minToHHMM, toMin, applyOverrides } from './utils'
+import { convertShiftsToTZ, minToHHMM, toMin, applyOverrides, expandCalendarSegments } from './utils'
 import type { Shift, Override } from '../types'
 
 // Minimal stub of Shift type for tests (aligning with existing shape)
@@ -67,6 +67,64 @@ describe('convertShiftsToTZ', () => {
     // Because entire shift moves into next day without wrapping, should remain single segment on Sat
     expect(res).toHaveLength(1)
     expect(res[0]).toMatchObject({ day: 'Sat', start: '02:00', end: '07:00' })
+  })
+})
+
+describe('expandCalendarSegments', () => {
+  it('returns the original segment when it ends the same day', () => {
+    const res = expandCalendarSegments([
+      { person: 'Pat', day: 'Mon', start: '09:00', end: '11:00', taskId: 'support' }
+    ])
+    expect(res).toHaveLength(1)
+    expect(res[0]).toMatchObject({ person: 'Pat', day: 'Mon', start: '09:00', end: '11:00', taskId: 'support' })
+  })
+
+  it('splits an overnight segment into start and end day pieces', () => {
+    const res = expandCalendarSegments([
+      { person: 'Riley', day: 'Tue', endDay: 'Wed', start: '22:00', end: '02:00', taskId: 'phones' }
+    ])
+    expect(res).toHaveLength(2)
+    expect(res[0]).toMatchObject({ person: 'Riley', day: 'Tue', start: '22:00', end: '24:00', taskId: 'phones' })
+    expect(res[1]).toMatchObject({ person: 'Riley', day: 'Wed', start: '00:00', end: '02:00', taskId: 'phones' })
+  })
+
+  it('treats end-before-start without explicit endDay as overnight', () => {
+    const res = expandCalendarSegments([
+      { person: 'Sky', day: 'Fri', start: '21:00', end: '03:00', taskId: 'chat' }
+    ])
+    expect(res).toHaveLength(2)
+    expect(res[0]).toMatchObject({ person: 'Sky', day: 'Fri', start: '21:00', end: '24:00', taskId: 'chat' })
+    expect(res[1]).toMatchObject({ person: 'Sky', day: 'Sat', start: '00:00', end: '03:00', taskId: 'chat' })
+  })
+
+  it('expands multi-day segments into daily slices', () => {
+    const res = expandCalendarSegments([
+      { person: 'Jamie', day: 'Mon', endDay: 'Thu', start: '18:00', end: '06:00', taskId: 'support' }
+    ])
+    expect(res).toHaveLength(4)
+    expect(res[0]).toMatchObject({ day: 'Mon', start: '18:00', end: '24:00' })
+    expect(res[1]).toMatchObject({ day: 'Tue', start: '00:00', end: '24:00' })
+    expect(res[2]).toMatchObject({ day: 'Wed', start: '00:00', end: '24:00' })
+    expect(res[3]).toMatchObject({ day: 'Thu', start: '00:00', end: '06:00' })
+  })
+
+  it('adjusts segments by positive timezone offset', () => {
+    const res = expandCalendarSegments([
+      { person: 'Alex', day: 'Mon', start: '10:00', end: '12:00', taskId: 'support' },
+      { person: 'Blair', day: 'Mon', start: '23:00', end: '01:00', taskId: 'support' }
+    ], 2)
+    expect(res).toHaveLength(2)
+    expect(res[0]).toMatchObject({ person: 'Alex', day: 'Mon', start: '12:00', end: '14:00' })
+    expect(res[1]).toMatchObject({ person: 'Blair', day: 'Tue', start: '01:00', end: '03:00' })
+  })
+
+  it('adjusts segments by negative timezone offset', () => {
+    const res = expandCalendarSegments([
+      { person: 'Casey', day: 'Wed', start: '02:00', end: '05:00', taskId: 'support' }
+    ], -3)
+    expect(res).toHaveLength(2)
+    expect(res[0]).toMatchObject({ person: 'Casey', day: 'Tue', start: '23:00', end: '24:00' })
+    expect(res[1]).toMatchObject({ person: 'Casey', day: 'Wed', start: '00:00', end: '02:00' })
   })
 })
 

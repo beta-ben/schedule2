@@ -3,6 +3,7 @@ import { COLS, DAYS, TZ_OPTS } from '../constants'
 import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/utils'
 import { shiftsOverlap } from '../lib/overlap'
 import type { PTO, Shift, Task } from '../types'
+import { useThemeBase } from '../hooks/useThemeBase'
 
 export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact, agents }:{
   date: Date
@@ -23,21 +24,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const totalMins=24*60
   const contentRef = React.useRef<HTMLDivElement|null>(null)
   const [contentW, setContentW] = useState<number>(0)
-  // Theme detection
-  const [theme, setTheme] = useState<'system'|'light'|'dark'|'night'|'noir'|'prism'>(()=>{
-    try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : ((v as any) || 'system') }catch{ return 'system' }
-  })
-  useEffect(()=>{
-    const initFromDom = ()=>{
-      const el = document.querySelector('[data-theme]') as HTMLElement | null
-      const v = (el?.getAttribute('data-theme') as any) || null
-      if(v) setTheme(v)
-    }
-    initFromDom()
-  const onEvt = (e: Event)=>{ const ce = e as CustomEvent; if(ce?.detail?.value){ const v = ce.detail.value; setTheme(v==='unicorn' ? 'system' : v) } }
-    window.addEventListener('schedule:set-theme', onEvt as any)
-    return ()=> window.removeEventListener('schedule:set-theme', onEvt as any)
-  }, [])
+  const themeBase = useThemeBase()
   useEffect(()=>{
     const upd = ()=>{ if(contentRef.current){ setContentW(contentRef.current.clientWidth) } }
     upd()
@@ -163,12 +150,12 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
             </div>
           )}
           {/* Subtle AM background from 0:00 to 12:00 (aligned to content width) - hidden in Night theme */}
-            {theme!=='night' && (
+            {themeBase!=='night' && (
             <div className="absolute inset-y-0 left-2 right-2 pointer-events-none">
               <div className="absolute inset-y-0 left-0" style={{ width: `calc(12 * (100% / ${COLS}))`, backgroundColor: (dark? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)') }} />
             </div>
           )}
-            {theme!=='night' && (
+            {themeBase!=='night' && (
             <div className="absolute left-2 right-2" style={{bottom:LABEL_BOTTOM,height:LABEL_H, paddingTop: Math.max(2, Math.round(2*scale))}}>
               {hourMarks.map((h,i)=> (
                 (i % hourEvery === 0) && (
@@ -256,7 +243,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
         {orderedPeople.map((person)=> (
           <div key={person} className="relative" style={{ height: CHIP_H + 6 }}>
             {/* Background columns aligned to content width (match header columns) - hidden in Night theme */}
-            {theme!=='night' && (
+            {themeBase!=='night' && (
               <div
                 className="absolute inset-y-0 left-0 right-0 pointer-events-none"
                 style={{
@@ -275,25 +262,34 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 const endPct = left + width
                 const H = (colorMap.get(person) ?? 0)
                 const light=`hsla(${H},75%,70%,0.95)`; const darkbg=`hsla(${H},60%,28%,0.95)`; const darkbd=`hsl(${H},70%,55%)`
-                const grayBg = dark ? 'rgba(120,120,120,0.4)' : 'rgba(180,180,180,0.85)'
+                const isNight = themeBase==='night'
+                const isNoir = themeBase==='noir'
+                const isPrism = themeBase==='prism'
+                let grayBg = dark ? 'rgba(120,120,120,0.35)' : 'rgba(190,190,190,0.85)'
                 // Dimmer border for PTO
-                const grayBd = dark ? 'rgba(160,160,160,0.55)' : 'rgba(160,160,160,0.5)'
+                let grayBd = dark ? 'rgba(160,160,160,0.5)' : 'rgba(160,160,160,0.45)'
+                if(isNoir){
+                  grayBg = dark ? 'rgba(40,40,40,0.76)' : 'rgba(220,220,220,0.92)'
+                  grayBd = dark ? 'rgba(245,245,245,0.32)' : 'rgba(48,48,48,0.32)'
+                }
+                if(isNight){
+                  grayBg = 'rgba(0,0,0,0.86)'
+                  grayBd = 'rgba(220,38,38,0.4)'
+                }
 
                 const dur = eMin - sMin
                 // Theme-driven chip colors
-                const isNight = theme==='night'
-                const isNoir = theme==='noir'
                 // unicorn theme removed
                 let baseColor = hasPtoForDay ? grayBg : (dark?darkbg:light)
                 let baseBorder = hasPtoForDay ? grayBd : (dark?darkbd:`hsl(${H},65%,50%)`)
                 if(isNight){
-                  // Night theme: chips go fully black; use a muted deep-red border
-                  baseColor = '#000'
-                  baseBorder = 'rgba(239,68,68,0.55)'
+                  // Night theme: midnight chips with crimson frame
+                  baseColor = '#050505'
+                  baseBorder = 'rgba(220,38,38,0.7)'
                 } else if(isNoir){
-                  // Noir theme: chips go fully black; use a muted light border
-                  baseColor = '#000'
-                  baseBorder = 'rgba(255,255,255,0.35)'
+                  // Noir theme: grayscale chips tuned by variant
+                  baseColor = dark ? '#121212' : '#f5f5f5'
+                  baseBorder = dark ? 'rgba(245,245,245,0.32)' : 'rgba(34,34,34,0.35)'
                 }
                 const segs = (Array.isArray(s.segments)? s.segments: []).slice().sort((a,b)=>a.startOffsetMin-b.startOffsetMin)
                 const chipTitleLines = segs.map(seg=>{
@@ -307,7 +303,11 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                 // Simple overlap detection among this person's shifts for warning style
                 // Centralized overlap detection among this person's shifts for warning style
                 const overlapsAnother = shifts.some(other=> other!==s && other.person===person && shiftsOverlap(s as any, other as any))
-                const outline = overlapsAnother ? (dark? 'inset 0 0 0 2px rgba(255,0,0,0.6)' : 'inset 0 0 0 2px rgba(255,0,0,0.7)') : undefined
+                let outlineColor = dark ? 'rgba(59,130,246,0.72)' : 'rgba(37,99,235,0.68)'
+                if(isNight) outlineColor = 'rgba(220,38,38,0.65)'
+                else if(isNoir) outlineColor = dark ? 'rgba(245,245,245,0.32)' : 'rgba(34,34,34,0.32)'
+                else if(isPrism) outlineColor = 'rgba(94,234,212,0.48)'
+                const outline = overlapsAnother ? `inset 0 0 0 2px ${outlineColor}` : undefined
                 const isHovered = hover.id===s.id
                 return (
                   <div
@@ -329,11 +329,12 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       let bgImage: string | undefined
                       let prism = false
                       // Prism theme: vivid animated chip gradient with person-based hue offset
-                      if(theme==='prism' && !hasPtoForDay){
+                      if(isPrism && !hasPtoForDay){
                         prism = true
                         const hue = (H+20) % 360
+                        const prismAngle = ((H % 5) * 36 + 30) % 360
                         // Slightly darker for readability & consistency
-                        bgImage = `linear-gradient(90deg, hsl(${hue} 88% 62% / 0.78), hsl(${(hue+50)%360} 84% 58% / 0.74), hsl(${(hue+100)%360} 82% 62% / 0.78))`
+                        bgImage = `linear-gradient(${prismAngle}deg, hsl(${hue} 90% 60% / 0.88), hsl(${(hue+50)%360} 86% 56% / 0.86), hsl(${(hue+100)%360} 84% 60% / 0.88))`
                       }
                       if(hasPtoForDay){
                         // Keep PTO chips grayed out without stripes for cleaner look
@@ -349,7 +350,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         boxShadow: `inset 0 0 0 1px ${baseBorder}` + (outline ? `, ${outline}` : ''),
                         borderRadius: CHIP_RADIUS,
                         ...(bgImage ? { backgroundImage: bgImage } : {}),
-                        ...(prism ? { backgroundColor: 'rgba(0,0,0,0.08)', backgroundBlendMode: 'multiply' } : {}),
+                        ...(prism ? { backgroundColor: 'rgba(0,0,0,0.12)', backgroundBlendMode: 'multiply' } : {}),
                         ...(prism ? { backgroundSize: '300% 100%', animation: 'prismChip 10s linear infinite', animationDelay: `${(H%60)/30}s` } : {}),
                         transition: 'filter 100ms ease, box-shadow 100ms ease',
                         ...(isHovered ? { filter: 'brightness(1.06)' } : {}),
@@ -359,7 +360,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
 
 
                     {/* Posture overlays: striped normally; animated gradients in Prism */}
-                    {segs.map(seg => {
+                    {segs.map((seg, segIdx) => {
                       const stOff = Math.max(0, Math.min(dur, seg.startOffsetMin))
                       const enOff = Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin))
                       if(enOff <= stOff) return null
@@ -367,18 +368,20 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const segW = ((enOff - stOff)/totalMins)*100
                       const t = taskMap.get(seg.taskId)
                       const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
+                      const segSeed = typeof (seg as any).id === 'string' ? (seg as any).id.length : segIdx
+                      const overlayAngle = ((H + segSeed) % 5) * 36 + 15
                       // Prism: animated gradient ribbon; Night/Noir: on-theme stripes; Others: subtle stripes
                       const bgImage = (
-                        theme==='prism'
-                          ? `linear-gradient(90deg,
-                              color-mix(in oklab, ${tColor} 85%, #000 15%) 0%,
-                              color-mix(in oklab, ${tColor} 65%, #000 35%) 50%,
-                              color-mix(in oklab, ${tColor} 85%, #000 15%) 100%
+                        isPrism
+                          ? `linear-gradient(${overlayAngle}deg,
+                              color-mix(in oklab, ${tColor} 85%, #030712 15%) 0%,
+                              color-mix(in oklab, ${tColor} 65%, #030712 35%) 50%,
+                              color-mix(in oklab, ${tColor} 85%, #030712 15%) 100%
                             )`
                           : isNight
-                            ? 'repeating-linear-gradient(135deg, rgba(239,68,68,0.28) 0 6px, transparent 6px 14px)'
+                            ? 'repeating-linear-gradient(135deg, rgba(220,38,38,0.38) 0 6px, transparent 6px 14px)'
                             : isNoir
-                              ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 6px, transparent 6px 14px)'
+                              ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.24) 0 6px, transparent 6px 14px)'
                               : `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
                       )
                       const style: React.CSSProperties & { [k:string]: any } = {
@@ -388,10 +391,10 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                         top: 2,
                         height: CHIP_H,
                         backgroundImage: bgImage,
-                        ...(theme==='prism' ? { backgroundSize: '300% 100%', animation: 'prismChip 12s ease-in-out infinite', backgroundBlendMode: 'multiply' } : {}),
+                        ...(isPrism ? { backgroundSize: '300% 100%', animation: 'prismChip 12s ease-in-out infinite', backgroundBlendMode: 'multiply' } : {}),
                         pointerEvents: 'none',
                         borderRadius: CHIP_RADIUS,
-                        opacity: theme==='prism' ? 0.7 : (isNight ? 0.35 : isNoir ? 0.25 : 0.45),
+                        opacity: isPrism ? 0.82 : (isNight ? 0.48 : isNoir ? 0.32 : 0.45),
                       }
                       return <div key={seg.id} className="absolute" style={style} />
                     })}
@@ -418,7 +421,7 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const chipPx = dur * pxPerMin
                       const SHOW_MIN_PX = 60
                       const show = chipPx >= SHOW_MIN_PX
-                      const prismText = theme==='prism' && !hasPtoForDay
+                      const prismText = isPrism && !hasPtoForDay
                       return (
                         <div
                           className={[

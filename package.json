@@ -19,6 +19,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy:api": "node ./scripts/deploy-api.mjs",
+    "build:staging": "node ./scripts/build-pages.mjs staging",
     "deploy:pages:prod": "node ./scripts/deploy-pages.mjs prod",
     "deploy:pages:staging": "node ./scripts/deploy-pages.mjs staging",
     "smoke": "node ./scripts/smoke.mjs",

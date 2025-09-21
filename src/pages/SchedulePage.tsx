@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
-import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev, applyOverrides } from '../lib/utils'
+import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev, applyOverrides, expandCalendarSegments, CalendarSegmentSlice } from '../lib/utils'
 import type { PTO, Shift, Task, Override } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import OnDeck from '../components/OnDeck'
@@ -42,19 +42,33 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     }
     return set
   }, [agents])
+  const calendarSegmentsByDay = useMemo(() => {
+    const map = new Map<(typeof DAYS)[number], CalendarSegmentSlice[]>()
+    for (const d of DAYS) {
+      map.set(d, [])
+    }
+    for (const seg of expandCalendarSegments(calendarSegs, tz.offset)) {
+      const bucket = map.get(seg.day)
+      if (!bucket) continue
+      bucket.push(seg)
+    }
+    return map
+  }, [calendarSegs, tz.offset])
+
   const dayShifts = useMemo(()=>{
     const baseAll = shiftsForDayInTZ(effectiveShifts, dayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
     const base = baseAll
     const filtered = base.filter(s=> !hiddenNames.has(s.person))
+    const dayCalSegs = calendarSegmentsByDay.get(dayKey as (typeof DAYS)[number]) || []
     // Merge calendar segments into each shift for display
     return filtered.map(s=>{
-      const cal = calendarSegs
-        .filter(cs=> cs.day===dayKey && (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
+      const cal = dayCalSegs
+        .filter(cs=> (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
         .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
     })
-  },[effectiveShifts,dayKey,tz.offset,calendarSegs, hiddenNames])
+  },[effectiveShifts,dayKey,tz.offset,calendarSegmentsByDay, hiddenNames])
   const people = useMemo(()=>Array.from(new Set(dayShifts.map(s=>s.person))),[dayShifts])
   const allPeople = useMemo(()=>{
     const names = Array.from(new Set(effectiveShifts.map(s=>s.person))).sort()
@@ -86,14 +100,15 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   const todayShifts = useMemo(()=>{
     const baseAll = shiftsForDayInTZ(effectiveShifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
     const filtered = baseAll.filter(s=> !hiddenNames.has(s.person))
+    const todayCalSegs = calendarSegmentsByDay.get(todayKey as (typeof DAYS)[number]) || []
     return filtered.map(s=>{
-      const cal = calendarSegs
-        .filter(cs=> cs.day===todayKey && (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
+      const cal = todayCalSegs
+        .filter(cs=> (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===s.person))
         .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
       const segments = mergeSegments(s, cal)
       return segments && segments.length>0 ? { ...s, segments } : s
     })
-  },[effectiveShifts,todayKey,tz.offset,calendarSegs, hiddenNames])
+  },[effectiveShifts,todayKey,tz.offset,calendarSegmentsByDay, hiddenNames])
 
   // Live clock in selected timezone (12-hour + meridiem)
   const [nowClock, setNowClock] = useState(()=>{
@@ -136,7 +151,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   }
 
   return (
-    <section className={["rounded-2xl p-2 prism-surface-1", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
+    <section className={["rounded-2xl p-2 prism-surface-1 prism-cycle-1", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
       {/* Header row with date+clock on the left and controls on the right; wraps nicely on mobile */}
       <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
         {/* Left: date (always) + live clock + tz */}
@@ -294,12 +309,20 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       {/* Below main section: two-column area for extra features */}
   {!agentView ? (
     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div>
-  <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} pto={pto} />
-      </div>
       <div className="flex flex-col gap-3">
-  <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} pto={pto} />
-        <PostureToday dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} tasks={tasks} />
+        <OnDeck dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} pto={pto} />
+        <UpNext dark={dark} tz={tz} dayKey={todayKey} shifts={todayShifts} pto={pto} />
+      </div>
+      <div>
+        <PostureToday
+          dark={dark}
+          tz={tz}
+          dayKey={todayKey}
+          shifts={todayShifts}
+          tasks={tasks}
+          calendarSegs={calendarSegmentsByDay.get(todayKey as (typeof DAYS)[number]) || []}
+          agents={agents || []}
+        />
       </div>
     </div>
   ) : (

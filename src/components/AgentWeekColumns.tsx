@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { DAYS } from '../constants'
-import { addDays, convertShiftsToTZ, fmtYMD, mergeSegments, nowInTZ, parseYMD, toMin } from '../lib/utils'
+import { addDays, convertShiftsToTZ, fmtYMD, mergeSegments, nowInTZ, parseYMD, toMin, expandCalendarSegments } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 
@@ -51,6 +51,8 @@ export default function AgentWeekColumns({
   const nowTop = (now.minutes/totalMins)*100
 
   const taskMap = useMemo(()=>{ const m=new Map<string,Task>(); for(const t of (tasks||[])) m.set(t.id,t); return m },[tasks])
+
+  const calendarSlices = useMemo(()=> expandCalendarSegments(calendarSegs || [], tz.offset), [calendarSegs, tz.offset])
 
   return (
     <div className="w-full">
@@ -115,17 +117,8 @@ export default function AgentWeekColumns({
                   const bg = dark? 'rgba(99,102,241,0.28)' : 'rgba(59,130,246,0.25)'
 
                   // Segments overlay if provided
-                  const cal = (calendarSegs||[])
-                    .filter(cs=> ((((s as any).agentId) && cs.agentId === (s as any).agentId) || cs.person===agent))
-                    .flatMap(cs=>{
-                      const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
-                      if(sameDay){ return [cs] }
-                      return [
-                        { ...cs, day: cs.day, start: cs.start, end: '24:00' },
-                        { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
-                      ]
-                    })
-                    .filter(cs=> cs.day===d.key)
+                  const cal = calendarSlices
+                    .filter(cs=> cs.day===d.key && ((((s as any).agentId) && cs.agentId === (s as any).agentId) || cs.person===agent))
                     .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
                   const merged: any = mergeSegments(s as any, cal)
                   const segs: Array<{ startOffsetMin:number; durationMin:number; taskId:string; id?:string }> = Array.isArray(merged)? merged as any : []

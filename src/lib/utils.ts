@@ -167,6 +167,89 @@ export type CalendarSegment = {
   taskId: string
 }
 
+export type CalendarSegmentSlice = {
+  day: Day
+  person: string
+  agentId?: string
+  taskId: string
+  start: string
+  end: string
+}
+
+export function expandCalendarSegments(calendarSegs: CalendarSegment[], offsetHours = 0): CalendarSegmentSlice[] {
+  const out: CalendarSegmentSlice[] = []
+  const offsetMin = offsetHours * 60
+  const MINUTES_PER_DAY = 1440
+  const WEEK_MIN = MINUTES_PER_DAY * 7
+
+  for (const cs of calendarSegs) {
+    if (!cs) continue
+    const startIdx = DAYS.indexOf(cs.day)
+    if (startIdx < 0) continue
+    const startMin = toMin(cs.start)
+    let startAbs = startIdx * MINUTES_PER_DAY + startMin
+
+    const endIdxInit = typeof cs.endDay === 'string' ? DAYS.indexOf(cs.endDay as Day) : startIdx
+    const endIdxBase = endIdxInit >= 0 ? endIdxInit : startIdx
+    const rawEndMin = cs.end === '24:00' ? MINUTES_PER_DAY : toMin(cs.end)
+    let endAbs = endIdxBase * MINUTES_PER_DAY + rawEndMin
+    let guard = 0
+    if (typeof cs.endDay === 'string') {
+      while (endAbs <= startAbs && guard < 14) {
+        endAbs += MINUTES_PER_DAY
+        guard++
+      }
+    } else if (!(rawEndMin > startMin || cs.end === '24:00')) {
+      endAbs += MINUTES_PER_DAY
+    }
+    if (guard >= 14) continue
+
+    startAbs += offsetMin
+    endAbs += offsetMin
+
+    while (startAbs < 0) {
+      startAbs += WEEK_MIN
+      endAbs += WEEK_MIN
+    }
+    while (startAbs >= WEEK_MIN) {
+      startAbs -= WEEK_MIN
+      endAbs -= WEEK_MIN
+    }
+    while (endAbs <= startAbs) {
+      endAbs += WEEK_MIN
+    }
+
+    let cursor = startAbs
+    const finalEnd = endAbs
+    guard = 0
+    while (cursor < finalEnd && guard < 14) {
+      const dayIdxRaw = Math.floor(cursor / MINUTES_PER_DAY)
+      const dayIdx = mod(dayIdxRaw, 7)
+      const dayStartAbs = Math.floor(cursor / MINUTES_PER_DAY) * MINUTES_PER_DAY
+      const sliceStartAbs = cursor
+      const sliceEndAbs = Math.min(finalEnd, dayStartAbs + MINUTES_PER_DAY)
+      if (sliceEndAbs > sliceStartAbs) {
+        const startLocal = mod(sliceStartAbs, MINUTES_PER_DAY)
+        const endLocalRaw = mod(sliceEndAbs, MINUTES_PER_DAY)
+        const endCoversDay = Math.abs(sliceEndAbs - (dayStartAbs + MINUTES_PER_DAY)) < 1e-6
+        const startStr = minToHHMM(startLocal)
+        const endStr = endCoversDay ? '24:00' : minToHHMM(endLocalRaw)
+        out.push({
+          day: DAYS[dayIdx],
+          person: cs.person,
+          agentId: cs.agentId,
+          taskId: cs.taskId,
+          start: startStr,
+          end: endStr
+        })
+      }
+      cursor = sliceEndAbs
+      guard++
+    }
+  }
+  return out
+}
+
 // Simple utilities to map between agent id and display name in the client
 export function agentDisplayName(agents: { id?: string; firstName?: string; lastName?: string }[], agentId?: string, fallbackPerson?: string){
   if(agentId){

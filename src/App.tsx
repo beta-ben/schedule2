@@ -63,28 +63,49 @@ export default function App(){
   const [view,setView] = useState<'schedule'|'teams'|'manageV2'>(()=> hashToView(window.location.hash))
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
-  const [theme,setTheme] = useState<"system"|"default"|"night"|"noir"|"prism">(()=>{
-    try{
-      const raw = localStorage.getItem('schedule_theme') || 'system'
-      if(raw.includes('-')){
-        const base = raw.split('-')[0]
-        return (base==='light'||base==='dark') ? 'default' : (base as any)
-      }
-      if(raw==='light' || raw==='dark') return 'default'
-      if(raw==='night' || raw==='noir' || raw==='prism') return raw as any
-      return 'system'
-    }catch{ return 'system' }
+  type ThemeBase = 'system'|'default'|'night'|'noir'|'prism'
+  type ThemeVariantPref = 'auto'|'light'|'dark'
+  const systemPrefersDark = ()=>{
+    if(typeof window === 'undefined') return true
+    if(!window.matchMedia) return true
+    try{ return window.matchMedia('(prefers-color-scheme: dark)').matches }
+    catch{ return true }
+  }
+  const decodeTheme = (raw: string | null): { base: ThemeBase; variant: ThemeVariantPref } => {
+    const value = (raw || 'system').toLowerCase()
+    if(value==='unicorn') return { base: 'system', variant: 'auto' }
+    if(value==='system') return { base: 'system', variant: 'auto' }
+    if(value==='light' || value==='default-light') return { base: 'default', variant: 'light' }
+    if(value==='dark' || value==='default-dark') return { base: 'default', variant: 'dark' }
+    if(value.startsWith('default-')) return { base: 'default', variant: value.endsWith('light') ? 'light' : 'dark' }
+    if(value==='night' || value.startsWith('night-')) return { base: 'night', variant: 'light' }
+    if(value==='prism' || value.startsWith('prism-')) return { base: 'prism', variant: 'dark' }
+    if(value==='noir') return { base: 'noir', variant: 'dark' }
+    if(value.startsWith('noir-')) return { base: 'noir', variant: value.endsWith('light') ? 'light' : 'dark' }
+    return { base: 'default', variant: 'dark' }
+  }
+  const [theme,setTheme] = useState<ThemeBase>(()=>{
+    try{ return decodeTheme(localStorage.getItem('schedule_theme')).base }
+    catch{ return 'system' }
   })
-  const [dark,setDark] = useState(()=>{
+  const [dark,setDark] = useState<boolean>(()=>{
     try{
-      const raw = localStorage.getItem('schedule_theme')
-      const pref = (raw==='unicorn' ? 'system' : raw) as 'light'|'dark'|'system'|'night'|'noir'|null
-      if(pref==='light') return false
-      if(pref==='dark' || pref==='night' || pref==='noir') return true
-      // system default
-      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      const decoded = decodeTheme(localStorage.getItem('schedule_theme'))
+      if(decoded.base==='system') return systemPrefersDark()
+      if(decoded.base==='night') return false
+      if(decoded.base==='prism') return true
+      return decoded.variant==='dark'
     }catch{ return true }
   })
+  useEffect(()=>{
+    try{
+      const raw = localStorage.getItem('schedule_theme')
+      if(!raw) return
+      if(raw.startsWith('night-')) localStorage.setItem('schedule_theme', 'night')
+      else if(raw.startsWith('prism-')) localStorage.setItem('schedule_theme', 'prism')
+      else if(raw==='noir') localStorage.setItem('schedule_theme', 'noir-dark')
+    }catch{}
+  },[])
   const [timeFormat, setTimeFormat] = useState<TimeFormat>(()=>{
     if(typeof window !== 'undefined'){
       try{
@@ -105,21 +126,43 @@ export default function App(){
       const any = e as CustomEvent
       const raw = any?.detail?.value as string | undefined
       if(!raw) return
-      if(raw==='system'){
+      const next = raw.toLowerCase()
+      if(next==='system'){
         setTheme('system')
-        setDark(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        setDark(systemPrefersDark())
         try{ localStorage.setItem('schedule_theme', 'system') }catch{}
         return
       }
-      // Support legacy values and new slug format base-variant
-      let base = raw
-      let variant: 'light'|'dark' = 'dark'
-      if(raw.includes('-')){ const parts = raw.split('-'); base = parts[0]; variant = (parts[1]==='light'?'light':'dark') }
-      if(base==='light' || base==='dark'){ variant = base as any; base = 'default' }
-      if(base!=='default' && base!=='night' && base!=='noir' && base!=='prism') base='default'
-      setTheme(base as any)
-      setDark(variant==='dark')
-      try{ localStorage.setItem('schedule_theme', `${base}-${variant}`) }catch{}
+      if(next==='night' || next.startsWith('night-')){
+        setTheme('night')
+        setDark(false)
+        try{ localStorage.setItem('schedule_theme', 'night') }catch{}
+        return
+      }
+      if(next==='prism' || next.startsWith('prism-')){
+        setTheme('prism')
+        setDark(true)
+        try{ localStorage.setItem('schedule_theme', 'prism') }catch{}
+        return
+      }
+      if(next==='noir' || next.startsWith('noir-')){
+        const variant = next.endsWith('light') ? 'light' : 'dark'
+        setTheme('noir')
+        setDark(variant==='dark')
+        try{ localStorage.setItem('schedule_theme', `noir-${variant}`) }catch{}
+        return
+      }
+      if(next==='light' || next==='dark' || next.startsWith('default-')){
+        const variant = next.endsWith('light') || next==='light' ? 'light' : 'dark'
+        setTheme('default')
+        setDark(variant==='dark')
+        try{ localStorage.setItem('schedule_theme', `default-${variant}`) }catch{}
+        return
+      }
+      // Fallback: treat anything else as default dark
+      setTheme('default')
+      setDark(true)
+      try{ localStorage.setItem('schedule_theme', 'default-dark') }catch{}
     }
     window.addEventListener('schedule:set-theme', handler as any)
     return ()=> window.removeEventListener('schedule:set-theme', handler as any)
@@ -145,14 +188,16 @@ export default function App(){
   // Compute root classes based on effective theme
   const rootCls = useMemo(()=>{
     const baseCls = 'min-h-screen w-full'
-    // Night: enforce black background regardless of variant; text stays red
-    if(effectiveTheme==='night') return dark ? `${baseCls} bg-black text-red-400` : `${baseCls} bg-black text-red-600`
-    // Noir: strict black + white only
-    if(effectiveTheme==='noir') return `${baseCls} bg-black text-white`
-    if(effectiveTheme==='prism') return dark ? `${baseCls} bg-black text-neutral-100` : `${baseCls} bg-sky-50 text-sky-800`
-    // default
+    if(effectiveTheme==='night') return `${baseCls} bg-black text-red-500`
+    if(effectiveTheme==='noir') return dark ? `${baseCls} bg-neutral-950 text-neutral-100` : `${baseCls} bg-neutral-100 text-neutral-900`
+    if(effectiveTheme==='prism') return `${baseCls} bg-slate-950 text-slate-100`
     return dark? `${baseCls} bg-neutral-950 text-neutral-100` : `${baseCls} bg-neutral-100 text-neutral-900`
   }, [effectiveTheme, dark])
+  const themeVariantAttr = useMemo<'light'|'dark'>(()=>{
+    if(theme==='night') return 'dark'
+    if(theme==='prism') return 'dark'
+    return dark ? 'dark' : 'light'
+  }, [theme, dark])
   // Start empty to avoid placeholder flicker; only use sample when explicitly enabled
   const [shifts, setShifts] = useState<Shift[]>(USE_SAMPLE ? SAMPLE.shifts : [])
   const [pto, setPto] = useState<PTO[]>(USE_SAMPLE ? SAMPLE.pto : [])
@@ -603,7 +648,7 @@ export default function App(){
   return (
     <TimeFormatProvider value={timeFormatValue}>
       <ErrorCatcher dark={dark}>
-  <div className={rootCls} data-theme={effectiveTheme}>
+  <div className={rootCls} data-theme={effectiveTheme} data-theme-variant={themeVariantAttr}>
         <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
           <TopBar
           dark={dark} setDark={setDark}
@@ -735,6 +780,9 @@ export default function App(){
             />
           )}
         </div>
+        <footer className="px-4 pb-6 text-center text-xs opacity-60">
+          © Beta Bionics. Built by Ben Steward.
+        </footer>
       </div>
       </ErrorCatcher>
     </TimeFormatProvider>

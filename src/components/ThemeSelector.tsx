@@ -6,18 +6,26 @@ const PRESETS: ThemePreset[] = [
   { id: 'system', label: 'System', chips: [] },
   { id: 'default-light', label: 'Default Light', chips: ['#ffffff','#111827'] },
   { id: 'default-dark', label: 'Default Dark', chips: ['#0a0a0a','#e5e7eb'] },
-  { id: 'night-light', label: 'Night Light', chips: ['#ffffff','#ef4444'] },
-  { id: 'night-dark', label: 'Night Dark', chips: ['#000000','#ef4444'] },
+  { id: 'night', label: 'Night Red', chips: ['#ffffff','#dc2626'] },
   { id: 'noir-light', label: 'Noir Light', chips: ['#ffffff','#000000'] },
   { id: 'noir-dark', label: 'Noir Dark', chips: ['#000000','#ffffff'] },
-  { id: 'prism-light', label: 'Prism Light', chips: ['#f0f9ff','#0ea5e9'] },
-  { id: 'prism-dark', label: 'Prism Dark', chips: ['#0f172a','#a3a3a3'] },
+  { id: 'prism', label: 'Prism', chips: ['#201b3f','#60a5fa'] },
 ]
 
 export default function ThemeSelector({ dark }:{ dark:boolean }){
   const [open,setOpen] = React.useState(false)
   const current = React.useMemo(()=>{
-    try{ return localStorage.getItem('schedule_theme') || 'system' }catch{ return 'system' }
+    try{
+      const raw = localStorage.getItem('schedule_theme') || 'system'
+      if(raw==='unicorn') return 'system'
+      if(raw==='default-light' || raw==='light') return 'default-light'
+      if(raw==='default-dark' || raw==='dark') return 'default-dark'
+      if(raw==='noir') return 'noir-dark'
+      if(raw.startsWith('noir-')) return raw
+      if(raw.startsWith('night')) return 'night'
+      if(raw.startsWith('prism')) return 'prism'
+      return raw
+    }catch{ return 'system' }
   },[])
   const apply = (id:string)=>{
     try{ window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: id } })) }catch{}
@@ -50,25 +58,28 @@ export default function ThemeSelector({ dark }:{ dark:boolean }){
       {open && (
         <div className={["absolute right-0 mt-2 z-50 w-[320px] rounded-xl p-2 border shadow-lg", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-200"].join(' ')} role="menu">
           <div className="grid grid-cols-2 gap-2">
-            {PRESETS.map(p=> (
-              <button
-                key={p.id}
-                onClick={()=>apply(p.id)}
-                className={[
-                  "flex items-center gap-2 p-2 rounded-lg border text-left",
-                  (dark?"hover:bg-neutral-800 border-neutral-700":"hover:bg-neutral-100 border-neutral-300"),
-                  (current===p.id? (dark?"ring-1 ring-blue-500":"ring-1 ring-blue-500") : ''),
-                  (p.id==='system' ? 'col-span-2' : '')
-                ].join(' ')}
-              >
-                <div className="flex -space-x-1">
-                  {p.chips.map((c,i)=> (
-                    <span key={i} className="inline-block w-5 h-5 rounded-full border border-black/10" style={{ background: c }} />
-                  ))}
-                </div>
-                <span className="text-sm">{p.label}</span>
-              </button>
-            ))}
+            {PRESETS.map(p=> {
+              const wide = p.id==='system' || p.id==='night' || p.id==='prism'
+              return (
+                <button
+                  key={p.id}
+                  onClick={()=>apply(p.id)}
+                  className={[
+                    "flex items-center gap-2 p-2 rounded-lg border text-left",
+                    (dark?"hover:bg-neutral-800 border-neutral-700":"hover:bg-neutral-100 border-neutral-300"),
+                    (current===p.id? (dark?"ring-1 ring-blue-500":"ring-1 ring-blue-500") : ''),
+                    (wide ? 'col-span-2' : '')
+                  ].join(' ')}
+                >
+                  <div className="flex -space-x-1">
+                    {p.chips.map((c,i)=> (
+                      <span key={i} className="inline-block w-5 h-5 rounded-full border border-black/10" style={{ background: c }} />
+                    ))}
+                  </div>
+                  <span className="text-sm">{p.label}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

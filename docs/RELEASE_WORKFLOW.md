@@ -49,12 +49,16 @@ A single build artifact should move from local dev → staging → production wi
    git merge --ff-only release/<...>
    git push origin staging
    ```
-   The staging Pages workflow auto-builds using `.env.production.staging` to point at the staging Worker API.
-2. Deploy the staging site via direct upload (requires `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` in your shell):
+   Keep the branch clean—`npm run build:staging` (next step) copies `.env.production.staging` so the bundle talks to the staging API.
+2. Build the staging bundle (temporarily swaps `.env.production` with `.env.production.staging`):
+   ```sh
+   npm run build:staging
+   ```
+3. Deploy the staging site via direct upload (requires `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` in your shell):
    ```sh
    npm run deploy:pages:staging
    ```
-3. Optional: kick off the staging Worker deploy so API + site match:
+4. Optional: kick off the staging Worker deploy so API + site match:
    - GitHub → Actions → “Deploy API (staging) to Cloudflare Workers” → Run workflow.
 
 ## 3. Verify staging
@@ -115,5 +119,6 @@ Manual checks (recommended):
 | Cloudflare resource checklist | See `docs/CLOUDFLARE_SETUP.md` |
 | Trigger staging Pages deploy | `npm run deploy:pages:staging` |
 | Trigger production Pages deploy | `npm run deploy:pages:prod` |
+| Build staging bundle | `npm run build:staging` |
 
 Keep the release branch history linear—always fast-forward when merging between `main` and `staging`. That guarantees the exact commit tested in staging is what ships to customers.

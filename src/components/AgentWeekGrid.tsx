@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { DAYS } from '../constants'
-import { addDays, fmtYMD, minToHHMM, nowInTZ, parseYMD, toMin, convertShiftsToTZ, mergeSegments, agentDisplayName } from '../lib/utils'
+import { addDays, fmtYMD, minToHHMM, nowInTZ, parseYMD, toMin, convertShiftsToTZ, mergeSegments, agentDisplayName, expandCalendarSegments } from '../lib/utils'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 
@@ -89,6 +89,7 @@ export default function AgentWeekGrid({
   // Colors
   const light=`hsla(${hue},75%,70%,0.95)`; const darkbg=`hsla(${hue},60%,28%,0.95)`; const darkbd=`hsl(${hue},70%,55%)`
   const taskMap = useMemo(()=>{ const m=new Map<string,Task>(); for(const t of (tasks||[])) m.set(t.id,t); return m },[tasks])
+  const calendarSlices = useMemo(()=> expandCalendarSegments(calendarSegs || [], tz.offset), [calendarSegs, tz.offset])
 
   return (
     <div className="overflow-x-auto no-scrollbar w-full no-select">
@@ -123,17 +124,8 @@ export default function AgentWeekGrid({
 
         {days.map(d=>{
           const items = (byDay.get(d.key) || []).map(s=>{
-            const cal = (calendarSegs||[])
-              .filter(cs=> (((s as any).agentId && cs.agentId=== (s as any).agentId) || cs.person===agent))
-              .flatMap(cs=>{
-                const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
-                if(sameDay){ return [cs] }
-                return [
-                  { ...cs, day: cs.day, start: cs.start, end: '24:00' },
-                  { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
-                ]
-              })
-              .filter(cs=> cs.day===d.key)
+            const cal = calendarSlices
+              .filter(cs=> cs.day===d.key && ((((s as any).agentId) && cs.agentId === (s as any).agentId) || cs.person===agent))
               .map(cs=> ({ taskId: cs.taskId, start: cs.start, end: cs.end }))
             const segments = mergeSegments(s, cal)
             return segments && segments.length>0 ? { ...s, segments } : s

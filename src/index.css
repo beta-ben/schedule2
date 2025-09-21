@@ -20,10 +20,11 @@ html, body { -ms-overflow-style: none; scrollbar-width: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
 
 /* Theme body backgrounds using :has to avoid white gutters behind app on iOS */
-/* Dark-oriented themes */
-body:has([data-theme='night']),
-body:has([data-theme='noir']) { background-color: #000 !important; color-scheme: dark; }
-body:has([data-theme='prism']) { background-color: #02020A !important; color-scheme: dark; }
+/* Theme-specific body treatments */
+body:has([data-theme='night']) { background-color: #010101 !important; color-scheme: dark; }
+body:has([data-theme='noir'][data-theme-variant='dark']) { background-color: #000000 !important; color-scheme: dark; }
+body:has([data-theme='noir'][data-theme-variant='light']) { background-color: #f5f5f5 !important; color-scheme: light; }
+body:has([data-theme='prism']) { background-color: #050514 !important; color-scheme: dark; }
 /* Standard dark */
 body:has([data-theme='dark']) { background-color: #0a0a0a !important; color-scheme: dark; }
 /* Light/system fall back to default UA */
@@ -56,77 +57,115 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	/* Approximate Tailwind red-500 via filter; keeps native picker UX */
 	filter: invert(36%) sepia(78%) saturate(2561%) hue-rotate(344deg) brightness(96%) contrast(96%);
 }
-[data-theme='noir'] input[type="date"]::-webkit-calendar-picker-indicator{
-	/* High-contrast white for strict noir */
+[data-theme='noir'][data-theme-variant='dark'] input[type="date"]::-webkit-calendar-picker-indicator{
+	/* High-contrast white for dark noir */
 	filter: invert(100%);
+	opacity: 0.9;
+}
+[data-theme='noir'][data-theme-variant='light'] input[type="date"]::-webkit-calendar-picker-indicator{
+	/* Soft black icon for light noir */
+	filter: invert(8%) sepia(6%) saturate(0%) hue-rotate(180deg) brightness(92%) contrast(92%);
 	opacity: 0.9;
 }
 
 /* THEME OVERRIDES */
-/* Night: fully black background, deep red text and accents */
+/* Night: black canvas with crimson accents */
 [data-theme='night'] {
 	background-color: #000 !important;
-	color: #ef4444;
+	color: #dc2626 !important;
 }
 [data-theme='night'] .bg-white,
 [data-theme='night'] .bg-neutral-50,
 [data-theme='night'] .bg-neutral-100,
 [data-theme='night'] .bg-neutral-200,
 [data-theme='night'] .bg-neutral-800,
-[data-theme='night'] .bg-neutral-900 {
+[data-theme='night'] .bg-neutral-900,
+[data-theme='night'] .bg-black {
 	background-color: #000 !important;
 }
 [data-theme='night'] .text-neutral-900,
 [data-theme='night'] .text-neutral-800,
 [data-theme='night'] .text-neutral-700,
-[data-theme='night'] .text-white {
-	color: #ef4444 !important;
-}
+[data-theme='night'] .text-neutral-100,
+[data-theme='night'] .text-white,
+[data-theme='night'] .text-black,
+[data-theme='night'] .text-blue-600,
+[data-theme='night'] .text-blue-500,
+[data-theme='night'] .text-slate-600 { color: #dc2626 !important; }
 [data-theme='night'] .border-neutral-200,
 [data-theme='night'] .border-neutral-300,
 [data-theme='night'] .border-neutral-600,
 [data-theme='night'] .border-neutral-700,
 [data-theme='night'] .border-neutral-800,
 [data-theme='night'] .border-white,
-[data-theme='night'] .border {
-	border-color: rgba(127, 29, 29, 0.6) !important;
-}
+[data-theme='night'] .border-blue-600,
+[data-theme='night'] .border { border-color: rgba(220,38,38,0.6) !important; }
+[data-theme='night'] .bg-blue-600,
+[data-theme='night'] .bg-blue-500,
+[data-theme='night'] .bg-sky-500,
+[data-theme='night'] .bg-emerald-500,
+[data-theme='night'] .bg-indigo-500,
+[data-theme='night'] .bg-amber-500,
+[data-theme='night'] .bg-red-500,
+[data-theme='night'] .bg-red-600 { background-color: rgba(220,38,38,0.92) !important; color: #ffffff !important; }
 [data-theme='night'] .hover\:bg-neutral-100:hover,
-[data-theme='night'] .hover\:bg-neutral-800:hover {
-	background-color: #1a0000 !important;
-}
+[data-theme='night'] .hover\:bg-neutral-800:hover { background-color: rgba(220,38,38,0.2) !important; }
+[data-theme='night'] svg { color: #dc2626 !important; stroke: #dc2626 !important; }
 
-/* Noir: strict black and white */
-[data-theme='noir'] { background-color: #000 !important; color: #fff !important; }
+/* Noir: grayscale-only surfaces (light + dark variants) */
+[data-theme='noir'] {
+	--noir-bg: #0e0e10;
+	--noir-surface: #161616;
+	--noir-surface-strong: #1f1f1f;
+	--noir-text: #f5f5f5;
+	--noir-border: rgba(255,255,255,0.45);
+	--noir-hover: rgba(255,255,255,0.08);
+	background-color: var(--noir-bg) !important;
+	color: var(--noir-text) !important;
+}
+[data-theme='noir'][data-theme-variant='light'] {
+	--noir-bg: #f5f5f5;
+	--noir-surface: #ffffff;
+	--noir-surface-strong: #e7e7e7;
+	--noir-text: #111111;
+	--noir-border: rgba(0,0,0,0.28);
+	--noir-hover: rgba(0,0,0,0.06);
+}
 [data-theme='noir'] .bg-white,
 [data-theme='noir'] .bg-neutral-50,
 [data-theme='noir'] .bg-neutral-100,
 [data-theme='noir'] .bg-neutral-200,
 [data-theme='noir'] .bg-neutral-800,
-[data-theme='noir'] .bg-neutral-900 { background-color: #000 !important; }
+[data-theme='noir'] .bg-neutral-900 { background-color: var(--noir-surface) !important; }
+[data-theme='noir'] .bg-neutral-700,
+[data-theme='noir'] .bg-neutral-600 { background-color: var(--noir-surface-strong) !important; }
 [data-theme='noir'] .text-neutral-900,
 [data-theme='noir'] .text-neutral-800,
 [data-theme='noir'] .text-neutral-700,
 [data-theme='noir'] .text-neutral-100,
 [data-theme='noir'] .text-white,
-[data-theme='noir'] .text-black { color: #fff !important; }
+[data-theme='noir'] .text-black,
+[data-theme='noir'] .text-blue-600,
+[data-theme='noir'] .text-blue-500,
+[data-theme='noir'] .text-red-500,
+[data-theme='noir'] .text-emerald-500 { color: var(--noir-text) !important; }
 [data-theme='noir'] .border-neutral-200,
 [data-theme='noir'] .border-neutral-300,
 [data-theme='noir'] .border-neutral-600,
 [data-theme='noir'] .border-neutral-700,
 [data-theme='noir'] .border-neutral-800,
 [data-theme='noir'] .border,
-[data-theme='noir'] .border-white { border-color: rgba(255,255,255,0.6) !important; }
+[data-theme='noir'] .border-white,
+[data-theme='noir'] .border-blue-600 { border-color: var(--noir-border) !important; }
 [data-theme='noir'] .hover\:bg-neutral-100:hover,
-[data-theme='noir'] .hover\:bg-neutral-800:hover { background-color: #111 !important; }
-/* Ensure icons are white-only in Noir */
-[data-theme='noir'] svg { color: #fff !important; stroke: #fff !important; }
-/* Force any prominent colored badges to monochrome in Noir */
-[data-theme='noir'] .bg-red-400,
-[data-theme='noir'] .bg-red-500 { background-color: #000 !important; }
-[data-theme='noir'] .text-red-400,
-[data-theme='noir'] .text-red-500,
-[data-theme='noir'] .text-red-600 { color: #fff !important; }
+[data-theme='noir'] .hover\:bg-neutral-800:hover { background-color: var(--noir-hover) !important; }
+[data-theme='noir'] svg { color: var(--noir-text) !important; stroke: var(--noir-text) !important; }
+[data-theme='noir'] .bg-blue-600,
+[data-theme='noir'] .bg-blue-500,
+[data-theme='noir'] .bg-sky-500,
+[data-theme='noir'] .bg-indigo-500,
+[data-theme='noir'] .bg-emerald-500,
+[data-theme='noir'] .bg-red-500 { background-color: var(--noir-surface-strong) !important; color: var(--noir-text) !important; }
 
 /* Unicorn LSD: animated rainbow surfaces with readable overlay */
 @keyframes unicornShift {
@@ -174,8 +213,8 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 [data-theme='night'] .text-neutral-800,
 [data-theme='night'] .text-neutral-900,
 [data-theme='night'] .text-white,
-[data-theme='night'] .text-black { color: #ef4444 !important; }
-[data-theme='night'] svg { color: #ef4444 !important; stroke: #ef4444 !important; }
+[data-theme='night'] .text-black { color: #dc2626 !important; }
+[data-theme='night'] svg { color: #dc2626 !important; stroke: #dc2626 !important; }
 
 /* Unicorn chip animations */
 @keyframes unicornChip {
@@ -271,11 +310,23 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	[data-theme='prism'] {
 		/* Global dark canvas with animated neon gradient */
 		background-color: #02020A !important;
-		background-image: radial-gradient(1200px 800px at 10% 10%, rgba(168,85,247,0.25), transparent 60%),
-											radial-gradient(1000px 700px at 90% 20%, rgba(34,211,238,0.18), transparent 65%),
+		--prism-pos-a: 0% 0%;
+		--prism-pos-b: 100% 0%;
+		--prism-pos-c: 0 0;
+		--prism-size-a: 140% 140%;
+		--prism-size-b: 160% 160%;
+		--prism-size-c: 100% 100%;
+		--prism-pan-duration: 60s;
+		--prism-pan-delay: 0s;
+		--prism-pan-direction: alternate;
+		background-image: radial-gradient(1200px 800px at 10% 10%, rgba(168,85,247,0.4), transparent 62%),
+											radial-gradient(1000px 700px at 90% 20%, rgba(34,211,238,0.32), transparent 68%),
 											linear-gradient(135deg, #0a0a16 0%, #0b1220 100%);
-		background-size: 140% 140%, 160% 160%, 100% 100%;
-		animation: prismBgPan 60s ease-in-out infinite;
+		background-size: var(--prism-size-a), var(--prism-size-b), var(--prism-size-c);
+		background-position: var(--prism-pos-a), var(--prism-pos-b), var(--prism-pos-c);
+		animation: prismBgPan var(--prism-pan-duration) ease-in-out infinite;
+		animation-delay: var(--prism-pan-delay);
+		animation-direction: var(--prism-pan-direction);
 		color: #E6EAF2 !important;
 	}
 	/* Remove invalid descendant targeting of body; body themed via :has above */
@@ -287,16 +338,16 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	[data-theme='prism'] .bg-neutral-800,
 	[data-theme='prism'] .bg-neutral-900 {
 		/* Rich rainbow gradient with slow pan */
-		background-image: linear-gradient(135deg,
-			rgba(255,0,128,0.88) 0%,      /* magenta */
-			rgba(255,140,0,0.9) 12%,      /* orange */
-			rgba(255,211,0,0.9) 24%,      /* yellow */
-			rgba(72,199,116,0.9) 36%,     /* green */
-			rgba(34,211,238,0.9) 48%,     /* cyan */
-			rgba(59,130,246,0.92) 60%,    /* blue */
-			rgba(127,0,255,0.92) 72%,     /* violet */
-			rgba(255,0,128,0.9) 84%,
-			rgba(255,140,0,0.88) 100%
+		background-image: linear-gradient(var(--prism-panel-angle, 135deg),
+			rgba(255,0,128,0.96) 0%,      /* magenta */
+			rgba(255,140,0,0.97) 12%,      /* orange */
+			rgba(255,211,0,0.97) 24%,      /* yellow */
+			rgba(72,199,116,0.96) 36%,     /* green */
+			rgba(34,211,238,0.96) 48%,     /* cyan */
+			rgba(59,130,246,0.98) 60%,    /* blue */
+			rgba(127,0,255,0.98) 72%,     /* violet */
+			rgba(255,0,128,0.96) 84%,
+			rgba(255,140,0,0.95) 100%
 		) !important;
 		background-size: 200% 200%;
 		animation: prismPan 24s ease-in-out infinite;
@@ -308,7 +359,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	[data-theme='prism'] .border-neutral-600,
 	[data-theme='prism'] .border-neutral-700,
 	[data-theme='prism'] .border-neutral-800,
-	[data-theme='prism'] .border-white { border-color: rgba(173,216,230,0.45) !important; }
+	[data-theme='prism'] .border-white { border-color: rgba(173,216,230,0.62) !important; }
 	[data-theme='prism'] .text-neutral-900,
 	[data-theme='prism'] .text-neutral-800,
 	[data-theme='prism'] .text-neutral-700,
@@ -316,7 +367,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 	[data-theme='prism'] .text-neutral-100,
 	[data-theme='prism'] .text-white { color: #E6EAF2 !important; }
 	[data-theme='prism'] .hover\:bg-neutral-100:hover,
-	[data-theme='prism'] .hover\:bg-neutral-800:hover { background-color: rgba(255,255,255,0.06) !important; }
+	[data-theme='prism'] .hover\:bg-neutral-800:hover { background-color: rgba(255,255,255,0.12) !important; }
 	@keyframes prismPan {
 		0% { background-position: 0% 50%; }
 		50% { background-position: 100% 50%; }
@@ -328,10 +379,29 @@ input[type="date"]::-webkit-calendar-picker-indicator{
 		100% { background-position: 0% 0%, 100% 0%, 0 0; }
 	}
 	/* Stagger helpers for surfaces */
-	.prism-surface-1 { --prism-delay: 0s; }
-	.prism-surface-2 { --prism-delay: 4s; }
-	.prism-surface-3 { --prism-delay: 8s; }
-	.prism-surface-4 { --prism-delay: 12s; }
+	.prism-surface-1 { --prism-delay: 0s; --prism-panel-angle: 120deg; }
+	.prism-surface-2 { --prism-delay: 4s; --prism-panel-angle: 165deg; }
+	.prism-surface-3 { --prism-delay: 8s; --prism-panel-angle: 210deg; }
+	.prism-surface-4 { --prism-delay: 12s; --prism-panel-angle: 255deg; }
+	.prism-cycle-1 { --prism-pos-a: 8% 12%; --prism-pos-b: 62% 4%; --prism-pos-c: 0 0; --prism-size-a: 150% 150%; --prism-size-b: 170% 150%; --prism-pan-duration: 52s; --prism-pan-delay: -4s; }
+	.prism-cycle-2 { --prism-pos-a: 82% 22%; --prism-pos-b: 14% 74%; --prism-pos-c: 0 0; --prism-size-a: 145% 150%; --prism-size-b: 185% 165%; --prism-pan-duration: 46s; --prism-pan-delay: -12s; --prism-pan-direction: alternate-reverse; }
+	.prism-cycle-3 { --prism-pos-a: 24% 76%; --prism-pos-b: 88% 36%; --prism-pos-c: 0 0; --prism-size-a: 165% 170%; --prism-size-b: 175% 150%; --prism-pan-duration: 58s; --prism-pan-delay: -20s; }
+	.prism-cycle-4 { --prism-pos-a: 68% 10%; --prism-pos-b: 12% 68%; --prism-pos-c: 0 0; --prism-size-a: 155% 160%; --prism-size-b: 190% 165%; --prism-pan-duration: 54s; --prism-pan-delay: -28s; --prism-pan-direction: alternate-reverse; }
+	.prism-cycle-5 { --prism-pos-a: 12% 68%; --prism-pos-b: 74% 88%; --prism-pos-c: 0 0; --prism-size-a: 170% 165%; --prism-size-b: 165% 150%; --prism-pan-duration: 62s; --prism-pan-delay: -36s; }
+	.prism-cycle-6 { --prism-pos-a: 46% 6%; --prism-pos-b: 6% 42%; --prism-pos-c: 0 0; --prism-size-a: 160% 150%; --prism-size-b: 175% 180%; --prism-pan-duration: 50s; --prism-pan-delay: -16s; --prism-pan-direction: alternate-reverse; }
+	[data-theme='prism'] .prism-chip {
+		background-size: 260% 100%;
+		background-position: var(--prism-chip-pos, 0% 50%);
+		animation: prismChip var(--prism-chip-duration, 26s) ease-in-out infinite;
+		animation-delay: var(--prism-chip-delay, 0s);
+		animation-direction: var(--prism-chip-direction, alternate);
+	}
+	.prism-chip-cycle-1 { --prism-chip-pos: 0% 46%; --prism-chip-delay: -2s; --prism-chip-duration: 24s; }
+	.prism-chip-cycle-2 { --prism-chip-pos: 25% 52%; --prism-chip-delay: -6s; --prism-chip-duration: 28s; --prism-chip-direction: alternate-reverse; }
+	.prism-chip-cycle-3 { --prism-chip-pos: 50% 44%; --prism-chip-delay: -10s; --prism-chip-duration: 30s; }
+	.prism-chip-cycle-4 { --prism-chip-pos: 75% 58%; --prism-chip-delay: -4s; --prism-chip-duration: 26s; --prism-chip-direction: alternate-reverse; }
+	.prism-chip-cycle-5 { --prism-chip-pos: 10% 38%; --prism-chip-delay: -12s; --prism-chip-duration: 32s; }
+	.prism-chip-cycle-6 { --prism-chip-pos: 60% 62%; --prism-chip-delay: -8s; --prism-chip-duration: 29s; --prism-chip-direction: alternate-reverse; }
 	/* Inputs: tint native date icon neon-cyan */
 	[data-theme='prism'] input[type="date"]::-webkit-calendar-picker-indicator{
 		filter: invert(71%) sepia(97%) saturate(415%) hue-rotate(161deg) brightness(104%) contrast(97%);

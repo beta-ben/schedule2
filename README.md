@@ -168,7 +168,7 @@ Usually not needed. If you want to override the API prefix or force offline mode
 - Skim `docs/RELEASE_WORKFLOW.md` for the full playbook.
 - Run `npm run release:status` to see how far `main` and `staging` have drifted (local + remote).
 - Run `npm run release:preflight` before pushing to staging or main; it executes the same checks as our deploy workflows.
-- Deploy the Pages projects directly with Wrangler via `npm run deploy:pages:staging` or `npm run deploy:pages:prod` after exporting `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+- Build staging bundles with `npm run build:staging` (uses `.env.production.staging`), then deploy via `npm run deploy:pages:staging`. For production, use `npm run build` + `npm run deploy:pages:prod` once `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are exported.
 
 ### Flattening a nested duplicate project
 

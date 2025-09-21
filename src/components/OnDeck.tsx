@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import type { Shift, PTO } from '../types'
 import { minToHHMM, nowInTZ, toMin } from '../lib/utils'
+import { useThemeBase } from '../hooks/useThemeBase'
 
 export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
   dark: boolean
@@ -9,6 +10,10 @@ export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
   shifts: Shift[]
   pto: PTO[]
 }){
+  const themeBase = useThemeBase()
+  const isNight = themeBase === 'night'
+  const isNoir = themeBase === 'noir'
+  const isPrism = themeBase === 'prism'
   // Compute now in selected timezone
   const [nowTick, setNowTick] = useState(Date.now())
   useEffect(()=>{
@@ -87,39 +92,97 @@ export default function OnDeck({ dark, tz, dayKey, shifts, pto }:{
     return 'ending now'
   }
 
+  const sectionClasses = ["rounded-2xl", "p-3", "border"]
+  if(isPrism){
+    sectionClasses.push('prism-surface-2', 'prism-cycle-2')
+  }else if(isNight){
+    sectionClasses.push('bg-black')
+  }else if(isNoir){
+    sectionClasses.push(dark? 'bg-neutral-950 border-neutral-700' : 'bg-neutral-100 border-neutral-300')
+  }else{
+    sectionClasses.push(dark? 'bg-neutral-900 border-neutral-700' : 'bg-white border-neutral-300 shadow-sm')
+  }
+
+  const sectionStyle: React.CSSProperties | undefined = isNight
+    ? { backgroundColor: '#050505', borderColor: 'rgba(220,38,38,0.45)', color: '#dc2626' }
+    : isNoir
+      ? { backgroundColor: dark ? '#0c0c0d' : '#f5f5f5', borderColor: dark ? 'rgba(245,245,245,0.25)' : 'rgba(0,0,0,0.18)', color: dark ? '#f5f5f5' : '#111' }
+      : undefined
+
+  const headerCountClass = isNight ? 'text-red-400' : (dark? 'text-neutral-400' : 'text-neutral-500')
+  const emptyClass = isNight ? 'text-red-400' : (dark? 'text-neutral-400' : 'text-neutral-600')
+
+  const primaryTextClass = isNight
+    ? 'text-red-400'
+    : isNoir
+      ? (dark ? 'text-neutral-200' : 'text-neutral-700')
+      : (dark ? 'text-neutral-300' : 'text-neutral-700')
+  const secondaryTextClass = isNight
+    ? 'text-red-300'
+    : isNoir
+      ? (dark ? 'text-neutral-400' : 'text-neutral-600')
+      : (dark ? 'text-neutral-400' : 'text-neutral-500')
+
   return (
-    <section className={["rounded-2xl p-3 prism-surface-2 border", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300 shadow-sm"].join(' ')}>
+    <section className={sectionClasses.join(' ')} style={sectionStyle}>
       <div className="flex items-baseline justify-between mb-2">
         <h2 className="text-base font-semibold">
           On deck
-          <span className={["ml-2 text-sm", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>({active.length})</span>
+          <span className={["ml-2 text-sm", headerCountClass].join(' ')}>({active.length})</span>
         </h2>
-        <div className={["text-xs", dark?"text-neutral-400":"text-neutral-500"].join(' ')}>as of {minToHHMM(nowMin)}</div>
+        <div className={["text-xs", headerCountClass].join(' ')}>as of {minToHHMM(nowMin)}</div>
       </div>
       {active.length === 0 ? (
-        <div className={["text-sm", dark?"text-neutral-400":"text-neutral-600"].join(' ')}>No one on right now.</div>
+        <div className={["text-sm", emptyClass].join(' ')}>No one on right now.</div>
       ) : (
         <ul className="space-y-1">
-          {active.map(a=> {
+          {active.map((a,idx)=> {
             const H = colorMap.get(a.person) ?? 0
             const bgL = dark? 28 : 82
             const bgA1 = dark? 0.22 : 0.35
             const bgA2 = dark? 0.10 : 0.18
             const bdL = dark? 40 : 62
             const accentL = dark? 50 : 48
-            const containerStyle: React.CSSProperties = {
-              background: `linear-gradient(90deg, hsla(${H},70%,${bgL}%,${bgA1}) 0%, hsla(${H},70%,${bgL}%,${bgA2}) 100%)`,
-              borderColor: `hsl(${H},70%,${bdL}%)`,
-              borderLeftColor: `hsl(${H},70%,${accentL}%)`,
-              borderLeftWidth: 6,
-              borderStyle: 'solid',
+            const prismCycleClass = isPrism ? [`prism-chip`, `prism-chip-cycle-${(idx % 6)+1}`] : []
+            const gradAngle = ((H % 5) * 36) + 30
+            const containerStyle: React.CSSProperties = isNight
+              ? {
+                  background: 'rgba(8,8,8,0.92)',
+                  borderColor: 'rgba(220,38,38,0.5)',
+                  borderLeftColor: 'rgba(220,38,38,0.85)',
+                  borderLeftWidth: 6,
+                  borderStyle: 'solid',
+                }
+              : isNoir
+                ? {
+                    background: dark ? 'rgba(16,16,16,0.92)' : 'rgba(245,245,245,0.96)',
+                    borderColor: dark ? 'rgba(245,245,245,0.28)' : 'rgba(34,34,34,0.28)',
+                    borderLeftColor: dark ? 'rgba(245,245,245,0.55)' : 'rgba(34,34,34,0.55)',
+                    borderLeftWidth: 6,
+                    borderStyle: 'solid',
+                  }
+                : {
+                    background: `linear-gradient(${gradAngle}deg, hsla(${H},70%,${bgL}%,${bgA1}) 0%, hsla(${H},70%,${bgL}%,${bgA2}) 100%)`,
+                    borderColor: `hsl(${H},70%,${bdL}%)`,
+                    borderLeftColor: `hsl(${H},70%,${accentL}%)`,
+                    borderLeftWidth: 6,
+                    borderStyle: 'solid',
+                    backgroundSize: '260% 100%',
+                    backgroundPosition: 'var(--prism-chip-pos, 0% 50%)'
+                  }
+            if(isPrism){
+              containerStyle.backgroundBlendMode = 'screen'
             }
             const leftMins = Math.max(0, a.end - nowMin)
             return (
-              <li key={a.person} className="flex items-center justify-between text-sm rounded-md border px-2 py-1" style={containerStyle}>
-                <span className="font-medium">{a.person}</span>
-                <span className={dark?"text-neutral-300":"text-neutral-700"}>
-                  {a.window} <span className={dark?"text-neutral-400":"text-neutral-500"}>• {formatLeft(leftMins)} left</span>
+              <li
+                key={a.person}
+                className={["flex items-center justify-between text-sm rounded-md border px-2 py-1", isNight ? 'text-red-400' : '', ...prismCycleClass].join(' ')}
+                style={containerStyle}
+              >
+                <span className={["font-medium", isNight ? 'text-red-500' : isNoir ? (dark? 'text-neutral-100' : 'text-neutral-800') : ''].join(' ')}>{a.person}</span>
+                <span className={primaryTextClass}>
+                  {a.window} <span className={secondaryTextClass}>• {formatLeft(leftMins)} left</span>
                 </span>
               </li>
             )

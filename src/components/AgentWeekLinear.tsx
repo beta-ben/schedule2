@@ -436,31 +436,41 @@ export default function AgentWeekLinear({
                     ? highlightIds.has(g.id)
                     : (highlightIds as string[]).includes(g.id)
                 )
-  // Night/Noir: force chips to black
-  const chipBg = (isNight || isNoir) ? '#000' : (isHi ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)') : bg)
+  const chipBg = isNight
+    ? '#050505'
+    : isNoir
+      ? (dark ? '#111111' : '#f5f5f5')
+      : (isHi ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)') : bg)
                 const isSel = !!selectedIds && (
                   selectedIds instanceof Set
                     ? selectedIds.has(g.id)
                     : (selectedIds as string[]).includes(g.id)
                 )
                 // Use high-contrast hover ring; when framed (overflow-hidden), use inset to avoid clipping top/bottom
-        const ringHover = isHover
-                  ? (framed
-                      ? (isNight || isNoir ? 'inset 0 0 0 2px rgba(255,255,255,0.35)' : (dark ? 'inset 0 0 0 2px rgba(255,255,255,0.85)' : 'inset 0 0 0 2px rgba(0,0,0,0.7)'))
-          : (isNight || isNoir ? '0 0 0 2px rgba(255,255,255,0.35)' : (dark ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 0 0 2px rgba(0,0,0,0.7)')))
+                const hoverRingColor = isNight
+                  ? 'rgba(220,38,38,0.6)'
+                  : isNoir
+                    ? (dark ? 'rgba(245,245,245,0.4)' : 'rgba(34,34,34,0.4)')
+                    : (dark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)')
+                const ringHover = isHover
+                  ? (framed ? `inset 0 0 0 2px ${hoverRingColor}` : `0 0 0 2px ${hoverRingColor}`)
                   : ''
-                const ringSelected = isSel
-                  ? (isNight
-                      ? '0 0 0 2px rgba(239,68,68,0.65)'
-                      : isNoir
-                        ? '0 0 0 2px rgba(255,255,255,0.45)'
-                        : (dark? '0 0 0 2px rgba(234,179,8,0.95)':'0 0 0 2px rgba(234,179,8,0.95)'))
-                  : ''
+                const selectedRingColor = isNight
+                  ? 'rgba(220,38,38,0.72)'
+                  : isNoir
+                    ? (dark ? 'rgba(245,245,245,0.55)' : 'rgba(34,34,34,0.45)')
+                    : 'rgba(234,179,8,0.95)'
+                const ringSelected = isSel ? `0 0 0 2px ${selectedRingColor}` : ''
                 const boxShadow = [ringHover, ringSelected].filter(Boolean).join(', ')
                 const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || (showEdgeTimeTagsForHighlights && isHi) || isSel
                 // Collision avoidance for outer labels when requested
                 let allowStartTag = showTags && showStart
                 let allowEndTag = showTags && showEnd
+                const timeTagTone = isNight
+                  ? 'bg-red-600 text-white'
+                  : isNoir
+                    ? (dark ? 'bg-black text-white' : 'bg-white text-black border border-black/20')
+                    : (dark ? 'bg-black/70 text-white' : 'bg-black/70 text-white')
                 // If the chip piece is extremely narrow (< approx 2 label widths), avoid showing both tags which can jitter
                 if(pxW < (LABEL_W * 1.6)){
                   // Prefer the edge-gated tag; when both requested, keep only one to reduce churn
@@ -546,8 +556,9 @@ export default function AgentWeekLinear({
                         const a = 0.42 // alpha for chip bands
                         const s = 88
                         const l = 55
+                        const chipAngle = ((h % 5) * 36 + 30)
                         base.backgroundColor = '#0a0a0a'
-                        base.backgroundImage = `linear-gradient(90deg,
+                        base.backgroundImage = `linear-gradient(${chipAngle}deg,
                           hsla(${(h+330)%360}, ${s}%, ${l}%, ${a}),
                           hsla(${(h+15)%360},  ${s}%, ${l}%, ${a}),
                           hsla(${(h+60)%360},  ${s}%, ${l}%, ${a}),
@@ -589,22 +600,26 @@ export default function AgentWeekLinear({
                       const t = (tasks||[]).find(t=>t.id===sub.taskId)
                       // Subtle overlay normally; in Prism use animated gradient derived from task color
                       const color = isNight
-                        ? 'rgba(239,68,68,0.28)'
+                        ? 'rgba(220,38,38,0.42)'
                         : isNoir
-                          ? 'rgba(255,255,255,0.16)'
+                          ? 'rgba(255,255,255,0.24)'
                           : (t?.color || (dark? 'rgba(59,130,246,0.85)':'rgba(59,130,246,0.85)'))
                       const prismImage = t?.color
-                        ? `linear-gradient(90deg,
-                            color-mix(in oklab, ${t.color} 85%, #000 15%) 0%,
-                            color-mix(in oklab, ${t.color} 65%, #000 35%) 50%,
-                            color-mix(in oklab, ${t.color} 85%, #000 15%) 100%
+                        ? (()=>{
+                            const seed = hashStr(`${g.id}-${idx}-${sub.taskId || ''}`)
+                            const angle = (seed % 5) * 36 + 10
+                            return `linear-gradient(${angle}deg,
+                            color-mix(in oklab, ${t.color} 85%, #030712 15%) 0%,
+                            color-mix(in oklab, ${t.color} 65%, #030712 35%) 50%,
+                            color-mix(in oklab, ${t.color} 85%, #030712 15%) 100%
                           )`
+                          })()
                         : undefined
                       return (
                         <div
                           key={`${partKey}-seg-${idx}`}
                           className="absolute inset-y-0 pointer-events-none"
-                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: isPrism ? undefined : color, backgroundImage: isPrism ? prismImage : undefined, backgroundSize: isPrism ? '300% 100%' : undefined, animation: isPrism ? 'prismChip 12s ease-in-out infinite' : undefined, backgroundBlendMode: isPrism ? 'multiply' : undefined, opacity: isPrism ? 0.75 : (isNight ? 0.35 : isNoir ? 0.25 : 0.9) }}
+                          style={{ left: `${leftInPart}%`, width: `${widthInPart}%`, background: isPrism ? undefined : color, backgroundImage: isPrism ? prismImage : undefined, backgroundSize: isPrism ? '300% 100%' : undefined, animation: isPrism ? 'prismChip 12s ease-in-out infinite' : undefined, backgroundBlendMode: isPrism ? 'multiply' : undefined, opacity: isPrism ? 0.82 : (isNight ? 0.5 : isNoir ? 0.32 : 0.9) }}
                           aria-hidden
                         />
                       )
@@ -613,14 +628,14 @@ export default function AgentWeekLinear({
           {allowStartTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
             ((opts?.forceStartOuter || forceOuterTimeTags)) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
-                        dark?"bg-black/70 text-white":"bg-black/70 text-white"].join(' ')}>
+                        timeTagTone].join(' ')}>
                         {minToHHMM(groupStartMin)}
                       </div>
                     )}
           {allowEndTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
             ((opts?.forceEndOuter || forceOuterTimeTags)) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
-                        dark?"bg-black/70 text-white":"bg-black/70 text-white"].join(' ')}>
+                        timeTagTone].join(' ')}>
                         {minToHHMM(groupEndMin)}
                       </div>
                     )}

@@ -177,9 +177,21 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
                   <span className="text-xs opacity-70">Theme</span>
                   <select
                     className={["border rounded-lg pl-3 pr-2 h-9 text-sm w-full appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                    defaultValue={(()=>{ try{ const v = localStorage.getItem('schedule_theme'); return (v==='unicorn') ? 'system' : (v || 'system') }catch{ return 'system' }})()}
+                    defaultValue={(()=>{
+                      try{
+                        const raw = localStorage.getItem('schedule_theme') || 'system'
+                        if(raw==='unicorn') return 'system'
+                        if(raw==='default-light') return 'light'
+                        if(raw==='default-dark') return 'dark'
+                        if(raw==='noir') return 'noir-dark'
+                        if(raw.startsWith('noir-')) return raw
+                        if(raw.startsWith('night')) return 'night'
+                        if(raw.startsWith('prism')) return 'prism'
+                        return raw
+                      }catch{ return 'system' }
+                    })()}
                     onChange={(e)=>{
-                      const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir'|'prism'
+                      const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir-light'|'noir-dark'|'prism'
                       try{ localStorage.setItem('schedule_theme', val) }catch{}
                       window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
                     }}
@@ -188,7 +200,8 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
                     <option value="light">Light</option>
                     <option value="dark">Dark</option>
                     <option value="night">Night</option>
-                    <option value="noir">Noir</option>
+                    <option value="noir-light">Noir Light</option>
+                    <option value="noir-dark">Noir Dark</option>
                     <option value="prism">Prism</option>
                   </select>
                 </label>
