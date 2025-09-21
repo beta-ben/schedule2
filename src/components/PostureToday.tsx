@@ -464,7 +464,7 @@ export default function PostureToday({ dark, tz, dayKey: _dayKey, shifts, tasks,
                     </span>
                   </div>
                 )}
-                <div className="mt-2 rounded-lg border px-3 pb-3 pt-4" style={{
+                <div className="mt-2 rounded-lg border px-3 pb-3" style={{
                   height: timelineHeight,
                   background: isNight
                     ? 'rgba(0,0,0,0.65)'

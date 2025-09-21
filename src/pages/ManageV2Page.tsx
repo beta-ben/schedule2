@@ -310,7 +310,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [pt_start, setPtStart] = React.useState('')
   const [pt_end, setPtEnd] = React.useState('')
   const [pt_notes, setPtNotes] = React.useState('')
-  const [pt_filter, setPtFilter] = React.useState('')
   const [ptoEditing, setPtoEditing] = React.useState<PTO | null>(null)
   const [pt_e_person, setPtEPerson] = React.useState('')
   const [pt_e_start, setPtEStart] = React.useState('')
@@ -318,6 +317,15 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [pt_e_notes, setPtENotes] = React.useState('')
   const startPtoEdit = (r: PTO)=>{ setPtoEditing(r); setPtEPerson(r.person); setPtEStart(r.startDate); setPtEEnd(r.endDate); setPtENotes(r.notes||'') }
   const clearPtoEdit = ()=>{ setPtoEditing(null); setPtEPerson(''); setPtEStart(''); setPtEEnd(''); setPtENotes('') }
+  const filteredPto = React.useMemo(()=>{
+    return workingPto
+      .slice()
+      .sort((a,b)=>{
+        const personCmp = a.person.localeCompare(b.person)
+        if(personCmp!==0) return personCmp
+        return a.startDate.localeCompare(b.startDate)
+      })
+  }, [workingPto])
 
   // Overrides state (PTO tab)
   const [ov_agent, setOvAgent] = React.useState('')
@@ -329,6 +337,19 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [ov_notes, setOvNotes] = React.useState('')
   const [ov_recurring, setOvRecurring] = React.useState(false)
   const [ov_until, setOvUntil] = React.useState('') // YYYY-MM-DD (optional)
+  const filteredOverrides = React.useMemo(()=>{
+    return workingOverrides
+      .slice()
+      .sort((a,b)=>{
+        const personCmp = a.person.localeCompare(b.person)
+        if(personCmp!==0) return personCmp
+        const startCmp = a.startDate.localeCompare(b.startDate)
+        if(startCmp!==0) return startCmp
+        const timeA = a.start || ''
+        const timeB = b.start || ''
+        return timeA.localeCompare(timeB)
+      })
+  }, [workingOverrides])
 
   // Removed: saved draft snapshots and related actions — drafts are deprecated
   // Persist agent selection across tab switches
@@ -1302,299 +1323,446 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           </div>
         ) : subtab==='PTO & Overrides' ? (
           <div>
-          {/* Weekly PTO calendar */}
-          <div className={["mt-3 rounded-xl p-3 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium">Weekly PTO calendar</div>
-              <div className="text-xs opacity-70">Full-day entries by person</div>
-            </div>
-            {(()=>{
-              const H_PX = 220
-              const dayHeight = 22
-              const week0 = parseYMD(weekStart)
-              const ymds = DAYS.map((_,i)=> fmtYMD(addDays(week0, i)))
-              // Precompute per-day grouped pto entries
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
-                  {DAYS.map((day, di)=>{
-                    const ymd = ymds[di]
-                    const dayItems = workingPto
-                      .filter(p=> (!pt_filter || p.person===pt_filter) && p.startDate <= ymd && p.endDate >= ymd)
-                      .slice()
-                      .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
-                    // Assign lanes per person for the day to avoid overlap
-                    const laneByPerson = new Map<string, number>()
-                    let nextLane = 0
-                    const placed = dayItems.map(p=>{
-                      let lane = laneByPerson.get(p.person)
-                      if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
-                      return { p, lane }
-                    })
-                    const laneCount = Math.max(placed.length, 1)
-                    const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
-                    return (
-                      <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
-                        <div className="font-medium mb-1 flex items-baseline justify-between">
-                          <span>{day}</span>
-                          <span className="text-xs opacity-70">{parseInt(ymd.slice(8), 10)}</span>
-                        </div>
-                        <div className="absolute left-2 right-2 bottom-2 top-7">
-                          {placed.map(({p, lane})=>{
-                            const top = lane * (dayHeight + 6)
-                            const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
+            <div className="flex flex-col sm:flex-row gap-3 items-start">
+              <div className="space-y-4 flex-1 min-w-0">
+              <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
+                <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+                  <span className="text-sm font-semibold">PTO entries</span>
+                  <span className="text-xs opacity-70">{filteredPto.length} total</span>
+                </div>
+                <div className="px-3 py-3 space-y-4">
+                  <form
+                    className="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm"
+                    onSubmit={(e)=>{
+                      e.preventDefault()
+                      const person = pt_agent.trim()
+                      if(!person){ alert('Choose an agent'); return }
+                      if(!pt_start || !pt_end){ alert('Choose start and end dates'); return }
+                      if(pt_end < pt_start){ alert('End date must be on/after start date'); return }
+                      const newItem: PTO = { id: uid(), person, agentId: agentIdByName(localAgents as any, person), startDate: pt_start, endDate: pt_end, notes: pt_notes.trim() ? pt_notes.trim() : undefined }
+                      setWorkingPto(prev=> prev.concat([newItem]))
+                      setPtAgent(''); setPtStart(''); setPtEnd(''); setPtNotes('')
+                      setIsDirty(true)
+                    }}
+                  >
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
+                      <select
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_agent}
+                        onChange={(e)=> setPtAgent(e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_start}
+                        onChange={(e)=> setPtStart(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">End date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_end}
+                        onChange={(e)=> setPtEnd(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 md:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
+                      <input
+                        type="text"
+                        placeholder="Optional"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_notes}
+                        onChange={(e)=> setPtNotes(e.target.value)}
+                      />
+                    </label>
+                      <div className="md:col-span-5 flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          type="submit"
+                          className={["inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium border", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
+                        >Add PTO</button>
+                      </div>
+                  </form>
+                  <div className="overflow-x-auto">
+                    {filteredPto.length===0 ? (
+                      <div className="text-sm opacity-70 px-1 py-4">No PTO entries.</div>
+                    ) : (
+                      <table className="min-w-full text-sm">
+                        <thead className={dark?"bg-neutral-900":"bg-neutral-50"}>
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Agent</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Dates</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Notes</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold w-32">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
+                          {filteredPto.map(r=>{
+                            const display = agentDisplayName(localAgents as any, r.agentId, r.person)
                             return (
-                              <div key={`${p.id}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}`}>
-                                <span className="truncate">{disp}</span>
-                                {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
-                              </div>
+                              <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
+                                <td className="px-3 py-2 font-medium">{display}</td>
+                                <td className="px-3 py-2 tabular-nums">{r.startDate} → {r.endDate}</td>
+                                <td className="px-3 py-2 text-xs">{r.notes ? <span className="opacity-80">{r.notes}</span> : <span className="opacity-50">—</span>}</td>
+                                <td className="px-3 py-2">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      className={["px-2 py-1 rounded border text-xs", dark ? "border-neutral-700 text-neutral-100 hover:bg-neutral-900" : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+                                      onClick={()=> startPtoEdit(r)}
+                                    >Edit</button>
+                                    <button
+                                      type="button"
+                                      className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white hover:bg-red-500"].join(' ')}
+                                      onClick={()=>{
+                                        if(confirm('Delete PTO?')){
+                                          setWorkingPto(prev=> prev.filter(x=> x.id!==r.id))
+                                          setIsDirty(true)
+                                        }
+                                      }}
+                                    >Delete</button>
+                                  </div>
+                                </td>
+                              </tr>
                             )
                           })}
-                        </div>
-                      </div>
-                    )
-                  })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </div>
-              )
-            })()}
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3 items-start">
-            <div className="space-y-3 flex-1 min-w-0">
-              <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
-            <div className="text-sm font-medium mb-2">Add PTO</div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end mb-3">
-              <label className="text-sm flex flex-col">
-                <span className="mb-1">Agent</span>
-                <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_agent} onChange={(e)=> setPtAgent(e.target.value)}>
-                  <option value="">—</option>
-                  {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                </select>
-              </label>
-              <label className="text-sm flex flex-col">
-                <span className="mb-1">Start date</span>
-                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_start} onChange={(e)=> setPtStart(e.target.value)} />
-              </label>
-              <label className="text-sm flex flex-col">
-                <span className="mb-1">End date</span>
-                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_end} onChange={(e)=> setPtEnd(e.target.value)} />
-              </label>
-              <label className="text-sm flex flex-col md:col-span-2">
-                <span className="mb-1">Notes</span>
-                <input type="text" placeholder="Optional" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_notes} onChange={(e)=> setPtNotes(e.target.value)} />
-              </label>
-              <div className="md:col-span-5 flex gap-2">
-                <button className={["h-10 rounded-xl px-4 border font-medium", dark?"bg-neutral-900 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')} onClick={()=>{
-                  if(!pt_agent) return alert('Choose an agent')
-                  if(!pt_start || !pt_end) return alert('Choose start and end dates')
-                  if(pt_end < pt_start) return alert('End date must be on/after start date')
-                  const newItem: PTO = { id: uid(), person: pt_agent, agentId: agentIdByName(localAgents as any, pt_agent), startDate: pt_start, endDate: pt_end, notes: pt_notes || undefined }
-                  setWorkingPto(prev=> prev.concat([newItem] as any))
-                  setPtAgent(''); setPtStart(''); setPtEnd(''); setPtNotes('')
-                  setIsDirty(true)
-                }}>Add PTO</button>
-                <div className="ml-auto inline-flex items-center gap-2">
-                  <span className={dark?"text-neutral-300":"text-neutral-700"}>Filter</span>
-                  <select className={["border rounded-xl px-2 py-1", dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300"].join(' ')} value={pt_filter} onChange={(e)=> setPtFilter(e.target.value)}>
-                    <option value="">All</option>
-                    {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {(()=>{
-              // component state
-              return null
-            })()}
-
-            {(()=>{
-              // Render grouped PTO list (collapsible per agent)
-              const entries = workingPto
-                .filter(x=> !pt_filter || x.person===pt_filter)
-                .slice()
-                .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
-              if(entries.length===0) return <div className="text-sm opacity-70">No PTO entries.</div>
-              const byPerson = new Map<string, PTO[]>()
-              for(const p of entries){ const arr = byPerson.get(p.person)||[]; arr.push(p); byPerson.set(p.person, arr) }
-              const people = Array.from(byPerson.keys()).sort()
-              return (
-                <div className="space-y-3">
-                  {people.map(person=>{
-                    const rows = byPerson.get(person)!.slice().sort((a,b)=> a.startDate.localeCompare(b.startDate))
-                    return (
-                      <details key={person} className={["rounded-xl border overflow-hidden", dark?"border-neutral-800":"border-neutral-200"].join(' ')} open>
-                        <summary className={["px-3 py-2 cursor-pointer select-none flex items-center justify-between", dark?"bg-neutral-900":"bg-white"].join(' ')}>
-                          <span className="text-sm font-medium">{agentDisplayName(localAgents as any, rows[0]?.agentId, person)}</span>
-                          <span className="text-xs opacity-70">{rows.length} item{rows.length===1?'':'s'}</span>
-                        </summary>
-                        <div className={"divide-y "+(dark?"divide-neutral-800":"divide-neutral-200")}>
-                          {rows.map((r)=> (
-                            <div key={r.id} className="px-3 py-2 flex items-center justify-between gap-2 text-sm">
-                              <div className="flex items-center gap-3">
-                                <span className="tabular-nums">{r.startDate} → {r.endDate}</span>
-                                {r.notes && <span className={"opacity-70 max-w-[40ch] truncate"}>{r.notes}</span>}
-                              </div>
-                              <div className="shrink-0 inline-flex gap-1.5">
-                                <button className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={()=> startPtoEdit(r)}>Edit</button>
-                                <button className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')} onClick={()=>{ if(confirm('Delete PTO?')) setWorkingPto(prev=> prev.filter(x=> x.id!==r.id)) }}>Delete</button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-
-            {ptoEditing && (
-              <div className={["rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
-                <div className="text-sm font-medium mb-2">Edit PTO</div>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                  <label className="text-sm flex flex-col">
-                    <span className="mb-1">Agent</span>
-                    <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_person} onChange={(e)=> setPtEPerson(e.target.value)}>
-                      {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-sm flex flex-col">
-                    <span className="mb-1">Start</span>
-                    <input type="date" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_start} onChange={(e)=> setPtEStart(e.target.value)} />
-                  </label>
-                  <label className="text-sm flex flex-col">
-                    <span className="mb-1">End</span>
-                    <input type="date" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_end} onChange={(e)=> setPtEEnd(e.target.value)} />
-                  </label>
-                  <label className="text-sm flex flex-col md:col-span-2">
-                    <span className="mb-1">Notes</span>
-                    <input type="text" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={pt_e_notes} onChange={(e)=> setPtENotes(e.target.value)} />
-                  </label>
-                  <div className="md:col-span-5 flex gap-2">
-                    <button className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')} onClick={()=>{
+              </section>
+              {ptoEditing && (
+                <section className={["rounded-lg border overflow-hidden", dark?"border-neutral-800 bg-neutral-950":"border-neutral-200 bg-white"].join(' ')}>
+                  <div className={["flex items-center justify-between px-3 py-2 border-b", dark?"border-neutral-800 bg-neutral-900 text-neutral-100":"border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+                    <span className="text-sm font-semibold">Edit PTO</span>
+                    <span className="text-xs opacity-70">{agentDisplayName(localAgents as any, ptoEditing.agentId, ptoEditing.person)}</span>
+                  </div>
+                  <form
+                    className="px-3 py-3 grid grid-cols-1 md:grid-cols-5 gap-3 text-sm"
+                    onSubmit={(e)=>{
+                      e.preventDefault()
                       if(!ptoEditing) return
                       if(!pt_e_person.trim()) return alert('Choose an agent')
                       if(!pt_e_start || !pt_e_end) return alert('Choose start/end')
                       if(pt_e_end < pt_e_start) return alert('End date must be on/after start date')
-                      setWorkingPto(prev=> prev.map(x=> x.id===ptoEditing.id ? { ...x, person: pt_e_person.trim(), agentId: agentIdByName(localAgents as any, pt_e_person.trim()), startDate: pt_e_start, endDate: pt_e_end, notes: pt_e_notes || undefined } : x))
+                      setWorkingPto(prev=> prev.map(x=> x.id===ptoEditing.id ? {
+                        ...x,
+                        person: pt_e_person.trim(),
+                        agentId: agentIdByName(localAgents as any, pt_e_person.trim()),
+                        startDate: pt_e_start,
+                        endDate: pt_e_end,
+                        notes: pt_e_notes.trim() ? pt_e_notes.trim() : undefined
+                      } : x))
                       clearPtoEdit()
                       setIsDirty(true)
-                    }}>Save</button>
-                    <button className={["px-3 py-1.5 rounded border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={clearPtoEdit}>Cancel</button>
-                  </div>
-                </div>
-              </div>
-            )}
-            </div>
-            <div className="space-y-3 flex-1 min-w-0">
-          {/* Overrides (add + list) */}
-          <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
-            <div className="text-sm font-medium mb-2">Add Overrides</div>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs opacity-80">Agent</span>
-                <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_agent} onChange={(e)=> setOvAgent(e.target.value)}>
-                  <option value="">—</option>
-                  {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs opacity-80">Start date</span>
-                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_start} onChange={(e)=> setOvStart(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs opacity-80">End date</span>
-                <input type="date" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_end} onChange={(e)=> setOvEnd(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs opacity-80">Start time (optional)</span>
-                <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_tstart} onChange={(e)=>{
-                  const val = e.target.value
-                  const addMin = (t:string, m:number)=> minToHHMM(((toMin(t)+m)%1440+1440)%1440)
-                  const prevDefault = ov_tstart ? addMin(ov_tstart, 510) : null // 8.5 hours
-                  setOvTStart(val)
-                  if(val){
-                    const nextDefault = addMin(val, 510)
-                    if(!ov_tend || (prevDefault && ov_tend===prevDefault)){
-                      setOvTEnd(nextDefault)
-                    }
-                  }
-                }} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs opacity-80">End time (optional)</span>
-                <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_tend} onChange={(e)=> setOvTEnd(e.target.value)} />
-              </label>
-              {/* Removed End day selector; end date already provided */}
-              <label className="flex flex-col gap-1 md:col-span-2">
-                <span className="text-xs opacity-80">Kind</span>
-                <input type="text" placeholder="e.g., Swap, Half-day" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_kind} onChange={(e)=> setOvKind(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1 md:col-span-2">
-                <span className="text-xs opacity-80">Notes</span>
-                <input type="text" placeholder="Optional" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_notes} onChange={(e)=> setOvNotes(e.target.value)} />
-              </label>
-              <div className="flex items-end gap-3 md:col-span-2">
-                <label className="inline-flex items-center gap-2">
-                  <Toggle ariaLabel="Weekly recurrence" dark={dark} size="md" checked={ov_recurring} onChange={(v)=> setOvRecurring(v)} />
-                  <span className="text-sm">Weekly recurrence</span>
-                </label>
-                {ov_recurring && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <span className="opacity-80">Until</span>
-                    <input type="date" className={["border rounded-xl px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={ov_until} onChange={(e)=> setOvUntil(e.target.value)} />
-                  </label>
-                )}
-                <button className={["ml-auto h-10 rounded-xl px-4 border font-medium", dark?"bg-blue-600 border-blue-600 text-white hover:opacity-95":"bg-blue-600 border-blue-600 text-white hover:opacity-95"].join(' ')} onClick={()=>{
-                  if(!ov_agent) return alert('Choose an agent')
-                  if(!ov_start || !ov_end) return alert('Choose start and end dates')
-                  if(ov_end < ov_start) return alert('End date must be on/after start date')
-                  if((ov_tstart && !ov_tend) || (!ov_tstart && ov_tend)) return alert('Provide both start and end times, or leave both blank')
-                  const entry: Override = {
-                    id: uid(), person: ov_agent, agentId: agentIdByName(localAgents as any, ov_agent), startDate: ov_start, endDate: ov_end,
-                    start: ov_tstart || undefined, end: ov_tend || undefined,
-                    kind: ov_kind || undefined, notes: ov_notes || undefined,
-                    recurrence: ov_recurring ? { rule: 'weekly', until: ov_until || undefined } : undefined
-                  }
-                  setWorkingOverrides(prev=> prev.concat([entry])); setIsDirty(true)
-                }}>Add Override</button>
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-sm font-medium mb-1">Overrides</div>
-              {workingOverrides.filter(x=> !pt_filter || x.person===pt_filter).length===0 ? (
-                <div className="text-sm opacity-70">No overrides.</div>
-              ) : (
-                <ul className="divide-y divide-neutral-700/30">
-                  {workingOverrides
-                    .filter(x=> !pt_filter || x.person===pt_filter)
-                    .slice()
-                    .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
-                    .map(o=> (
-                      <li key={o.id} className="py-1.5 flex items-center justify-between gap-2">
-                        <div className="text-sm">
-                          <span className="font-medium">{o.person}</span>
-                          <span className="opacity-70"> • {o.startDate} → {o.endDate}</span>
-                          {o.start && o.end && (
-                            <span className="opacity-70"> • {o.start}–{o.end}</span>
-                          )}
-                          {o.kind && <span className="ml-1 opacity-70">• {o.kind}</span>}
-                          {o.recurrence?.rule==='weekly' && <span className="ml-1 text-xs opacity-80">(weekly{ o.recurrence.until?` until ${o.recurrence.until}`:'' })</span>}
-                          {o.notes && <span className="ml-2 text-xs opacity-70">{o.notes}</span>}
-                        </div>
-                        <div className="shrink-0">
-                          <button className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')} onClick={()=>{
-                            if(confirm('Delete override?')){ setWorkingOverrides(prev=> prev.filter(x=> x.id!==o.id)); setIsDirty(true) }
-                          }}>Delete</button>
-                        </div>
-                      </li>
-                    ))}
-                </ul>
+                    }}
+                  >
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
+                      <select
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_e_person}
+                        onChange={(e)=> setPtEPerson(e.target.value)}
+                      >
+                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_e_start}
+                        onChange={(e)=> setPtEStart(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">End date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_e_end}
+                        onChange={(e)=> setPtEEnd(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 md:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
+                      <input
+                        type="text"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={pt_e_notes}
+                        onChange={(e)=> setPtENotes(e.target.value)}
+                      />
+                    </label>
+                    <div className="md:col-span-5 flex justify-end gap-2">
+                      <button
+                        type="submit"
+                        className={["px-3 py-2 rounded-lg text-sm font-medium border", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
+                      >Save</button>
+                      <button
+                        type="button"
+                        className={["px-3 py-2 rounded-lg text-sm font-medium border", dark ? "border-neutral-700 text-neutral-200 hover:bg-neutral-900" : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+                        onClick={clearPtoEdit}
+                      >Cancel</button>
+                    </div>
+                  </form>
+                </section>
               )}
             </div>
-          </div>
+              <div className="space-y-4 flex-1 min-w-0">
+                <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
+                  <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+                    <span className="text-sm font-semibold">Overrides</span>
+                    <span className="text-xs opacity-70">{filteredOverrides.length} total</span>
+                  </div>
+                <div className="px-3 py-3 space-y-4">
+                  <form
+                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 text-sm"
+                    onSubmit={(e)=>{
+                      e.preventDefault()
+                      const person = ov_agent.trim()
+                      if(!person){ alert('Choose an agent'); return }
+                      if(!ov_start || !ov_end){ alert('Choose start and end dates'); return }
+                      if(ov_end < ov_start){ alert('End date must be on/after start date'); return }
+                      if((ov_tstart && !ov_tend) || (!ov_tstart && ov_tend)){ alert('Provide both start and end times, or leave both blank'); return }
+                      const entry: Override = {
+                        id: uid(),
+                        person,
+                        agentId: agentIdByName(localAgents as any, person),
+                        startDate: ov_start,
+                        endDate: ov_end,
+                        start: ov_tstart || undefined,
+                        end: ov_tend || undefined,
+                        kind: ov_kind.trim() ? ov_kind.trim() : undefined,
+                        notes: ov_notes.trim() ? ov_notes.trim() : undefined,
+                        recurrence: ov_recurring ? { rule: 'weekly', until: ov_until || undefined } : undefined
+                      }
+                      setWorkingOverrides(prev=> prev.concat([entry]))
+                      setOvAgent(''); setOvStart(''); setOvEnd(''); setOvTStart(''); setOvTEnd(''); setOvKind(''); setOvNotes(''); setOvRecurring(false); setOvUntil('')
+                      setIsDirty(true)
+                    }}
+                  >
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
+                      <select
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_agent}
+                        onChange={(e)=> setOvAgent(e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_start}
+                        onChange={(e)=> setOvStart(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">End date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_end}
+                        onChange={(e)=> setOvEnd(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start time (optional)</span>
+                      <input
+                        type="time"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_tstart}
+                        onChange={(e)=>{
+                          const val = e.target.value
+                          const addMin = (t:string, m:number)=> minToHHMM(((toMin(t)+m)%1440+1440)%1440)
+                          const prevDefault = ov_tstart ? addMin(ov_tstart, 510) : null
+                          setOvTStart(val)
+                          if(val){
+                            const nextDefault = addMin(val, 510)
+                            if(!ov_tend || (prevDefault && ov_tend===prevDefault)){
+                              setOvTEnd(nextDefault)
+                            }
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">End time (optional)</span>
+                      <input
+                        type="time"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_tend}
+                        onChange={(e)=> setOvTEnd(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-3">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Kind</span>
+                      <input
+                        type="text"
+                        placeholder="e.g., Swap, Half-day"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_kind}
+                        onChange={(e)=> setOvKind(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-3">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
+                      <input
+                        type="text"
+                        placeholder="Optional"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_notes}
+                        onChange={(e)=> setOvNotes(e.target.value)}
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-3 lg:col-span-6">
+                      <label className="inline-flex items-center gap-2 text-sm">
+                        <Toggle ariaLabel="Weekly recurrence" dark={dark} size="md" checked={ov_recurring} onChange={(v)=> setOvRecurring(v)} />
+                        <span>Weekly recurrence</span>
+                      </label>
+                      {ov_recurring && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <span className="opacity-70">Until</span>
+                          <input
+                            type="date"
+                            className={["border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                            value={ov_until}
+                            onChange={(e)=> setOvUntil(e.target.value)}
+                          />
+                        </label>
+                      )}
+                      <button
+                        type="submit"
+                        className={["ml-auto inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium border", dark ? "bg-blue-600 border-blue-600 text-white hover:opacity-95" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
+                      >Add Override</button>
+                    </div>
+                  </form>
+                  <div className="overflow-x-auto">
+                    {filteredOverrides.length===0 ? (
+                      <div className="text-sm opacity-70 px-1 py-4">No overrides.</div>
+                    ) : (
+                      <table className="min-w-full text-sm">
+                        <thead className={dark?"bg-neutral-900":"bg-neutral-50"}>
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Agent</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Dates</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Details</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold">Recurrence</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold w-24">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
+                          {filteredOverrides.map(o=>{
+                            const display = agentDisplayName(localAgents as any, o.agentId, o.person)
+                            const recurrenceText = o.recurrence?.rule==='weekly'
+                              ? `Weekly${o.recurrence.until ? ` until ${o.recurrence.until}` : ''}`
+                              : '—'
+                            return (
+                              <tr key={o.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
+                                <td className="px-3 py-2 font-medium">{display}</td>
+                                <td className="px-3 py-2 tabular-nums">
+                                  {o.startDate} → {o.endDate}
+                                  {o.start && o.end && (
+                                    <div className="text-xs opacity-70">{o.start}–{o.end}</div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-xs">
+                                  {o.kind && <div className="font-medium">{o.kind}</div>}
+                                  {o.notes && <div className="opacity-70 truncate">{o.notes}</div>}
+                                  {!o.kind && !o.notes && <span className="opacity-50">—</span>}
+                                </td>
+                                <td className="px-3 py-2 text-xs opacity-80">{recurrenceText}</td>
+                                <td className="px-3 py-2">
+                                  <div className="flex justify-end">
+                                    <button
+                                      type="button"
+                                      className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white hover:bg-red-500"].join(' ')}
+                                      onClick={()=>{
+                                        if(confirm('Delete override?')){
+                                          setWorkingOverrides(prev=> prev.filter(x=> x.id!==o.id))
+                                          setIsDirty(true)
+                                        }
+                                      }}
+                                    >Delete</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
-          
+          <div className={["mt-4 rounded-lg border overflow-hidden", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+            <div className={["flex items-center justify-between px-3 py-2 border-b", dark?"border-neutral-800 bg-neutral-900 text-neutral-100":"border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+              <span className="text-sm font-semibold">Weekly PTO calendar</span>
+              <span className="text-xs opacity-70">Full-day entries by person</span>
+            </div>
+            <div className="px-3 pb-3">
+              {(()=>{
+                const H_PX = 220
+                const dayHeight = 22
+                const week0 = parseYMD(weekStart)
+                const ymds = DAYS.map((_,i)=> fmtYMD(addDays(week0, i)))
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
+                    {DAYS.map((day, di)=>{
+                      const ymd = ymds[di]
+                      const dayItems = workingPto
+                        .filter(p=> p.startDate <= ymd && p.endDate >= ymd)
+                        .slice()
+                        .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
+                      const laneByPerson = new Map<string, number>()
+                      let nextLane = 0
+                      const placed = dayItems.map(p=>{
+                        let lane = laneByPerson.get(p.person)
+                        if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
+                        return { p, lane }
+                      })
+                      const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
+                      return (
+                        <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
+                          <div className="font-medium mb-1 flex items-baseline justify-between">
+                            <span>{day}</span>
+                            <span className="text-xs opacity-70">{parseInt(ymd.slice(8), 10)}</span>
+                          </div>
+                          <div className="absolute left-2 right-2 bottom-2 top-7">
+                            {placed.map(({p, lane})=>{
+                              const top = lane * (dayHeight + 6)
+                              const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
+                              return (
+                                <div key={`${p.id}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}`}>
+                                  <span className="truncate">{disp}</span>
+                                  {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
           </div>
           </div>
         ) : null

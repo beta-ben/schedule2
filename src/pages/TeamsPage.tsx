@@ -1,11 +1,15 @@
 import React from 'react'
-import type { PTO, Task, Override, MeetingCohort } from '../types'
+import type { PTO, Task, Override, MeetingCohort, Shift, TZOpt } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import WeeklyPTOCalendar from '../components/WeeklyPTOCalendar'
 import WeeklyOverridesCalendar from '../components/WeeklyOverridesCalendar'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import AccordionSection from '../components/AccordionSection'
 import { MEETING_COHORTS } from '../constants'
+import { applyOverrides, convertShiftsToTZ, toMin } from '../lib/utils'
+import { useTimeFormat } from '../context/TimeFormatContext'
+
+const WEEK_ORDER: Array<'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun'> = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
 type AgentRow = { id?: string; firstName?: string; lastName?: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; meetingCohort?: MeetingCohort | null }
 
@@ -17,6 +21,8 @@ export default function TeamsPage({
   overrides,
   tasks,
   calendarSegs,
+  shifts,
+  tz,
 }:{
   dark: boolean
   weekStart: string
@@ -25,6 +31,8 @@ export default function TeamsPage({
   overrides?: Override[]
   tasks: Task[]
   calendarSegs: CalendarSegment[]
+  shifts: Shift[]
+  tz: TZOpt
 }){
   const fullName = (a?: AgentRow)=> `${a?.firstName||''} ${a?.lastName||''}`.trim()
   const nameKey = (s?: string)=> (s||'').trim().toLowerCase()
@@ -82,6 +90,67 @@ export default function TeamsPage({
     }
     return m
   }, [agents])
+  const effectiveShifts = React.useMemo(()=> applyOverrides(shifts, overrides, weekStart, agents), [shifts, overrides, weekStart, agents])
+  const tzShifts = React.useMemo(()=> convertShiftsToTZ(effectiveShifts, tz?.offset ?? 0), [effectiveShifts, tz?.offset])
+  const { formatTime, timeFormat } = useTimeFormat()
+  const formatTimeString = React.useCallback((hhmm: string)=>{
+    if(hhmm === '24:00') return timeFormat === '24h' ? '24:00' : '12:00 AM'
+    return formatTime(toMin(hhmm))
+  }, [formatTime, timeFormat])
+  const scheduleByAgent = React.useMemo(()=>{
+    const map = new Map<string, string>()
+    if(!Array.isArray(tzShifts) || tzShifts.length===0){
+      return map
+    }
+    const dayBuckets = new Map<string, Map<string, Array<{ start:string; end:string }>>>()
+    for(const s of tzShifts){
+      const idKey = s.agentId ? String(s.agentId) : undefined
+      const agentMatch = (idKey && agentById.get(idKey)) || agentByNameLower.get(nameKey(s.person))
+      const primaryKey = agentMatch?.id ? String(agentMatch.id) : nameKey(agentMatch ? fullName(agentMatch) : s.person)
+      if(!primaryKey) continue
+      const bucket = dayBuckets.get(primaryKey) || new Map<string, Array<{ start:string; end:string }>>()
+      const list = bucket.get(s.day) || []
+      list.push({ start: s.start, end: s.end })
+      bucket.set(s.day, list)
+      dayBuckets.set(primaryKey, bucket)
+    }
+    for(const agent of agents){
+      const idKey = agent.id ? String(agent.id) : undefined
+      const nmKey = nameKey(fullName(agent))
+      const bucket = (idKey && dayBuckets.get(idKey)) || (nmKey && dayBuckets.get(nmKey))
+      const parts: string[] = []
+      if(bucket){
+        for(const day of WEEK_ORDER){
+          const entries = bucket.get(day) || []
+          if(entries.length===0) continue
+          entries.sort((a,b)=> toMin(a.start) - toMin(b.start))
+          const spans = entries.map(({ start, end })=>{
+            const endLabel = end === '24:00'
+              ? (timeFormat === '24h' ? '24:00' : '12:00 AM')
+              : formatTimeString(end)
+            return `${formatTimeString(start)}–${endLabel}`
+          })
+          parts.push(`${day} ${spans.join(', ')}`)
+        }
+      }
+      const tooltip = parts.join('\n')
+      if(idKey) map.set(idKey, tooltip)
+      if(nmKey) map.set(nmKey, tooltip)
+    }
+    return map
+  }, [agents, agentById, agentByNameLower, formatTimeString, tzShifts])
+  const [collapsedCalendars, setCollapsedCalendars] = React.useState<Record<string, boolean>>({})
+  const isCalendarCollapsed = React.useCallback((key: string)=> collapsedCalendars[key] ?? false, [collapsedCalendars])
+  const toggleCalendar = React.useCallback((key: string)=>{
+    setCollapsedCalendars(prev=> ({ ...prev, [key]: !prev[key] }))
+  }, [])
+  const tooltipFor = (agent?: AgentRow)=>{
+    if(!agent) return undefined
+    const idKey = agent.id ? String(agent.id) : undefined
+    const nmKey = nameKey(fullName(agent))
+    const value = (idKey && scheduleByAgent.get(idKey)) || (nmKey && scheduleByAgent.get(nmKey))
+    return value && value.trim().length>0 ? value : 'No scheduled shifts this week'
+  }
   const tagBase = 'inline-flex items-center gap-2 px-2 py-1 rounded border text-sm'
   const tagIdle = dark? 'border-neutral-700 bg-neutral-900 text-neutral-100' : 'border-neutral-300 bg-white text-neutral-900'
   const isValidCohort = (value: string): value is MeetingCohort => MEETING_COHORTS.includes(value as MeetingCohort)
@@ -93,14 +162,6 @@ export default function TeamsPage({
     }
     return ''
   }, [])
-  const renderCohortBadge = (value: MeetingCohort | '')=>{
-    if(!value) return null
-    return (
-      <span className={["inline-flex items-center px-1.5 py-0.5 rounded border text-[11px] font-medium", dark?"border-blue-500/40 text-blue-200":"border-blue-500/50 text-blue-700 bg-blue-50"].join(' ')}>
-        {value}
-      </span>
-    )
-  }
   const cohortBuckets = React.useMemo(()=>{
     const assigned = new Map<MeetingCohort, AgentRow[]>(MEETING_COHORTS.map(label=> [label, [] as AgentRow[]]))
     const unassigned: AgentRow[] = []
@@ -140,21 +201,21 @@ export default function TeamsPage({
                 const supMuted = !!s.hidden
                 return (
                   <div key={s.id || fullName(s)} className={["shrink-0 w-56 md:w-64 rounded-xl p-2 border", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2" title={tooltipFor(s)}>
                       <div className={["font-medium", supMuted ? (dark?"text-neutral-400":"text-neutral-500") : (dark?"text-neutral-100":"text-neutral-900")].join(' ')}>{fullName(s) || s.id}</div>
                       <span className={["text-xs px-1.5 py-0.5 rounded border", dark?"border-neutral-700 text-neutral-300":"border-neutral-300 text-neutral-600"].join(' ')}>{kids.length}</span>
                     </div>
                     {kids.length>0 ? (
                       <ul className="space-y-1">
                         {kids.map(a=> {
-                          const cohort = meetingFor(a)
                           const nameCls = [a.hidden ? (dark?"text-neutral-400":"text-neutral-500") : ''].filter(Boolean).join(' ')
                           return (
-                            <li key={a.id || fullName(a)} className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
-                                {renderCohortBadge(cohort)}
-                              </div>
+                            <li
+                              key={a.id || fullName(a)}
+                              className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}
+                              title={tooltipFor(a)}
+                            >
+                              <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
                             </li>
                           )
                         })}
@@ -171,14 +232,14 @@ export default function TeamsPage({
                 <div className={["font-medium mb-2", dark?"text-neutral-100":"text-neutral-900"].join(' ')}>Unassigned</div>
                 <ul className="space-y-1">
                   {unassigned.slice().sort((a,b)=> fullName(a).localeCompare(fullName(b))).map(a=>{
-                    const cohort = meetingFor(a)
                     const nameCls = [a.hidden ? (dark?"text-neutral-400":"text-neutral-500") : ''].filter(Boolean).join(' ')
                     return (
-                      <li key={a.id || fullName(a)} className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
-                          {renderCohortBadge(cohort)}
-                        </div>
+                      <li
+                        key={a.id || fullName(a)}
+                        className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}
+                        title={tooltipFor(a)}
+                      >
+                        <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
                       </li>
                     )
                   })}
@@ -240,8 +301,20 @@ export default function TeamsPage({
       </AccordionSection>
 
       <AccordionSection title="Calendars" dark={dark} className="mt-4">
-        <WeeklyPTOCalendar dark={dark} weekStart={weekStart} pto={pto} agents={agents} />
-        <WeeklyOverridesCalendar dark={dark} weekStart={weekStart} overrides={(overrides||[]) as any} agents={agents} />
+        <WeeklyPTOCalendar
+          dark={dark}
+          weekStart={weekStart}
+          pto={pto}
+          agents={agents}
+          collapsible={{ collapsed: isCalendarCollapsed('pto'), onToggle: ()=> toggleCalendar('pto') }}
+        />
+        <WeeklyOverridesCalendar
+          dark={dark}
+          weekStart={weekStart}
+          overrides={(overrides||[]) as any}
+          agents={agents}
+          collapsible={{ collapsed: isCalendarCollapsed('overrides'), onToggle: ()=> toggleCalendar('overrides') }}
+        />
         {(()=>{
           const activeTasks = (tasks||[]).filter(t=> !t.archived)
             .filter(t=> (calendarSegs||[]).some(cs=> cs.taskId===t.id))
@@ -257,6 +330,10 @@ export default function TeamsPage({
               agents={agents}
               filterTaskId={t.id}
               title={`Weekly ${t.name} calendar`}
+              collapsible={{
+                collapsed: isCalendarCollapsed(`task:${t.id}`),
+                onToggle: ()=> toggleCalendar(`task:${t.id}`),
+              }}
             />
           ))
         })()}

@@ -252,7 +252,33 @@ export default function AllAgentsWeekRibbons({
             setHoverX(x)
           }}
         >
-          <div style={{ width: `${scaleWidthPct}%` }} data-ribbons-inner="1">
+          <div style={{ width: `${scaleWidthPct}%` }} data-ribbons-inner="1" className="relative">
+            {hoverActive && hoverX!=null && (
+              <>
+                <div
+                  className="pointer-events-none absolute inset-y-0 z-20"
+                  style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }}
+                />
+                <div
+                  className={[
+                    'pointer-events-none absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px] z-30',
+                    dark ? 'bg-blue-500' : 'bg-blue-600',
+                  ].join(' ')}
+                  style={{ left: hoverX }}
+                >
+                  {(()=>{
+                    const inner = scrollerRef.current?.firstElementChild as HTMLElement | null
+                    const widthPx = inner?.getBoundingClientRect().width || 1
+                    const totalMins = 7*1440
+                    const absMin = Math.max(0, Math.min(totalMins-1, Math.round((hoverX/widthPx) * totalMins)))
+                    const hh = Math.floor((absMin%1440)/60).toString().padStart(2,'0')
+                    const mm = (absMin%60).toString().padStart(2,'0')
+                    const count = onDeckAt(absMin)
+                    return `${hh}:${mm} • ${count} on deck`
+                  })()}
+                </div>
+              </>
+            )}
             {/* Top day labels aligned to ribbons */}
             <div className="relative h-7">
                 {DAYS.map((d,i)=>{
@@ -264,25 +290,6 @@ export default function AllAgentsWeekRibbons({
                     </div>
                   )
                 })}
-              {/* Global hover time indicator line + label inside header */}
-        {hoverActive && hoverX!=null && (
-                <>
-                  <div className="absolute inset-y-0" style={{ left: hoverX, width: 1, background: 'rgba(59,130,246,0.9)' }} />
-          <div className={["absolute -translate-x-1/2 top-0 mt-0.5 px-1.5 py-0.5 rounded text-white text-[10px]", dark?"bg-blue-500":"bg-blue-600"].join(' ')} style={{ left: hoverX }}>
-                    {/* time and count computed below in a render-safe way */}
-                    {(()=>{
-                      const inner = scrollerRef.current?.firstElementChild as HTMLElement | null
-                      const widthPx = inner?.getBoundingClientRect().width || 1
-                      const totalMins = 7*1440
-                      const absMin = Math.max(0, Math.min(totalMins-1, Math.round((hoverX/widthPx) * totalMins)))
-                      const hh = Math.floor((absMin%1440)/60).toString().padStart(2,'0')
-                      const mm = (absMin%60).toString().padStart(2,'0')
-                      const count = onDeckAt(absMin)
-                      return `${hh}:${mm} • ${count} on deck`
-                    })()}
-                  </div>
-                </>
-              )}
             </div>
 
             {/* Ribbons list */}

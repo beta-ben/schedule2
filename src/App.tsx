@@ -683,10 +683,12 @@ export default function App(){
               dark={dark}
               weekStart={weekStart}
               agents={agentsV2}
+              shifts={draftActive ? (draft!.data.shifts || shifts) : shifts}
               pto={draftActive ? (draft!.data.pto) : pto}
               overrides={draftActive ? (draft!.data.overrides) : overrides}
               tasks={tasks}
               calendarSegs={draftActive ? (draft!.data.calendarSegs) : calendarSegs}
+              tz={tz}
             />
           ) : (
             <ManageV2Page

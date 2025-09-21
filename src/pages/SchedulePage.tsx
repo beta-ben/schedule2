@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
 import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev, applyOverrides, expandCalendarSegments, CalendarSegmentSlice } from '../lib/utils'
@@ -31,8 +31,12 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   // Apply overrides for the visible week so the schedule reflects them
   const effectiveShifts = React.useMemo(()=> applyOverrides(shifts, overrides||[], weekStart, agents||[]), [shifts, overrides, weekStart, agents])
   const today = new Date()
-  const weekStartDate = parseYMD(weekStart)
-  const selectedDate = addDays(weekStartDate, dayIndex)
+  const weekStartDate = useMemo(()=> parseYMD(weekStart), [weekStart])
+  const selectedDate = useMemo(()=> addDays(weekStartDate, dayIndex), [weekStartDate, dayIndex])
+  const dateLabel = useMemo(()=>{
+    const month = selectedDate.toLocaleDateString(undefined, { month: 'short' })
+    return `${month} ${dayNumber(selectedDate)}`
+  }, [selectedDate])
   const dayKey = DAYS[dayIndex]
   const hiddenNames = useMemo(()=>{
     const set = new Set<string>()
@@ -111,39 +115,63 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   },[effectiveShifts,todayKey,tz.offset,calendarSegmentsByDay, hiddenNames])
 
   // Live clock in selected timezone (12-hour + meridiem)
-  const [nowClock, setNowClock] = useState(()=>{
+  const getClockSnapshot = useCallback(()=>{
     const n = nowInTZ(tz.id)
     const h12 = ((n.h % 12) || 12)
     const hhmm = `${String(h12).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
     const ampm = n.h >= 12 ? 'PM' : 'AM'
     return { hhmm, ampm }
+  }, [tz.id])
+  const [nowClock, setNowClock] = useState(()=>{
+    const snapshot = getClockSnapshot()
+    return { ...snapshot, tzId: tz.id }
   })
+  const clockSpanRef = useRef<HTMLSpanElement|null>(null)
   useEffect(()=>{
-    let to: number | undefined
-    let iv: number | undefined
-    const tick = ()=>{
-      const n = nowInTZ(tz.id)
-      const h12 = ((n.h % 12) || 12)
-      const hhmm = `${String(h12).padStart(2,'0')}:${String(n.m).padStart(2,'0')}`
-      const ampm = n.h >= 12 ? 'PM' : 'AM'
-      setNowClock({ hhmm, ampm })
+    let timeoutId: number | undefined
+    let intervalId: number | undefined
+    const sync = ()=>{
+      const snapshot = getClockSnapshot()
+      setNowClock(prev => {
+        if(prev.hhmm === snapshot.hhmm && prev.ampm === snapshot.ampm && prev.tzId === tz.id){
+          return prev
+        }
+        return { ...snapshot, tzId: tz.id }
+      })
     }
     const schedule = ()=>{
-      if(iv) { clearInterval(iv) }
-      if(to) { clearTimeout(to) }
+      if(intervalId) { clearInterval(intervalId) }
+      if(timeoutId) { clearTimeout(timeoutId) }
       const now = Date.now()
       const msToNextMinute = 60000 - (now % 60000)
-      to = window.setTimeout(()=>{
-        tick()
-        iv = window.setInterval(tick, 60000)
+      timeoutId = window.setTimeout(()=>{
+        sync()
+        intervalId = window.setInterval(sync, 60000)
       }, msToNextMinute)
     }
-    const onVis = ()=>{ if(document.visibilityState==='visible'){ tick(); schedule() } }
-    tick()
+    const onVis = ()=>{
+      if(document.visibilityState==='visible'){
+        sync()
+        schedule()
+      }
+    }
+    sync()
     schedule()
     document.addEventListener('visibilitychange', onVis)
-    return ()=>{ if(iv) clearInterval(iv); if(to) clearTimeout(to); document.removeEventListener('visibilitychange', onVis) }
-  }, [tz.id])
+    return ()=>{
+      if(intervalId) clearInterval(intervalId)
+      if(timeoutId) clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [getClockSnapshot])
+
+  useEffect(()=>{
+    const el = clockSpanRef.current
+    if(!el) return
+    el.classList.remove('now-pop-inline')
+    void el.offsetWidth
+    el.classList.add('now-pop-inline')
+  }, [nowClock.hhmm, nowClock.ampm])
 
   // Simple day number (no ordinal suffix)
   function dayNumber(d: Date){
@@ -157,10 +185,12 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
         {/* Left: date (always) + live clock + tz */}
   <div className="flex items-baseline gap-2 sm:gap-3 pl-2 order-1">
           <div className={[dark?"text-neutral-600":"text-neutral-600","leading-none","text-[1.3rem] sm:text-[1.5rem]"].join(' ')} style={{ whiteSpace: 'nowrap' }}>
-            {selectedDate.toLocaleDateString(undefined, { month: 'short' })} {dayNumber(selectedDate)}
+            {dateLabel}
           </div>
-          <div key={nowClock.hhmm} className={["font-bold tabular-nums now-pop leading-none","text-[1.45rem] sm:text-[1.6rem]", dark?"text-neutral-300":"text-neutral-700"].join(' ')}>
-            {nowClock.hhmm}
+          <div className={["font-bold tabular-nums leading-none","text-[1.45rem] sm:text-[1.6rem]", dark?"text-neutral-300":"text-neutral-700"].join(' ')} style={{ minWidth: '5ch', textAlign: 'center' }}>
+            <span ref={clockSpanRef} className="inline-block now-pop-inline">
+              {nowClock.hhmm}
+            </span>
           </div>
           <div className="flex items-baseline gap-1 leading-none">
             <span className={["uppercase tracking-wide", dark?"text-neutral-400":"text-neutral-500"].join(' ')} style={{ fontSize: '0.72rem', lineHeight: 1 }}>
