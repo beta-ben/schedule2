@@ -98,6 +98,31 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
 
   // (no secondary view state)
 
+  // Schedule view keyboard shortcuts
+  useEffect(()=>{
+    const isFormField = (el: EventTarget | null)=>{
+      const t = el as HTMLElement | null
+      if(!t) return false
+      const tag = (t.tagName||'').toLowerCase()
+      const edit = (t as any).isContentEditable
+      return edit || tag==='input' || tag==='textarea' || tag==='select'
+    }
+    const onKey = (e: KeyboardEvent)=>{
+      if(isFormField(e.target)) return
+      // Toggle agent selector
+      if((e.key==='a' || e.key==='A')){ e.preventDefault(); setShowAgentMenu(v=>!v); return }
+      // Toggle slimline
+      if((e.key==='s' || e.key==='S')){ e.preventDefault(); const val = !slimline; try{ localStorage.setItem('schedule_slimline',''+(val?'1':'0')) }catch{}; window.dispatchEvent(new CustomEvent('schedule:set-slimline', { detail: { value: val } })); return }
+      // Day navigation
+      if(e.key==='ArrowLeft'){ e.preventDefault(); setDayIndex(((dayIndex+6)%7)); return }
+      if(e.key==='ArrowRight'){ e.preventDefault(); setDayIndex(((dayIndex+1)%7)); return }
+      // Jump to Sun..Sat via 1..7
+      if(e.key>='1' && e.key<='7'){ e.preventDefault(); const n = parseInt(e.key,10); const idx = Math.max(1, Math.min(7, n)) - 1; setDayIndex(idx); return }
+    }
+    window.addEventListener('keydown', onKey)
+    return ()=> window.removeEventListener('keydown', onKey)
+  }, [setDayIndex, slimline, dayIndex])
+
   // Panels tied to "now": always use today's shifts regardless of selected tab
   const nowTz = nowInTZ(tz.id)
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
@@ -234,6 +259,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
               aria-label="Choose agent"
               title={agentView ? `Agent: ${agentView}` : 'Choose agent'}
               onClick={()=> setShowAgentMenu(v=>!v)}
+              data-shortcut-id="schedule-agent-button"
               className={["inline-flex items-center justify-center h-8 sm:h-9 w-9 rounded-lg border", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
             >
               <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>

@@ -51,6 +51,7 @@ export function getApiPrefix(){ return API_PREFIX }
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
 // We keep a memory copy captured from the login response body (when available).
 let CSRF_TOKEN_MEM: string | null = null
+let ADMIN_SID_MEM: string | null = null
 function getCsrfFromCookieOnly(): string | null {
   if(typeof document === 'undefined') return null
   const m = document.cookie.match(/(?:^|; )csrf=([^;]+)/)
@@ -79,7 +80,11 @@ export async function login(password: string){
       body: JSON.stringify({ password })
     })
     if(r.ok){
-      try{ const j = await r.clone().json(); if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf } }catch{}
+      try{
+        const j = await r.clone().json();
+        if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf }
+        if(j && typeof j.sid === 'string'){ ADMIN_SID_MEM = j.sid }
+      }catch{}
       try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
     }
     return { ok: r.ok, status: r.status }
@@ -155,6 +160,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; over
     const url = `${API_BASE}${API_PREFIX}/schedule`
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
+    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(url,{
       method:'POST',
@@ -193,6 +199,7 @@ export async function cloudPostAgents(agents: Array<{ id: string; firstName: str
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
+    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
 
     const normalizedAgents = mapAgentsToPayloads(agents)
@@ -225,6 +232,7 @@ export async function cloudPostShiftsBatch(input: { upserts?: Array<{ id: string
     const csrf = getCsrfToken()
     const headers: Record<string,string> = { 'Content-Type':'application/json' }
     if(csrf) headers['x-csrf-token'] = csrf
+    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     if(await ensureV2Support()){
       try{
@@ -299,6 +307,7 @@ export async function cloudListProposals(): Promise<{ ok: boolean; proposals?: A
     const csrf = getCsrfToken()
     const headers: Record<string,string> = {}
     if(csrf) headers['x-csrf-token'] = csrf
+    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals`,{ method:'GET', credentials:'include', headers })
     if(!r.ok){
@@ -319,6 +328,7 @@ export async function cloudGetProposal(id: string): Promise<{ ok: boolean; propo
     const csrf = getCsrfToken()
     const headers: Record<string,string> = {}
     if(csrf) headers['x-csrf-token'] = csrf
+    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
     if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
     const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}`,{ method:'GET', credentials:'include', headers })
     if(!r.ok){
@@ -329,6 +339,130 @@ export async function cloudGetProposal(id: string): Promise<{ ok: boolean; propo
     return { ok:true, proposal: j?.proposal }
   }catch{
     markV2Unsupported()
+    return { ok:false }
+  }
+}
+
+export async function cloudUpdateProposal(id: string, input: { status?: 'open'|'in_review'|'approved'|'rejected'|'closed'|'merged'; title?: string; description?: string }): Promise<{ ok: boolean; status?: number }>{
+  if(!(await ensureV2Support())) return { ok:false, status: 404 }
+  try{
+    const csrf = getCsrfToken()
+    const headers: Record<string,string> = { 'Content-Type':'application/json' }
+    if(csrf) headers['x-csrf-token'] = csrf
+    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
+    const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}`,{
+      method:'PATCH', credentials:'include', headers, body: JSON.stringify(input||{})
+    })
+    return { ok: r.ok, status: r.status }
+  }catch{ return { ok:false } }
+}
+
+export async function cloudMergeProposal(id: string, opts?: { force?: boolean }): Promise<{ ok: boolean; updatedAt?: string; status?: number; error?: string }>{
+  if(!(await ensureV2Support())) return { ok:false, status: 404 }
+  try{
+    const csrf = getCsrfToken()
+    const headers: Record<string,string> = {}
+    if(csrf) headers['x-csrf-token'] = csrf
+    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
+    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
+    const url = new URL(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}/merge`, window.location.origin)
+    if(opts?.force) url.searchParams.set('force','1')
+    const r = await fetch(url.toString(),{ method:'POST', credentials:'include', headers })
+    let updatedAt: string | undefined
+    let error: string | undefined
+    try{
+      const j = await r.clone().json()
+      if(j && typeof j.updatedAt==='string') updatedAt = j.updatedAt
+      if(j && typeof j.error==='string') error = j.error
+    }catch{}
+    return { ok: r.ok, status: r.status, updatedAt, error }
+  }catch{ return { ok:false } }
+}
+
+export type ZoomConnectionSummary = {
+  id: string
+  zoomUserId: string
+  email: string | null
+  displayName: string | null
+  accountId: string | null
+  scope: string | null
+  tokenType: string | null
+  expiresAt: number | null
+  refreshExpiresAt: number | null
+  lastSyncedAt: number | null
+  hasSyncCursor: boolean
+  createdAt: number | null
+  updatedAt: number | null
+}
+
+export async function getZoomAuthorizeUrl(): Promise<{ ok: boolean; url?: string; scope?: string; status?: number }>{
+  if(OFFLINE) return { ok:false, status: 503 }
+  try{
+    const r = await fetch(`${API_BASE}${API_PREFIX}/zoom/oauth/url`,{ method:'GET', credentials:'include' })
+    if(!r.ok) return { ok:false, status: r.status }
+    const j = await r.json().catch(()=>null)
+    const url = typeof j?.url === 'string' ? j.url : undefined
+    const scope = typeof j?.scope === 'string' ? j.scope : undefined
+    return { ok:true, url, scope }
+  }catch{
+    return { ok:false }
+  }
+}
+
+export async function getZoomConnections(): Promise<{ ok: boolean; connections: ZoomConnectionSummary[]; status?: number }>{
+  if(OFFLINE) return { ok:false, connections: [], status: 503 }
+  try{
+    const csrf = getCsrfToken()
+    const headers: Record<string,string> = {}
+    if(csrf) headers['x-csrf-token'] = csrf
+    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
+    const r = await fetch(`${API_BASE}${API_PREFIX}/zoom/connections`,{ method:'GET', credentials:'include', headers })
+    if(!r.ok) return { ok:false, connections: [], status: r.status }
+    const j = await r.json().catch(()=>null)
+    const items = Array.isArray(j?.connections) ? j.connections as any[] : []
+    const toNum = (value: unknown): number | null => {
+      if(typeof value === 'number') return Number.isFinite(value) ? value : null
+      if(typeof value === 'string'){
+        const parsed = Number(value)
+        return Number.isFinite(parsed) ? parsed : null
+      }
+      return null
+    }
+    const normalized: ZoomConnectionSummary[] = items.map(item=>{
+      return {
+        id: String(item?.id ?? ''),
+        zoomUserId: String(item?.zoomUserId ?? ''),
+        email: typeof item?.email === 'string' ? item.email : null,
+        displayName: typeof item?.displayName === 'string' ? item.displayName : null,
+        accountId: typeof item?.accountId === 'string' ? item.accountId : null,
+        scope: typeof item?.scope === 'string' ? item.scope : null,
+        tokenType: typeof item?.tokenType === 'string' ? item.tokenType : null,
+        expiresAt: toNum(item?.expiresAt),
+        refreshExpiresAt: toNum(item?.refreshExpiresAt),
+        lastSyncedAt: toNum(item?.lastSyncedAt),
+        hasSyncCursor: item?.hasSyncCursor === true,
+        createdAt: toNum(item?.createdAt),
+        updatedAt: toNum(item?.updatedAt),
+      }
+    })
+    return { ok:true, connections: normalized }
+  }catch{
+    return { ok:false, connections: [] }
+  }
+}
+
+export async function deleteZoomConnection(id: string): Promise<{ ok: boolean; status?: number }>{
+  if(OFFLINE) return { ok:false, status: 503 }
+  if(!id) return { ok:false, status: 400 }
+  try{
+    const csrf = getCsrfToken()
+    const headers: Record<string,string> = {}
+    if(csrf) headers['x-csrf-token'] = csrf
+    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
+    const r = await fetch(`${API_BASE}${API_PREFIX}/zoom/connections/${encodeURIComponent(id)}`,{ method:'DELETE', credentials:'include', headers })
+    if(!r.ok) return { ok:false, status: r.status }
+    return { ok:true }
+  }catch{
     return { ok:false }
   }
 }

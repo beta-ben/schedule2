@@ -1,18 +1,19 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
-import { fmtYMD, startOfWeek, formatMinutes, TimeFormat } from './lib/utils'
+import { fmtYMD, startOfWeek, formatMinutes, TimeFormat, nowInTZ, parseYMD, addDays } from './lib/utils'
 import { cloudGet, cloudPost, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession } from './lib/api'
 import { pushAgentsToCloud, mapAgentsToPayloads } from './lib/agents'
 import { publishDraftBundle } from './lib/drafts'
 import type { PTO, Shift, Task, Override, MeetingCohort } from './types'
 import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
+import ShortcutsOverlay from './components/ShortcutsOverlay'
 import SchedulePage from './pages/SchedulePage'
 // Legacy ManagePage phased out; use ManageV2Page only
 import ManageV2Page from './pages/ManageV2Page'
 import TeamsPage from './pages/TeamsPage'
 import { generateSample } from './sample'
 // sha256Hex removed from App; keep local hashing only in components that need it
-import { TZ_OPTS, MEETING_COHORTS } from './constants'
+import { TZ_OPTS, MEETING_COHORTS, DAYS } from './constants'
 import { TimeFormatProvider } from './context/TimeFormatContext'
 
 const SAMPLE = generateSample()
@@ -121,6 +122,50 @@ export default function App(){
   const formatTimeFn = useCallback((minutes: number)=> formatMinutes(minutes, timeFormat), [timeFormat])
   const timeFormatValue = useMemo(()=> ({ timeFormat, setTimeFormat, formatTime: formatTimeFn }), [timeFormat, formatTimeFn])
 
+  // Keyboard shortcuts overlay visibility
+  const [showShortcuts, setShowShortcuts] = useState<boolean>(false)
+
+  // Global keyboard shortcuts (overlay, view switching, week navigation)
+  useEffect(()=>{
+    const isFormField = (el: EventTarget | null)=>{
+      const t = el as HTMLElement | null
+      if(!t) return false
+      const tag = (t.tagName||'').toLowerCase()
+      const edit = (t as any).isContentEditable
+      return edit || tag==='input' || tag==='textarea' || tag==='select'
+    }
+    const onKey = (e: KeyboardEvent)=>{
+      // If overlay is showing, only allow Escape to close
+      if(showShortcuts){
+        if(e.key==='Escape'){ e.preventDefault(); setShowShortcuts(false) }
+        return
+      }
+      if(isFormField(e.target)) return
+      // Show overlay: '?' or Cmd/Ctrl+K
+      if(e.key==='?'){ e.preventDefault(); setShowShortcuts(true); return }
+      if((e.ctrlKey||e.metaKey) && (e.key==='k' || e.key==='K')){ e.preventDefault(); setShowShortcuts(true); return }
+      // Switch view: Alt+1/2/3
+      if(e.altKey && !e.metaKey && !e.ctrlKey){
+        if(e.key==='1'){ e.preventDefault(); setView('schedule'); return }
+        if(e.key==='2'){ e.preventDefault(); setView('teams'); return }
+        if(e.key==='3'){ e.preventDefault(); setView('manageV2'); return }
+      }
+      // Week navigation: Cmd/Ctrl + ArrowLeft/Right
+      if((e.ctrlKey||e.metaKey) && (e.key==='ArrowLeft' || e.key==='ArrowRight')){
+        e.preventDefault()
+        const delta = (e.key==='ArrowLeft') ? -7 : 7
+        try{
+          const cur = parseYMD(weekStart)
+          const next = addDays(cur, delta)
+          setWeekStart(fmtYMD(next))
+        }catch{}
+        return
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return ()=> window.removeEventListener('keydown', onKey)
+  }, [showShortcuts, weekStart])
+
   useEffect(()=>{
     const handler = (e: Event)=>{
       const any = e as CustomEvent
@@ -207,6 +252,52 @@ export default function App(){
     try{ const v = localStorage.getItem('schedule_slimline'); if(v===null) return false; return v==='1' }
     catch{ return false }
   })
+  // Keep selected day/week synced to "today" only if the user was on today previously.
+  // This avoids surprising jumps when they had a different day selected.
+  const prevYmdRef = React.useRef<string | null>(null)
+  const followTodayRef = React.useRef<boolean>(false)
+  useEffect(()=>{
+    const syncToToday = ()=>{
+      try{
+        const now = nowInTZ(tz.id)
+        const selectedDate = addDays(parseYMD(weekStart), dayIndex)
+        const selectedYmd = fmtYMD(selectedDate)
+        const prev = prevYmdRef.current
+        if(prev == null){
+          prevYmdRef.current = now.ymd
+          followTodayRef.current = (selectedYmd === now.ymd)
+          return
+        }
+        if(prev !== now.ymd){
+          // Day changed (or TZ change crossed midnight). Follow only if previously on today.
+          const shouldFollow = (selectedYmd === prev)
+          if(shouldFollow){
+            const idx = DAYS.indexOf(now.weekdayShort as any)
+            if(idx >= 0 && idx !== dayIndex) setDayIndex(idx)
+            const weekStartToday = fmtYMD(startOfWeek(parseYMD(now.ymd)))
+            if(weekStart !== weekStartToday) setWeekStart(weekStartToday)
+            followTodayRef.current = true
+          }else{
+            followTodayRef.current = (selectedYmd === now.ymd)
+          }
+          prevYmdRef.current = now.ymd
+          return
+        }
+        // Same day: update tracker to reflect whether we're on today or not
+        followTodayRef.current = (selectedYmd === now.ymd)
+      }catch{}
+    }
+    // Initial sync and re-sync when the tab becomes visible
+    syncToToday()
+    const onVis = ()=>{ if(document.visibilityState === 'visible') syncToToday() }
+    document.addEventListener('visibilitychange', onVis)
+    // Periodic check to catch midnight rollovers while the tab is open
+    const intervalId = window.setInterval(syncToToday, 60_000)
+    return ()=>{
+      document.removeEventListener('visibilitychange', onVis)
+      window.clearInterval(intervalId)
+    }
+  }, [tz.id, dayIndex, weekStart])
   useEffect(()=>{ try{ localStorage.setItem('schedule_slimline', slimline ? '1' : '0') }catch{} }, [slimline])
   // Listen for SchedulePage's local pane toggle (scoped to schedule view)
   useEffect(()=>{
@@ -779,6 +870,13 @@ export default function App(){
                   setOverrides(updater)
                 }
               }}
+            />
+          )}
+          {showShortcuts && (
+            <ShortcutsOverlay
+              dark={dark}
+              view={view}
+              onClose={()=> setShowShortcuts(false)}
             />
           )}
         </div>

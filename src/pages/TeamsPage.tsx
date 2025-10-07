@@ -6,7 +6,7 @@ import WeeklyOverridesCalendar from '../components/WeeklyOverridesCalendar'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import AccordionSection from '../components/AccordionSection'
 import { MEETING_COHORTS } from '../constants'
-import { applyOverrides, convertShiftsToTZ, toMin } from '../lib/utils'
+import { applyOverrides, convertShiftsToTZ, toMin, nowInTZ } from '../lib/utils'
 import { useTimeFormat } from '../context/TimeFormatContext'
 
 const WEEK_ORDER: Array<'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun'> = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
@@ -36,6 +36,23 @@ export default function TeamsPage({
 }){
   const fullName = (a?: AgentRow)=> `${a?.firstName||''} ${a?.lastName||''}`.trim()
   const nameKey = (s?: string)=> (s||'').trim().toLowerCase()
+  // Tick every minute to refresh on-deck indicators
+  const [nowTick, setNowTick] = React.useState<number>(Date.now())
+  React.useEffect(()=>{
+    let to: number | undefined
+    let iv: number | undefined
+    const poke = ()=> setNowTick(Date.now())
+    const schedule = ()=>{
+      if(iv) clearInterval(iv)
+      if(to) clearTimeout(to)
+      const now = Date.now()
+      const msToNextMinute = 60000 - (now % 60000)
+      to = window.setTimeout(()=>{ poke(); iv = window.setInterval(poke, 60000) }, msToNextMinute)
+    }
+    const onVis = ()=>{ if(document.visibilityState==='visible'){ poke(); schedule() } }
+    poke(); schedule(); document.addEventListener('visibilitychange', onVis)
+    return ()=>{ if(iv) clearInterval(iv); if(to) clearTimeout(to); document.removeEventListener('visibilitychange', onVis) }
+  }, [])
   // Include hidden agents in rosters
   const visibleAgents = React.useMemo(()=> (agents||[]), [agents])
   const supList = React.useMemo(()=> (agents||[]).filter(a=> !!a.isSupervisor), [agents])
@@ -170,7 +187,8 @@ export default function TeamsPage({
       if(cohort && assigned.has(cohort)){
         assigned.get(cohort)!.push(agent)
       } else {
-        unassigned.push(agent)
+        // Hide supervisors from the Unassigned list
+        if(!agent.isSupervisor) unassigned.push(agent)
       }
     }
     for(const list of assigned.values()){
@@ -179,6 +197,72 @@ export default function TeamsPage({
     unassigned.sort((a,b)=> fullName(a).localeCompare(fullName(b)))
     return { assigned, unassigned }
   }, [visibleAgents, meetingFor])
+
+  // Compute on-deck keys for the current moment in the selected timezone
+  const nowTz = nowInTZ(tz?.id || 'UTC')
+  const today = nowTz.weekdayShort as any as 'Mon'|'Tue'|'Wed'|'Thu'|'Fri'|'Sat'|'Sun' | 'Sun'
+  const nowMin = nowTz.minutes
+  const onDeckById = React.useMemo(()=>{
+    const byId = new Set<string>()
+    if(!Array.isArray(tzShifts) || tzShifts.length===0) return byId
+    // PTO map for today (by agentId when available)
+    const ptoId = new Set<string>()
+    const ptoName = new Set<string>()
+    for(const p of (pto||[])){
+      if(p.startDate <= nowTz.ymd && nowTz.ymd <= p.endDate){
+        if(p.agentId) ptoId.add(String(p.agentId))
+        const nk = nameKey(p.person); if(nk) ptoName.add(nk)
+      }
+    }
+    for(const s of tzShifts){
+      if(s.day !== (today as any)) continue
+      const sMin = toMin(s.start)
+      const eMinRaw = s.end === '24:00' ? 1440 : toMin(s.end)
+      const eMin = eMinRaw > sMin ? eMinRaw : 1440
+      if(nowMin < sMin || nowMin >= eMin) continue
+      const idKey = s.agentId ? String(s.agentId) : undefined
+      const nmKey = nameKey(s.person)
+      // Resolve to canonical agent id if possible
+      const agent = (idKey && agentById.get(idKey)) || agentByNameLower.get(nmKey)
+      const primaryId = agent?.id ? String(agent.id) : (idKey || undefined)
+      const primaryName = nameKey(agent ? fullName(agent) : s.person)
+      // Skip if on PTO
+      if(primaryId && ptoId.has(primaryId)) continue
+      if(primaryName && ptoName.has(primaryName)) continue
+      if(primaryId) byId.add(primaryId)
+    }
+    return byId
+  }, [tzShifts, nowMin, today, agentById, agentByNameLower, pto])
+  const onDeckByName = React.useMemo(()=>{
+    const byName = new Set<string>()
+    if(!Array.isArray(tzShifts) || tzShifts.length===0) return byName
+    const ptoName = new Set<string>()
+    for(const p of (pto||[])){
+      if(p.startDate <= nowTz.ymd && nowTz.ymd <= p.endDate){
+        const nk = nameKey(p.person); if(nk) ptoName.add(nk)
+      }
+    }
+    for(const s of tzShifts){
+      if(s.day !== (today as any)) continue
+      const sMin = toMin(s.start)
+      const eMinRaw = s.end === '24:00' ? 1440 : toMin(s.end)
+      const eMin = eMinRaw > sMin ? eMinRaw : 1440
+      if(nowMin < sMin || nowMin >= eMin) continue
+      const nmKey = nameKey(s.person)
+      const a = agentByNameLower.get(nmKey)
+      const primaryName = nameKey(a ? fullName(a) : s.person)
+      if(primaryName && !ptoName.has(primaryName)) byName.add(primaryName)
+    }
+    return byName
+  }, [tzShifts, nowMin, today, agentByNameLower, pto])
+  const isOnDeck = React.useCallback((a?: AgentRow)=>{
+    if(!a) return false
+    const idKey = a.id ? String(a.id) : undefined
+    const nmKey = nameKey(fullName(a))
+    if(idKey && onDeckById.has(idKey)) return true
+    if(nmKey && onDeckByName.has(nmKey)) return true
+    return false
+  }, [onDeckById, onDeckByName])
 
   return (
     <section className={["rounded-2xl p-3", dark?"bg-neutral-900":"bg-white shadow-sm"].join(' ')}>
@@ -215,7 +299,15 @@ export default function TeamsPage({
                               className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}
                               title={tooltipFor(a)}
                             >
-                              <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
+                              <div className="flex items-center gap-2">
+                                {isOnDeck(a) && (
+                                  <span
+                                    className={["h-2 w-2 rounded-full", dark?"bg-emerald-400":"bg-emerald-500"].join(' ')}
+                                    title="On deck"
+                                  />
+                                )}
+                                <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
+                              </div>
                             </li>
                           )
                         })}
@@ -239,7 +331,15 @@ export default function TeamsPage({
                         className={["px-2 py-1 rounded border text-sm", dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-800"].join(' ')}
                         title={tooltipFor(a)}
                       >
-                        <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
+                        <div className="flex items-center gap-2">
+                          {isOnDeck(a) && (
+                            <span
+                              className={["h-2 w-2 rounded-full", dark?"bg-emerald-400":"bg-emerald-500"].join(' ')}
+                              title="On deck"
+                            />
+                          )}
+                          <span className={["truncate", nameCls].filter(Boolean).join(' ')}>{fullName(a) || a.id}</span>
+                        </div>
                       </li>
                     )
                   })}

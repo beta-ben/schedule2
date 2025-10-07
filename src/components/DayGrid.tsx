@@ -95,6 +95,112 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
     return m
   },[orderedPeople])
 
+  // Approximate text width helper for the center label
+  function approxTextWidthPx(text:string, fontPx:number){
+    try{
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if(!ctx) return Math.max(48, Math.round(text.length * fontPx * 0.52))
+      ctx.font = `500 ${fontPx}px ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif`
+      const w = ctx.measureText(text).width
+      return Math.max(48, Math.round(w))
+    }catch{ return Math.max(48, Math.round(text.length * fontPx * 0.52)) }
+  }
+
+  // Lightweight color utils for dynamic contrast layering
+  function clamp01(n:number){ return Math.max(0, Math.min(1, n)) }
+  function srgbToLin(c:number){
+    const cs = c/255
+    return cs <= 0.04045 ? (cs/12.92) : Math.pow((cs+0.055)/1.055, 2.4)
+  }
+  function relativeLuminance(rgb:{r:number; g:number; b:number}){
+    const R = srgbToLin(rgb.r)
+    const G = srgbToLin(rgb.g)
+    const B = srgbToLin(rgb.b)
+    return 0.2126*R + 0.7152*G + 0.0722*B
+  }
+  function hslToRgb(h:number, s:number, l:number){
+    const C = (1 - Math.abs(2*l - 1)) * s
+    const Hp = (h % 360) / 60
+    const X = C * (1 - Math.abs((Hp % 2) - 1))
+    let r1=0, g1=0, b1=0
+    if(Hp>=0 && Hp<1){ r1=C; g1=X; b1=0 }
+    else if(Hp>=1 && Hp<2){ r1=X; g1=C; b1=0 }
+    else if(Hp>=2 && Hp<3){ r1=0; g1=C; b1=X }
+    else if(Hp>=3 && Hp<4){ r1=0; g1=X; b1=C }
+    else if(Hp>=4 && Hp<5){ r1=X; g1=0; b1=C }
+    else { r1=C; g1=0; b1=X }
+    const m = l - C/2
+    return { r: Math.round((r1+m)*255), g: Math.round((g1+m)*255), b: Math.round((b1+m)*255) }
+  }
+  function parseColorToRgb(col:string): { r:number; g:number; b:number } | null{
+    try{
+      col = col.trim()
+      if(/^#([0-9a-f]{3,8})$/i.test(col)){
+        const hex = col.slice(1)
+        if(hex.length===3){
+          const r=parseInt(hex[0]+hex[0],16), g=parseInt(hex[1]+hex[1],16), b=parseInt(hex[2]+hex[2],16)
+          return { r,g,b }
+        }else if(hex.length===6 || hex.length===8){
+          const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16)
+          return { r,g,b }
+        }
+      }
+      let m = col.match(/^rgba?\(([^)]+)\)$/i)
+      if(m){
+        const parts = m[1].split(',').map(s=>s.trim())
+        if(parts.length>=3){
+          const r = Math.round(parseFloat(parts[0]))
+          const g = Math.round(parseFloat(parts[1]))
+          const b = Math.round(parseFloat(parts[2]))
+          return { r,g,b }
+        }
+      }
+      m = col.match(/^hsla?\(([^)]+)\)$/i)
+      if(m){
+        const parts = m[1].split(',').map(s=>s.trim())
+        if(parts.length>=3){
+          const h = parseFloat(parts[0])
+          const s = parseFloat(parts[1].replace('%',''))/100
+          const l = parseFloat(parts[2].replace('%',''))/100
+          return hslToRgb(h,s,l)
+        }
+      }
+    }catch{}
+    return null
+  }
+  function contrastRatio(bg:string, fgIsWhite:boolean){
+    const rgb = parseColorToRgb(bg)
+    if(!rgb) return 7 // default to high contrast
+    const Lb = clamp01(relativeLuminance(rgb))
+    const Lt = fgIsWhite ? clamp01(relativeLuminance({ r:255,g:255,b:255 })) : clamp01(relativeLuminance({ r:0,g:0,b:0 }))
+    const L1 = Math.max(Lt, Lb), L2 = Math.min(Lt, Lb)
+    return (L1 + 0.05) / (L2 + 0.05)
+  }
+  function scrimAlphaForTarget(bg:string, fgIsWhite:boolean, minRatio=4.5){
+    // Compute minimal alpha for a black/white scrim to achieve target contrast (approximate against base chip color)
+    const rgb = parseColorToRgb(bg)
+    if(!rgb) return 0
+    const Lb = clamp01(relativeLuminance(rgb))
+    const Lt = fgIsWhite ? 1 : 0
+    // If already sufficient, no scrim needed
+    const current = (Math.max(Lt, Lb)+0.05)/(Math.min(Lt, Lb)+0.05)
+    if(current >= minRatio) return 0
+    if(fgIsWhite){
+      // Darken background: L' = (1 - a) * Lb
+      const target = Math.max(0, (Lt + 0.05)/minRatio - 0.05)
+      if(Lb <= target) return 0
+      const a = 1 - (target / Lb)
+      return clamp01(a)
+    }else{
+      // Lighten background with white scrim: L' = Lb + a*(1 - Lb)
+      const target = Math.min(1, (minRatio * 0.05) - 0.05)
+      if(Lb >= target) return 0
+      const a = (target - Lb) / (1 - Lb)
+      return clamp01(a)
+    }
+  }
+
   const [nowTick,setNowTick]=useState(Date.now())
   useEffect(()=>{
     let to: number | undefined
@@ -357,9 +463,11 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       }
                       return <div className="absolute" style={style} />
                     })()}
+                    {/* Striped posture overlays removed in favor of slim posture bars */}
 
+                    {/* Dynamic contrast scrim removed for this experiment to make the posture bar more visible */}
 
-                    {/* Posture overlays: striped normally; animated gradients in Prism */}
+                    {/* Posture progress bars: slim pill under the centered label with a soft glow */}
                     {segs.map((seg, segIdx) => {
                       const stOff = Math.max(0, Math.min(dur, seg.startOffsetMin))
                       const enOff = Math.max(0, Math.min(dur, seg.startOffsetMin + seg.durationMin))
@@ -368,35 +476,19 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const segW = ((enOff - stOff)/totalMins)*100
                       const t = taskMap.get(seg.taskId)
                       const tColor = t?.color || (dark?darkbd:`hsl(${H},65%,50%)`)
-                      const segSeed = typeof (seg as any).id === 'string' ? (seg as any).id.length : segIdx
-                      const overlayAngle = ((H + segSeed) % 5) * 36 + 15
-                      // Prism: animated gradient ribbon; Night/Noir: on-theme stripes; Others: subtle stripes
-                      const bgImage = (
-                        isPrism
-                          ? `linear-gradient(${overlayAngle}deg,
-                              color-mix(in oklab, ${tColor} 85%, #030712 15%) 0%,
-                              color-mix(in oklab, ${tColor} 65%, #030712 35%) 50%,
-                              color-mix(in oklab, ${tColor} 85%, #030712 15%) 100%
-                            )`
-                          : isNight
-                            ? 'repeating-linear-gradient(135deg, rgba(220,38,38,0.38) 0 6px, transparent 6px 14px)'
-                            : isNoir
-                              ? 'repeating-linear-gradient(135deg, rgba(255,255,255,0.24) 0 6px, transparent 6px 14px)'
-                              : `repeating-linear-gradient(135deg, color-mix(in oklab, ${tColor} 40%, ${dark?'#0a0a0a':'#ffffff'} 60%) 0 6px, transparent 6px 14px)`
-                      )
-                      const style: React.CSSProperties & { [k:string]: any } = {
-                        left: `${segLeft}%`,
-                        width: `${segW}%`,
-                        // Align overlays to the chip area; border frame remains on top
-                        top: 2,
-                        height: CHIP_H,
-                        backgroundImage: bgImage,
-                        ...(isPrism ? { backgroundSize: '300% 100%', animation: 'prismChip 12s ease-in-out infinite', backgroundBlendMode: 'multiply' } : {}),
+                      const BAR_H = 3
+                      const BAR_TOP = 2 + Math.round(CHIP_H*0.68)
+                      const style: React.CSSProperties = {
+                        left:`${segLeft}%`, width:`${segW}%`, top: BAR_TOP, height: BAR_H,
+                        background: tColor,
+                        borderRadius: 2,
+                        // softer outline and glow for a low-key look
+                        boxShadow: `0 0 0 1px color-mix(in oklab, ${tColor} 65%, transparent 35%), 0 0 4px color-mix(in oklab, ${tColor} 40%, transparent 60%)`,
+                        opacity: hasPtoForDay ? 0.35 : 0.8,
+                        zIndex: 4,
                         pointerEvents: 'none',
-                        borderRadius: CHIP_RADIUS,
-                        opacity: isPrism ? 0.82 : (isNight ? 0.48 : isNoir ? 0.32 : 0.45),
                       }
-                      return <div key={seg.id} className="absolute" style={style} />
+                      return <div key={`bar-${seg.id || segIdx}`} className="absolute" style={style} />
                     })}
 
                     {/* Always-on top border frame to keep the main chip border visible above overlays */}
@@ -422,6 +514,8 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                       const SHOW_MIN_PX = 60
                       const show = chipPx >= SHOW_MIN_PX
                       const prismText = isPrism && !hasPtoForDay
+                      // If not prism, nudge text contrast subtly via shadow when overlays are present
+                      const needsShadow = !prismText && segs.length>0
                       return (
                         <div
                           className={[
@@ -431,8 +525,10 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
                           style={{
                             left:`${left}%`, top: 2, width:`${width}%`, height: CHIP_H, fontSize: CHIP_FONT_PX,
                             ...(prismText ? { textShadow: '0 1px 1px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.35)' } : {}),
+                            ...(needsShadow ? { textShadow: dark ? '0 1px 1px rgba(0,0,0,0.5)' : '0 1px 1px rgba(255,255,255,0.35)' } : {}),
                             transition: 'filter 100ms ease',
-                            ...(isHovered && !prismText ? { filter: 'brightness(1.02)' } : {})
+                            ...(isHovered && !prismText ? { filter: 'brightness(1.02)' } : {}),
+                            zIndex: 6
                           }}
                         >
                           {show ? ((person||'').split(' ')[0] || person) : ''}

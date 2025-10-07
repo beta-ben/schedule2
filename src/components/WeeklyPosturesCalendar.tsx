@@ -43,6 +43,7 @@ export default function WeeklyPosturesCalendar({
   const timeAxisPx = packed ? 56 : 68
   const dayMinWidthPx = packed ? 140 : 156
   const minGridWidthPx = packed ? 720 : 840
+  const minSegmentHeightPx = packed ? 18 : 24
   const hourMarks = React.useMemo(()=> Array.from({ length: 25 }, (_, i)=> i), [])
   const hourLabelClass = packed ? 'text-[10px]' : 'text-[11px]'
   const segmentLabelClass = packed ? 'text-[10px]' : 'text-[11px]'
@@ -181,7 +182,7 @@ export default function WeeklyPosturesCalendar({
                   )}
                   {placed.map(({ it, lane, s, e })=>{
                     const topPx = (s/60) * pxPerHour
-                    const heightPx = Math.max(16, ((e - s)/60) * pxPerHour)
+                    const heightPx = Math.max(minSegmentHeightPx, ((e - s)/60) * pxPerHour)
                     const left = `calc(${lane * laneWidthPct}% + 2px)`
                     const width = `calc(${laneWidthPct}% - 4px)`
                     const t = taskMap.get(it.taskId)
@@ -191,7 +192,7 @@ export default function WeeklyPosturesCalendar({
                       <div
                         key={`${(it as any)._idx}-${it.person}-${it.start}-${it.end}`}
                         className={[
-                          'group absolute rounded-md border overflow-hidden flex flex-col',
+                          'group absolute rounded-md border overflow-hidden flex flex-col gap-0.5 px-2 py-1',
                           dark?"bg-neutral-800 text-neutral-100 border-neutral-700":"bg-white text-neutral-900 border-neutral-300 shadow-sm",
                         ].join(' ')}
                         style={{ top: `${topPx}px`, height: `${heightPx}px`, left, width }}

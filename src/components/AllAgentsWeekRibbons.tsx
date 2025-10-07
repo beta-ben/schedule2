@@ -21,11 +21,14 @@ export default function AllAgentsWeekRibbons({
   showAllTimeLabels = false,
   onDragAll,
   onDragShift,
+  onResizeShift,
   sortMode = 'start',
   sortDir = 'asc',
   highlightIds,
+  complianceHighlightIds,
   selectedIds,
   onToggleSelect,
+  complianceTipsByShiftId,
   showNameColumn = true,
 }:{
   dark: boolean
@@ -41,11 +44,14 @@ export default function AllAgentsWeekRibbons({
   showAllTimeLabels?: boolean
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
+  onResizeShift?: (name:string, id:string, edge:'start'|'end', deltaMinutes:number)=>void
   sortMode?: 'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'
   sortDir?: 'asc'|'desc'
   highlightIds?: Set<string> | string[]
+  complianceHighlightIds?: Set<string> | string[]
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
+  complianceTipsByShiftId?: Record<string, string[]>
   showNameColumn?: boolean
 }){
   // Hover state for global time indicator (across all agents)
@@ -295,42 +301,45 @@ export default function AllAgentsWeekRibbons({
             {/* Ribbons list */}
             {agentNamesSorted.length>0 && agentNamesSorted.map(name=> (
               <div key={name} className="py-0 m-0">
-                <AgentWeekLinear
-                  dark={dark}
-                  tz={tz}
-                  weekStart={weekStart}
-                  agent={name}
-                  shifts={shifts}
-                  pto={pto}
-                  tasks={tasks}
-                  calendarSegs={(calendarSegs||[]).flatMap(cs=>{
-                    const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
-                    if(sameDay){ return [cs] }
-                    return [
-                      { ...cs, day: cs.day, start: cs.start, end: '24:00' },
-                      { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
-                    ]
-                  }) as any}
-                  titlePrefix={name}
-                  draggable={Boolean(onDragAll || onDragShift)}
-                  onDragAll={(d)=> onDragAll?.(name, d)}
-                  onDragShift={(id,d)=> onDragShift?.(name, id, d)}
-                  showDayLabels={false}
-                  showWeekLabel={false}
-                  framed={false}
-                  showNowLabel={false}
-                  showShiftLabels={true}
-                  bandHeight={BAND_H}
-                  alwaysShowTimeTags={showAllTimeLabels}
-                  forceOuterTimeTags={showAllTimeLabels}
-                  avoidLabelOverlap={showAllTimeLabels}
-                  highlightIds={highlightIds}
-                  showEdgeTimeTagsForHighlights={true}
-                  selectedIds={selectedIds}
-                  onToggleSelect={onToggleSelect}
-                />
-              </div>
-            ))}
+            <AgentWeekLinear
+              dark={dark}
+              tz={tz}
+              weekStart={weekStart}
+              agent={name}
+              shifts={shifts}
+              pto={pto}
+              tasks={tasks}
+              calendarSegs={(calendarSegs||[]).flatMap(cs=>{
+                const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
+                if(sameDay){ return [cs] }
+                return [
+                  { ...cs, day: cs.day, start: cs.start, end: '24:00' },
+                  { ...cs, day: (cs as any).endDay, start: '00:00', end: cs.end },
+                ]
+              }) as any}
+              titlePrefix={name}
+              draggable={Boolean(onDragAll || onDragShift)}
+              onDragAll={(d)=> onDragAll?.(name, d)}
+              onDragShift={(id,d)=> onDragShift?.(name, id, d)}
+              onResizeShift={(id, edge, d)=> onResizeShift?.(name, id, edge, d)}
+              showDayLabels={false}
+              showWeekLabel={false}
+              framed={false}
+              showNowLabel={false}
+              showShiftLabels={true}
+              bandHeight={BAND_H}
+              alwaysShowTimeTags={showAllTimeLabels}
+              forceOuterTimeTags={showAllTimeLabels}
+              avoidLabelOverlap={showAllTimeLabels}
+              highlightIds={highlightIds}
+              complianceHighlightIds={complianceHighlightIds}
+              showEdgeTimeTagsForHighlights={true}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
+              warningTipsById={complianceTipsByShiftId}
+            />
+          </div>
+        ))}
           </div>
         </div>
       </div>

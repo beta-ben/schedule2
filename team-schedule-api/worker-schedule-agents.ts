@@ -67,6 +67,14 @@ export interface Env {
   MAGIC_FROM_EMAIL?: string
   // App redirect base for magic verify (e.g., http://localhost:5173 or https://teamschedule.cc)
   APP_REDIRECT_BASE?: string
+  // Zoom OAuth
+  ZOOM_CLIENT_ID?: string
+  ZOOM_CLIENT_SECRET?: string
+  ZOOM_REDIRECT_URI?: string
+  ZOOM_SCOPE?: string
+  ZOOM_AUTH_BASE?: string
+  ZOOM_TOKEN_URL?: string
+  ZOOM_API_BASE?: string
 }
 
 // Types
@@ -131,12 +139,36 @@ export default {
     const id = path.split('/').pop() || ''
     return getProposalV2(req, env, cors, id)
   }
+  if (req.method === 'PATCH' && path.startsWith('/api/v2/proposals/')){
+    const parts = path.split('/')
+    const id = parts[parts.length-1] || ''
+    // Ignore /merge here; that route uses POST below
+    if(id && id !== 'merge') return patchProposalV2(req, env, cors, id)
+  }
+  if (req.method === 'POST' && path.startsWith('/api/v2/proposals/')){
+    // Expect /api/v2/proposals/:id/merge
+    const parts = path.split('/')
+    const last = parts[parts.length-1]
+    const prev = parts[parts.length-2]
+    if(last === 'merge' && prev && prev !== 'proposals'){
+      const id = prev
+      return mergeProposalV2(req, env, cors, id)
+    }
+  }
   // Agents-only endpoints to persist metadata (like hidden) without schedule conflicts
   if (req.method === 'GET' && path === '/api/agents') return getAgents(req, env, cors)
   if (req.method === 'POST' && path === '/api/agents') return postAgents(req, env, cors)
   // Admin: allowlist management
   if (req.method === 'GET' && path === '/api/admin/allowlist') return getAllowlist(req, env, cors)
   if (req.method === 'POST' && path === '/api/admin/allowlist') return postAllowlist(req, env, cors)
+  // Zoom OAuth for multi-user ingestion
+  if (req.method === 'GET' && path === '/api/zoom/oauth/url') return zoomOAuthUrl(req, env, cors)
+  if (req.method === 'GET' && path === '/api/zoom/oauth/callback') return zoomOAuthCallback(req, env, cors)
+  if (req.method === 'GET' && path === '/api/zoom/connections') return zoomConnectionsList(req, env, cors)
+  if (req.method === 'DELETE' && path.startsWith('/api/zoom/connections/')){
+    const id = path.split('/').pop() || ''
+    return zoomConnectionsDelete(req, env, cors, id)
+  }
 
       return json({ error: 'not_found' }, 404, cors)
     } catch (e: any) {
@@ -210,8 +242,8 @@ function corsHeaders(req: Request, env: Env){
   const allowAll = allowed.includes('*')
   const h: Record<string,string> = {
     'Access-Control-Allow-Credentials': 'true',
-    // Allow Content-Type for JSON, x-csrf-token for writes, and Authorization for dev bearer/test tools
-    'Access-Control-Allow-Headers': 'content-type,x-csrf-token,authorization',
+    // Allow Content-Type for JSON, x-csrf-token for writes, x-admin-sid for header-based session, and Authorization for dev bearer/test tools
+    'Access-Control-Allow-Headers': 'content-type,x-csrf-token,x-admin-sid,authorization',
     // Include PATCH for v2/agents; keep GET/POST/OPTIONS
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
   }
@@ -512,6 +544,30 @@ async function ensureD1Schema(env: Env){
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status, updated_at)').run()
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_proposals_created ON proposals(created_at)').run()
   }catch{}
+  // Zoom OAuth connections
+  try{
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS zoom_connections (
+        id TEXT PRIMARY KEY,
+        zoom_user_id TEXT NOT NULL UNIQUE,
+        email TEXT,
+        display_name TEXT,
+        account_id TEXT,
+        scope TEXT,
+        token_type TEXT,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        refresh_expires_at INTEGER,
+        last_synced_at INTEGER,
+        sync_cursor TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )`
+    ).run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_zoom_connections_email ON zoom_connections(email)').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_zoom_connections_expires ON zoom_connections(expires_at)').run()
+  }catch{}
 }
 async function readDocD1(env: Env): Promise<ScheduleDoc | null>{
   if(!env.DB) return null
@@ -592,9 +648,8 @@ async function loginAdmin(req: Request, env: Env, cors: Headers){
   const headers = new Headers(cors)
   headers.append('Set-Cookie', setCookie('sid', sid, { ...base, maxAge: TTL_MS/1000 }))
   headers.append('Set-Cookie', setCookieReadable('csrf', csrf, { ...base, maxAge: TTL_MS/1000 }))
-  // Also include csrf in body so clients can store it when cookie is HttpOnly
-  const includeSid = (env.RETURN_SID_IN_BODY||'').toLowerCase() === 'true' || (env.RETURN_SID_IN_BODY||'') === '1'
-  return json(includeSid ? { ok:true, csrf, sid } : { ok:true, csrf }, 200, headers)
+  // Also include csrf and sid in body so clients can store them when cookie scoping prevents storage
+  return json({ ok:true, csrf, sid }, 200, headers)
 }
 async function logoutAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
@@ -641,7 +696,8 @@ async function requireAdmin(req: Request, env: Env){
   // Dev bearer: bypass cookie+CSRF when enabled
   if(authDevBearerOk(req, env)) return { ok:true }
   const cookies = getCookieMap(req)
-  const sid = cookies.get('sid')
+  const sidHeader = req.headers.get('x-admin-sid') || ''
+  const sid = cookies.get('sid') || sidHeader
   const csrfHeader = req.headers.get('x-csrf-token') || ''
   if(!sid || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','x-csrf-token header'] } }
   const sess = await getSession(env,'admin',sid)
@@ -1084,6 +1140,306 @@ async function postAllowlist(req: Request, env: Env, cors: Headers){
   }catch{ return json({ error:'write_failed' }, 500, cors) }
 }
 
+// ---- Zoom OAuth connections
+type ZoomTokenResponse = {
+  access_token: string
+  token_type?: string
+  refresh_token: string
+  expires_in?: number
+  scope?: string
+  refresh_token_expires_in?: number
+  account_id?: string
+  user_id?: string
+}
+type ZoomUserProfile = {
+  id?: string
+  email?: string
+  display_name?: string
+  first_name?: string
+  last_name?: string
+  account_id?: string
+}
+type ZoomConnectionRow = {
+  id: string
+  zoom_user_id: string
+  email?: string
+  display_name?: string
+  account_id?: string
+  scope?: string
+  token_type?: string
+  expires_at?: number
+  refresh_expires_at?: number
+  last_synced_at?: number
+  sync_cursor?: string
+  created_at?: number
+  updated_at?: number
+}
+type ZoomConnectionSummary = {
+  id: string
+  zoomUserId: string
+  email?: string | null
+  displayName?: string | null
+  accountId?: string | null
+  scope?: string | null
+  tokenType?: string | null
+  expiresAt?: number | null
+  refreshExpiresAt?: number | null
+  lastSyncedAt?: number | null
+  hasSyncCursor: boolean
+  createdAt?: number | null
+  updatedAt?: number | null
+}
+
+async function zoomOAuthUrl(req: Request, env: Env, cors: Headers){
+  const cfg = zoomConfig(env, req)
+  if(!cfg) return json({ error:'zoom_not_configured' }, 501, cors)
+  const state = nanoid(32)
+  const headers = new Headers(cors)
+  headers.append('Set-Cookie', setCookie('zoom_oauth_state', state, { ...cookieBase(env), maxAge: 600 }))
+  const authorizeUrl = `${cfg.authorizeUrl}?response_type=code&client_id=${encodeURIComponent(cfg.clientId)}&redirect_uri=${encodeURIComponent(cfg.redirectUri)}&scope=${encodeURIComponent(cfg.scope)}&state=${encodeURIComponent(state)}`
+  return json({ ok:true, url: authorizeUrl, scope: cfg.scope }, 200, headers)
+}
+
+async function zoomOAuthCallback(req: Request, env: Env, cors: Headers){
+  const cfg = zoomConfig(env, req)
+  if(!cfg) return json({ error:'zoom_not_configured' }, 501, cors)
+  const url = new URL(req.url)
+  const cookies = getCookieMap(req)
+  const expectedState = cookies.get('zoom_oauth_state') || ''
+  const base = cookieBase(env)
+  const headers = new Headers(cors)
+  headers.append('Set-Cookie', clearCookie('zoom_oauth_state', base))
+  const wantsHtml = (req.headers.get('accept')||'').toLowerCase().includes('text/html')
+
+  const queryError = url.searchParams.get('error')
+  if(queryError){
+    const detail = url.searchParams.get('error_description') || url.searchParams.get('reason') || ''
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'oauth_denied', [queryError, detail].filter(Boolean).join(': '))
+  }
+
+  const state = url.searchParams.get('state') || ''
+  if(!state || !expectedState || state !== expectedState){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'state_mismatch')
+  }
+
+  const code = url.searchParams.get('code') || ''
+  if(!code){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'missing_code')
+  }
+
+  if(!env.DB){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'd1_unavailable')
+  }
+
+  await ensureD1Schema(env)
+
+  const nowSec = Math.floor(Date.now()/1000)
+  let tokenJson: ZoomTokenResponse | null = null
+  try{
+    const body = `grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(cfg.redirectUri)}`
+    const tokenRes = await fetch(cfg.tokenUrl,{
+      method:'POST',
+      headers:{
+        'content-type':'application/x-www-form-urlencoded',
+        'authorization': `Basic ${btoa(`${cfg.clientId}:${cfg.clientSecret}`)}`
+      },
+      body
+    })
+    if(!tokenRes.ok){
+      return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'token_exchange_failed', String(tokenRes.status))
+    }
+    tokenJson = await tokenRes.json<ZoomTokenResponse>()
+  }catch(e:any){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'token_exchange_error', e?.message || 'fetch_failed')
+  }
+
+  if(!tokenJson || typeof tokenJson.access_token !== 'string' || typeof tokenJson.refresh_token !== 'string'){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'token_missing')
+  }
+
+  const expiresIn = Number(tokenJson.expires_in)
+  const expiresAt = Number.isFinite(expiresIn) && expiresIn>0 ? nowSec + Math.round(expiresIn) : nowSec + 3600
+  const refreshExpiresIn = Number((tokenJson as any).refresh_token_expires_in)
+  const refreshExpiresAt = Number.isFinite(refreshExpiresIn) && refreshExpiresIn>0 ? nowSec + Math.round(refreshExpiresIn) : null
+
+  let profile: ZoomUserProfile | null = null
+  try{
+    const profileRes = await fetch(`${cfg.apiBase}/users/me`,{
+      method:'GET',
+      headers:{ 'authorization': `Bearer ${tokenJson.access_token}` }
+    })
+    if(!profileRes.ok){
+      return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'profile_fetch_failed', String(profileRes.status))
+    }
+    profile = await profileRes.json<ZoomUserProfile>()
+  }catch(e:any){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'profile_fetch_error', e?.message || 'fetch_failed')
+  }
+
+  const zoomUserId = String(profile?.id || tokenJson.user_id || '').trim()
+  if(!zoomUserId){
+    return zoomFinishRedirect(env, req, headers, wantsHtml, false, 'missing_user_id')
+  }
+
+  const email = profile?.email ? String(profile.email).trim() : undefined
+  const displayNameRaw = profile?.display_name || `${profile?.first_name||''} ${profile?.last_name||''}`.trim()
+  const displayName = displayNameRaw ? displayNameRaw.trim() : (email || zoomUserId)
+  const accountId = profile?.account_id || tokenJson.account_id || undefined
+
+  await saveZoomConnection(env, {
+    zoomUserId,
+    email,
+    displayName,
+    accountId: accountId ? String(accountId).trim() : undefined,
+    scope: tokenJson.scope,
+    tokenType: tokenJson.token_type,
+    accessToken: tokenJson.access_token,
+    refreshToken: tokenJson.refresh_token,
+    expiresAt,
+    refreshExpiresAt,
+  })
+
+  return zoomFinishRedirect(env, req, headers, wantsHtml, true, 'linked')
+}
+
+async function zoomConnectionsList(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+  const rows = await env.DB.prepare('SELECT id, zoom_user_id, email, display_name, account_id, scope, token_type, expires_at, refresh_expires_at, last_synced_at, sync_cursor, created_at, updated_at FROM zoom_connections ORDER BY updated_at DESC').all<ZoomConnectionRow>()
+  const data = (rows.results || []) as ZoomConnectionRow[]
+  const results = data.map((r)=>{
+    const summary: ZoomConnectionSummary = {
+      id: String(r.id),
+      zoomUserId: String(r.zoom_user_id),
+      email: r.email ? String(r.email) : null,
+      displayName: r.display_name ? String(r.display_name) : null,
+      accountId: r.account_id ? String(r.account_id) : null,
+      scope: r.scope ? String(r.scope) : null,
+      tokenType: r.token_type ? String(r.token_type) : null,
+      expiresAt: r.expires_at != null ? Number(r.expires_at) : null,
+      refreshExpiresAt: r.refresh_expires_at != null ? Number(r.refresh_expires_at) : null,
+      lastSyncedAt: r.last_synced_at != null ? Number(r.last_synced_at) : null,
+      hasSyncCursor: typeof r.sync_cursor === 'string' && r.sync_cursor.length > 0,
+      createdAt: r.created_at != null ? Number(r.created_at) : null,
+      updatedAt: r.updated_at != null ? Number(r.updated_at) : null,
+    }
+    return summary
+  })
+  return json({ ok:true, connections: results }, 200, cors)
+}
+
+async function zoomConnectionsDelete(req: Request, env: Env, cors: Headers, id: string){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  if(!id){
+    return json({ error:'invalid_id' }, 400, cors)
+  }
+  await ensureD1Schema(env)
+  const res = await env.DB.prepare('DELETE FROM zoom_connections WHERE id=?1').bind(id).run()
+  const deleted = typeof res.changes === 'number' ? res.changes : (res as any)?.meta?.changes || 0
+  return json({ ok:true, deleted: Number(deleted) || 0 }, 200, cors)
+}
+
+type ZoomConfig = {
+  clientId: string
+  clientSecret: string
+  redirectUri: string
+  scope: string
+  authorizeUrl: string
+  tokenUrl: string
+  apiBase: string
+}
+
+function zoomConfig(env: Env, req?: Request): ZoomConfig | null {
+  const clientId = (env.ZOOM_CLIENT_ID || '').trim()
+  const clientSecret = (env.ZOOM_CLIENT_SECRET || '').trim()
+  if(!clientId || !clientSecret) return null
+  let redirectUri = (env.ZOOM_REDIRECT_URI || '').trim()
+  if(!redirectUri && req){
+    try{
+      const origin = new URL(req.url).origin
+      redirectUri = `${origin}/api/zoom/oauth/callback`
+    }catch{}
+  }
+  if(!redirectUri) return null
+  const authBase = ((env.ZOOM_AUTH_BASE || 'https://zoom.us').trim() || 'https://zoom.us').replace(/\/$/, '')
+  const tokenUrl = (env.ZOOM_TOKEN_URL || `${authBase}/oauth/token`).trim()
+  const authorizeUrl = `${authBase}/oauth/authorize`
+  const apiBase = ((env.ZOOM_API_BASE || 'https://api.zoom.us/v2').trim() || 'https://api.zoom.us/v2').replace(/\/$/, '')
+  const scope = ((env.ZOOM_SCOPE || 'phone:read:list phone:read phone_recording:read phone_voicemail:read phone_sms:read').trim()) || 'phone:read:list phone:read'
+  return { clientId, clientSecret, redirectUri, scope, authorizeUrl, tokenUrl, apiBase }
+}
+
+async function saveZoomConnection(env: Env, payload: { zoomUserId: string; email?: string; displayName?: string; accountId?: string; scope?: string; tokenType?: string; accessToken: string; refreshToken: string; expiresAt: number; refreshExpiresAt?: number | null }){
+  await env.DB!.prepare(
+    `INSERT INTO zoom_connections (id, zoom_user_id, email, display_name, account_id, scope, token_type, access_token, refresh_token, expires_at, refresh_expires_at, created_at, updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,unixepoch(),unixepoch())
+     ON CONFLICT(zoom_user_id) DO UPDATE SET
+       email=excluded.email,
+       display_name=excluded.display_name,
+       account_id=excluded.account_id,
+       scope=excluded.scope,
+       token_type=excluded.token_type,
+       access_token=excluded.access_token,
+       refresh_token=excluded.refresh_token,
+       expires_at=excluded.expires_at,
+       refresh_expires_at=excluded.refresh_expires_at,
+       updated_at=unixepoch()`
+  ).bind(
+    nanoid(24),
+    payload.zoomUserId,
+    payload.email ?? null,
+    payload.displayName ?? null,
+    payload.accountId ?? null,
+    payload.scope ?? null,
+    payload.tokenType ?? null,
+    payload.accessToken,
+    payload.refreshToken,
+    payload.expiresAt,
+    payload.refreshExpiresAt ?? null
+  ).run()
+}
+
+function zoomFinishRedirect(env: Env, req: Request, headers: Headers, wantsHtml: boolean, success: boolean, code: string, detail?: string){
+  const status = success ? 'success' : 'error'
+  const location = buildZoomRedirectLocation(env, req, status, code, detail)
+  if(wantsHtml){
+    const title = success ? 'Zoom Connected' : 'Zoom Connection Error'
+    const message = success ? 'Zoom account connected. You can close this tab.' : 'Unable to connect your Zoom account.'
+    const html = `<!doctype html><html lang="en"><meta charset="utf-8"><title>${escapeHtml(title)}</title><meta http-equiv="refresh" content="2;url=${escapeHtml(location)}"><body><p>${escapeHtml(message)}</p>${detail?`<p>${escapeHtml(detail)}</p>`:''}<p><a href="${escapeHtml(location)}">Continue</a></p></body></html>`
+    headers.set('content-type','text/html; charset=utf-8')
+    return new Response(html, { status: success ? 200 : 400, headers })
+  }
+  headers.set('Location', location)
+  return new Response(null, { status: 302, headers })
+}
+
+function buildZoomRedirectLocation(env: Env, req: Request, status: string, code: string, detail?: string){
+  const base = (env.APP_REDIRECT_BASE || '').trim() || (()=>{ try{ return new URL(req.url).origin }catch{ return '' } })()
+  const trimmed = base ? base.replace(/\/$/, '') : ''
+  const params = new URLSearchParams()
+  params.set('zoomStatus', status)
+  if(code) params.set('zoomCode', code)
+  if(detail) params.set('zoomDetail', detail)
+  const suffix = `/#/manage${params.toString() ? `?${params.toString()}` : ''}`
+  if(!trimmed) return suffix
+  return `${trimmed}${suffix}`
+}
+
+function escapeHtml(s: string){
+  return s.replace(/[&<>"']/g, ch=>{
+    if(ch === '&') return '&amp;'
+    if(ch === '<') return '&lt;'
+    if(ch === '>') return '&gt;'
+    if(ch === "\"") return '&quot;'
+    if(ch === "\'") return '&#39;'
+    return ch
+  })
+}
+
 // ---- Proposals (MVP)
 type ProposalRow = { id:string; title?:string; description?:string; status:string; created_by?:string; reviewers?:string; week_start?:string; tz_id?:string; base_updated_at?:string; patch?:string; created_at:number; updated_at:number }
 async function postProposalV2(req: Request, env: Env, cors: Headers){
@@ -1158,4 +1514,79 @@ async function getProposalV2(req: Request, env: Env, cors: Headers, id: string){
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   } }, 200, cors)
+}
+
+// Update proposal metadata and status (open|in_review|approved|rejected|closed)
+async function patchProposalV2(req: Request, env: Env, cors: Headers, id: string){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+  const body = await safeJson<any>(req)
+  const allowedStatus = new Set(['open','in_review','approved','rejected','closed','merged'])
+  const fields: string[] = []
+  const binds: any[] = []
+  if(typeof body?.title === 'string'){ fields.push('title=?'+(fields.length+1)); binds.push(body.title) }
+  if(typeof body?.description === 'string'){ fields.push('description=?'+(fields.length+1)); binds.push(body.description) }
+  if(typeof body?.status === 'string'){
+    const st = String(body.status).toLowerCase()
+    if(!allowedStatus.has(st)) return json({ error:'invalid_status' }, 400, cors)
+    // 'merged' should be set via merge endpoint; allow here but not recommended
+    fields.push('status=?'+(fields.length+1)); binds.push(st)
+  }
+  if(fields.length === 0) return json({ ok:true }, 200, cors)
+  const sql = `UPDATE proposals SET ${fields.join(',')}, updated_at=unixepoch() WHERE id=?${fields.length+1}`
+  binds.push(id)
+  const r = await env.DB.prepare(sql).bind(...binds).run()
+  const changed = (r as any)?.changes || (r as any)?.meta?.changes || 0
+  if(!changed) return json({ error:'not_found' }, 404, cors)
+  return json({ ok:true }, 200, cors)
+}
+
+// Merge a proposal patch into the live schedule doc with optional optimistic concurrency.
+// If the proposal has base_updated_at set and it differs from current doc.updatedAt, returns 409 unless ?force=1.
+async function mergeProposalV2(req: Request, env: Env, cors: Headers, id: string){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  if(!env.DB) return json({ error:'d1_unavailable' }, 503, cors)
+  await ensureD1Schema(env)
+
+  const url = new URL(req.url)
+  const force = url.searchParams.get('force') === '1'
+
+  const row = await env.DB.prepare('SELECT id, status, base_updated_at, patch FROM proposals WHERE id=?1').bind(id).first<ProposalRow>()
+  if(!row) return json({ error:'not_found' }, 404, cors)
+  let patch: any
+  try{ patch = row.patch ? JSON.parse(String((row as any).patch)) : {} }catch{ patch = {} }
+
+  const prev = (await readDoc(env)) || { schemaVersion:2, agents:[], shifts:[], pto:[], overrides:[], calendarSegs:[], agentsIndex:{} } as ScheduleDoc
+  if(row.base_updated_at && prev.updatedAt && !force){
+    try{
+      const a = new Date(prev.updatedAt).getTime()
+      const b = new Date(row.base_updated_at).getTime()
+      if(Number.isFinite(a) && Number.isFinite(b) && a !== b){
+        return json({ error:'conflict', prevUpdatedAt: prev.updatedAt, baseUpdatedAt: row.base_updated_at }, 409, cors)
+      }
+    }catch{}
+  }
+
+  // Build incoming doc using proposal patch arrays; leave unspecified sections empty so validator replaces only those.
+  const incoming: Partial<ScheduleDoc> = {
+    shifts: Array.isArray(patch?.shifts) ? patch.shifts : [],
+    pto: Array.isArray(patch?.pto) ? patch.pto : [],
+    overrides: Array.isArray(patch?.overrides) ? patch.overrides : [],
+    calendarSegs: Array.isArray(patch?.calendarSegs) ? patch.calendarSegs : [],
+    agents: Array.isArray(patch?.agents) ? patch.agents : (prev.agents || [])
+  }
+  const normalized = normalizeAndValidate(incoming, prev)
+  if(!normalized.ok){
+    return json({ error:'invalid_patch', details: (normalized as any).details || (normalized as any).error }, 400, cors)
+  }
+  const next = normalized.doc
+  await writeDoc(env, next)
+
+  // Mark proposal merged and update timestamp
+  try{ await env.DB.prepare('UPDATE proposals SET status=\'merged\', updated_at=unixepoch() WHERE id=?1').bind(id).run() }catch{}
+
+  return json({ ok:true, updatedAt: next.updatedAt }, 200, cors)
 }

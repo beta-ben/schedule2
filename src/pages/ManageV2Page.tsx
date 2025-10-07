@@ -1,8 +1,10 @@
 import React from 'react'
 import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPostDetailed, ensureSiteSession, login, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet } from '../lib/api'
+import { cloudPostDetailed, ensureSiteSession, login, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection, cloudUpdateProposal, cloudMergeProposal } from '../lib/api'
+import type { ZoomConnectionSummary } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
+import ComboBox from '../components/ComboBox'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import ProposalDiffVisualizer from '../components/ProposalDiffVisualizer'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
@@ -13,8 +15,27 @@ import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
 import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, minToHHMM, applyOverrides } from '../lib/utils'
 import { mapAgentsToPayloads } from '../lib/agents'
+import ZoomAnalyticsMock from '../components/ZoomAnalyticsMock'
+import TimeTrackingMock from '../components/TimeTrackingMock'
+import LunchPlannerMock from '../components/LunchPlannerMock'
+import TeamsCommandsMock from '../components/TeamsCommandsMock'
+import { computeComplianceWarnings } from '../domain/compliance'
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
+
+const DEFAULT_POSTURE_DURATION_MIN = 3 * 60
+
+function computeDefaultPostureEnd(day: typeof DAYS[number], start: string){
+  const startIdxRaw = DAYS.indexOf(day as any)
+  const startIdx = startIdxRaw >= 0 ? startIdxRaw : 0
+  const startMin = toMin(start || '00:00')
+  const total = startMin + DEFAULT_POSTURE_DURATION_MIN
+  const dayOffset = Math.floor(total / 1440)
+  const endDayIdx = (startIdx + dayOffset + DAYS.length) % DAYS.length
+  const endDay = DAYS[endDayIdx] as typeof DAYS[number]
+  const endTime = minToHHMM(total)
+  return { endDay, endTime }
+}
 
 export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, overrides, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto, setOverrides }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; overrides: Override[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void; setOverrides: (f:(prev:Override[])=>Override[])=>void }){
   // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
@@ -40,9 +61,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
-  const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Proposals'] as const
+  const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Proposals','Integrations','Clock & Breaks'] as const
   type Subtab = typeof tabs[number]
   const [subtab, setSubtab] = React.useState<Subtab>('Agents')
+  const [zoomConnections, setZoomConnections] = React.useState<ZoomConnectionSummary[]>([])
+  const [zoomLoading, setZoomLoading] = React.useState(false)
+  const [zoomError, setZoomError] = React.useState<string | null>(null)
+  const zoomInitializedRef = React.useRef(false)
   // Shifts tab: show time labels for all shifts
   const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   const [sortMode, setSortMode] = React.useState<'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'>('start')
@@ -89,15 +114,30 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [importUrl, setImportUrl] = React.useState<string>('https://team-schedule-api.bsteward.workers.dev/v1/schedule')
   const [importText, setImportText] = React.useState<string>('')
   const [importMsg, setImportMsg] = React.useState<string>('')
+  // Publish: optionally route publish through a Proposal (create -> merge)
+  const PUBLISH_VIA_PROP_KEY = React.useMemo(()=> `schedule2.v2.publishViaProposal`, [])
+  const [publishViaProposal, setPublishViaProposal] = React.useState<boolean>(()=>{
+    try{ const v = localStorage.getItem(PUBLISH_VIA_PROP_KEY); return v==='1' }catch{ return false }
+  })
+  React.useEffect(()=>{ try{ localStorage.setItem(PUBLISH_VIA_PROP_KEY, publishViaProposal ? '1' : '0') }catch{} }, [publishViaProposal, PUBLISH_VIA_PROP_KEY])
   // Proposals tab state
   type ProposalMeta = { id:string; title?:string; status:string; createdAt:number; updatedAt:number; weekStart?:string; tzId?:string }
   const [proposals, setProposals] = React.useState<ProposalMeta[]>([])
   const [loadingProposals, setLoadingProposals] = React.useState(false)
   const [selectedProposalId, setSelectedProposalId] = React.useState<string>('')
   const [proposalDetail, setProposalDetail] = React.useState<any>(null)
+  const [proposalActing, setProposalActing] = React.useState<boolean>(false)
   const [liveDoc, setLiveDoc] = React.useState<any>(null)
   const [diffMsg, setDiffMsg] = React.useState<string>('')
   const [showVisualDiff, setShowVisualDiff] = React.useState<boolean>(false)
+  // Compliance warnings (Shifts tab)
+  const [showCompliance, setShowCompliance] = React.useState<boolean>(false)
+  const [complianceIssues, setComplianceIssues] = React.useState<Array<{ rule:string; severity:'hard'|'soft'; person:string; day?:string; shiftId?:string; details?:string }>>([])
+  const complianceHighlightIds = React.useMemo(()=>{
+    const set = new Set<string>()
+    for(const i of complianceIssues){ if(i.shiftId) set.add(i.shiftId) }
+    return set
+  }, [complianceIssues])
   // Track whether the working session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
   // Local autosave for unpublished changes (single snapshot per week/tz)
@@ -106,6 +146,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // Keep working copy synced to live only when not dirty
   React.useEffect(()=>{ if(!isDirty) setWorkingShifts(shifts) },[shifts,isDirty])
   React.useEffect(()=>{ if(!isDirty) setWorkingPto(pto) },[pto,isDirty])
+  // Recompute compliance when toggled or inputs change
+  React.useEffect(()=>{
+    if(!showCompliance){ setComplianceIssues([]); return }
+    const res = computeComplianceWarnings({ weekStart, shifts: workingShifts, agents: localAgents as any, tasks, calendarSegs, suppressMealBreaks: true })
+    setComplianceIssues(res.issues as any)
+  }, [showCompliance, workingShifts, localAgents, tasks, calendarSegs, weekStart])
   // Load any autosaved unpublished changes for this week/tz (and migrate legacy once)
   React.useEffect(()=>{
     try{
@@ -165,6 +211,81 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [shiftRedoStack, setShiftRedoStack] = React.useState<Array<Array<{ id:string; patch: Partial<Shift> }>>>([])
   const canUndoShifts = shiftUndoStack.length > 0
   const canRedoShifts = shiftRedoStack.length > 0
+  const formatUnixTs = React.useCallback((ts?: number | null)=>{
+    if(ts == null || !Number.isFinite(ts)) return '—'
+    try{ return new Date(ts * 1000).toLocaleString() }catch{ return '—' }
+  }, [])
+  const loadZoomConnections = React.useCallback(async ()=>{
+    setZoomLoading(true)
+    setZoomError(null)
+    const res = await getZoomConnections()
+    if(res.ok){
+      setZoomConnections(res.connections)
+    } else {
+      setZoomError('Failed to load Zoom connections.')
+    }
+    setZoomLoading(false)
+  }, [])
+  const handleConnectZoom = React.useCallback(async ()=>{
+    setZoomError(null)
+    const res = await getZoomAuthorizeUrl()
+    if(res.ok && res.url){
+      window.location.href = res.url
+    } else {
+      setZoomError('Unable to start Zoom sign-in.')
+      showToast('Unable to start Zoom sign-in.', 'error')
+    }
+  }, [showToast])
+  const handleRemoveZoom = React.useCallback(async (id: string)=>{
+    if(!id) return
+    if(!window.confirm('Remove this Zoom account?')) return
+    const res = await deleteZoomConnection(id)
+    if(res.ok){
+      setZoomConnections(prev=> prev.filter(conn=> conn.id !== id))
+      showToast('Zoom connection removed.', 'success')
+    } else {
+      setZoomError('Failed to remove Zoom connection.')
+      showToast('Failed to remove Zoom connection.', 'error')
+    }
+  }, [showToast])
+
+  React.useEffect(()=>{
+    if(subtab === 'Integrations'){
+      if(!zoomInitializedRef.current){
+        zoomInitializedRef.current = true
+        loadZoomConnections()
+      }
+    }
+  }, [subtab, loadZoomConnections])
+
+  React.useEffect(()=>{
+    if(typeof window === 'undefined') return
+    try{
+      const hash = window.location.hash || ''
+      const idx = hash.indexOf('?')
+      if(idx < 0) return
+      const base = hash.slice(0, idx)
+      const params = new URLSearchParams(hash.slice(idx+1))
+      const status = params.get('zoomStatus')
+      if(!status) return
+      const detail = params.get('zoomDetail') || params.get('zoomCode') || ''
+      params.delete('zoomStatus')
+      params.delete('zoomDetail')
+      params.delete('zoomCode')
+      const cleaned = params.toString()
+      const nextHash = cleaned ? `${base}?${cleaned}` : base
+      if(window.history && typeof window.history.replaceState === 'function'){
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`)
+      }
+      setSubtab('Integrations')
+      if(status === 'success'){
+        showToast('Zoom account linked.', 'success')
+        zoomInitializedRef.current = false
+      }else if(status === 'error'){
+        showToast(detail ? `Zoom connect failed: ${detail}` : 'Zoom connect failed.', 'error')
+      }
+    }catch{}
+  }, [showToast])
   // Shallow equality for relevant shift fields (ignores segments)
   function eqShift(a: Shift, b: Shift){
     return a.id===b.id && a.day===b.day && a.start===b.start && a.end===b.end && (a as any).endDay=== (b as any).endDay
@@ -290,10 +411,28 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [assignee, setAssignee] = React.useState<string>('')
   const [assignDay, setAssignDay] = React.useState<typeof DAYS[number]>('Mon' as any)
   const [assignStart, setAssignStart] = React.useState('09:00')
-  const [assignEnd, setAssignEnd] = React.useState('10:00')
+  const [assignEnd, setAssignEnd] = React.useState('12:00')
   const [assignTaskId, setAssignTaskId] = React.useState<string>('')
   const [assignEndDay, setAssignEndDay] = React.useState<typeof DAYS[number]>('Mon' as any)
   React.useEffect(()=>{ if(!assignTaskId && activeTasks[0]) setAssignTaskId(activeTasks[0].id) },[activeTasks, assignTaskId])
+  const handleAssignStartChange = React.useCallback((value: string)=>{
+    setAssignStart(value)
+    const { endDay, endTime } = computeDefaultPostureEnd(assignDay, value)
+    setAssignEnd(endTime)
+    setAssignEndDay(endDay)
+  }, [assignDay])
+  const handleAssignDayChange = React.useCallback((value: typeof DAYS[number])=>{
+    setAssignDay(value)
+    const { endDay, endTime } = computeDefaultPostureEnd(value, assignStart)
+    setAssignEnd(endTime)
+    setAssignEndDay(endDay)
+  }, [assignStart])
+  const handleAssignEndChange = React.useCallback((value: string)=>{
+    setAssignEnd(value)
+  }, [])
+  const handleAssignEndDayChange = React.useCallback((value: typeof DAYS[number])=>{
+    setAssignEndDay(value)
+  }, [])
   // Inline edit state for assigned calendar segments
   const [editingIdx, setEditingIdx] = React.useState<number|null>(null)
   const [eaPerson, setEaPerson] = React.useState('')
@@ -371,6 +510,35 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   async function publishWorkingToLive(){
     // Include agents in publish so metadata like supervisor persists
     const agentsPayload = mapAgentsToPayloads(localAgents)
+    if(publishViaProposal){
+      // Publish by creating a proposal and merging it
+      const title = `Publish via Proposal — ${new Date().toLocaleString()}`
+      // Capture current live updatedAt to enable conflict messaging
+      let baseUpdatedAt: string | undefined
+      try{ const live = await cloudGet(); if(live && typeof (live as any).updatedAt === 'string') baseUpdatedAt = (live as any).updatedAt }catch{}
+      const created = await cloudCreateProposal({ title, weekStart, tzId: tz.id, baseUpdatedAt, shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any })
+      if(!created.ok || !created.id){ showToast('Failed to create proposal for publish.', 'error'); return }
+      let merged = await cloudMergeProposal(created.id)
+      if(!merged.ok && merged.status===409){
+        const confirmForce = window.confirm('Live data changed since base. Merge anyway and overwrite with current proposal?')
+        if(!confirmForce) return
+        merged = await cloudMergeProposal(created.id, { force: true })
+      }
+      if(merged.ok){
+        setIsDirty(false)
+        showToast('Published via proposal.', 'success')
+        startedFromLiveRef.current = false
+        setModifiedIds(new Set())
+        try{ localStorage.removeItem(UNPUB_KEY) }catch{}
+        setPto(()=> workingPto)
+        setOverrides(()=> workingOverrides)
+        return
+      } else {
+        showToast('Publish via proposal failed.', 'error')
+        return
+      }
+    }
+    // Direct publish to schedule endpoint
     const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
     if(res.ok){
       setIsDirty(false)
@@ -443,6 +611,59 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     const res = await cloudGetProposal(id)
     if(!res.ok || !res.proposal){ setDiffMsg('Failed to load proposal'); return }
     setProposalDetail(res.proposal)
+  }
+
+  async function approveSelectedProposal(){
+    if(!selectedProposalId) return
+    setProposalActing(true)
+    const r = await cloudUpdateProposal(selectedProposalId, { status: 'approved' })
+    setProposalActing(false)
+    if(r.ok){
+      showToast('Proposal approved.', 'success')
+      setProposalDetail((prev:any)=> prev ? { ...prev, status: 'approved' } : prev)
+      // Refresh list lightweight
+      setProposals(prev=> prev.map(p=> p.id===selectedProposalId ? { ...p, status: 'approved' } : p))
+    } else {
+      showToast('Failed to approve proposal.', 'error')
+    }
+  }
+  async function rejectSelectedProposal(){
+    if(!selectedProposalId) return
+    if(!window.confirm('Reject this proposal?')) return
+    setProposalActing(true)
+    const r = await cloudUpdateProposal(selectedProposalId, { status: 'rejected' })
+    setProposalActing(false)
+    if(r.ok){
+      showToast('Proposal rejected.', 'success')
+      setProposalDetail((prev:any)=> prev ? { ...prev, status: 'rejected' } : prev)
+      setProposals(prev=> prev.map(p=> p.id===selectedProposalId ? { ...p, status: 'rejected' } : p))
+    } else {
+      showToast('Failed to reject proposal.', 'error')
+    }
+  }
+  async function mergeSelectedProposal(){
+    if(!selectedProposalId) return
+    if(!window.confirm('Merge this proposal into live?')) return
+    setProposalActing(true)
+    let r = await cloudMergeProposal(selectedProposalId)
+    if(!r.ok && r.status===409){
+      setProposalActing(false)
+      const again = window.confirm('Live data changed since this proposal was created. Merge anyway and overwrite with proposal?')
+      if(!again) return
+      setProposalActing(true)
+      r = await cloudMergeProposal(selectedProposalId, { force: true })
+    }
+    setProposalActing(false)
+    if(r.ok){
+      showToast('Proposal merged to live.', 'success')
+      setProposalDetail((prev:any)=> prev ? { ...prev, status: 'merged' } : prev)
+      setProposals(prev=> prev.map(p=> p.id===selectedProposalId ? { ...p, status: 'merged' } : p))
+      // Refresh live doc for diff view
+      try{ const live = await cloudGet(); setLiveDoc(live) }catch{}
+    } else {
+      const msg = r.error==='conflict' ? 'Merge conflict. Refresh live and retry.' : 'Merge failed.'
+      showToast(msg, 'error')
+    }
   }
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
   onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
@@ -520,7 +741,21 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       ? "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800"
                       : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-100")
               ].join(' ')}
-            >{t}</button>
+            >
+              <span className="relative inline-block">
+                <span>{t}</span>
+                {(t==='Integrations' || t==='Clock & Breaks') && (
+                  <span
+                    aria-hidden
+                    className={[
+                      'pointer-events-none select-none absolute -right-2 -top-2 rotate-45 text-[9px] leading-none uppercase font-bold px-[3px] py-[2px] shadow-sm',
+                      dark ? 'bg-red-600 text-white' : 'bg-red-600 text-white'
+                    ].join(' ')}
+                    style={{ borderRadius: 2 }}
+                  >WIP</span>
+                )}
+              </span>
+            </button>
           )
         })}
         </div>
@@ -541,6 +776,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               <span>Discard</span>
             </span>
           </button>
+          <label className="flex items-center gap-1 text-xs select-none">
+            <input type="checkbox" className="accent-blue-600" checked={publishViaProposal} onChange={(e)=> setPublishViaProposal(e.target.checked)} />
+            <span className={dark?"text-neutral-300":"text-neutral-700"}>via proposal</span>
+          </label>
           <button
             onClick={publishWorkingToLive}
             className="px-3 py-1.5 rounded-xl border font-semibold bg-blue-600 border-blue-600 text-white hover:bg-blue-500 shrink-0"
@@ -684,6 +923,16 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             >
               <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             </button>
+            {/* Compliance warnings toggle */}
+            <button
+              type="button"
+              onClick={()=> setShowCompliance(v=>!v)}
+              aria-pressed={showCompliance}
+              title="Toggle compliance warnings"
+              className={["px-2.5 py-1.5 rounded-xl border font-medium", showCompliance ? (dark?"bg-red-950 border-red-700 text-red-200 hover:bg-red-900":"bg-red-50 border-red-300 text-red-700 hover:bg-red-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}
+            >
+              <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </button>
 
             {/* Edit: Undo/Redo */}
             <div className="inline-flex items-center gap-1" title="Undo / Redo">
@@ -763,6 +1012,31 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               <button onClick={()=>{ setLoadingProposals(true); cloudListProposals().then(r=>{ setLoadingProposals(false); setProposals(r.ok?(r.proposals||[]):[]) }) }} className={["px-2.5 py-1.5 rounded-xl border text-xs", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}>Refresh</button>
             </div>
           </div>
+          {proposalDetail && (
+            <div className={["rounded-xl p-2 border flex flex-wrap items-center gap-2 mb-3", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+              <div className="text-xs font-medium">Status: <span className="opacity-80">{proposalDetail.status||'open'}</span></div>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  disabled={proposalActing}
+                  onClick={approveSelectedProposal}
+                  className={["px-2.5 py-1.5 rounded-xl border text-xs font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+                >Approve</button>
+                <button
+                  type="button"
+                  disabled={proposalActing}
+                  onClick={rejectSelectedProposal}
+                  className={["px-2.5 py-1.5 rounded-xl border text-xs font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+                >Reject</button>
+                <button
+                  type="button"
+                  disabled={proposalActing}
+                  onClick={mergeSelectedProposal}
+                  className={["px-2.5 py-1.5 rounded-xl border text-xs font-semibold", dark?"bg-blue-500/20 border-blue-400 text-blue-200 hover:bg-blue-500/30":"bg-blue-600 text-white border-blue-600 hover:bg-blue-700"].join(' ')}
+                >Merge to Live</button>
+              </div>
+            </div>
+          )}
           <div className="space-y-3">
             <div className={["rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
               <div className="text-xs font-medium mb-2">List</div>
@@ -861,14 +1135,116 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           highlightProposalIds={proposalHighlights}
                           tasks={tasks}
                           calendarSegs={calendarSegs}
-                        />
-                      </div>
+          />
+          {showCompliance && (
+            <div className={["mt-2 rounded-xl p-2 border text-xs", dark?"bg-red-950/20 border-red-800 text-red-200":"bg-red-50 border-red-200 text-red-800"].join(' ')}>
+              <div className="font-semibold mb-1">Compliance</div>
+              {complianceIssues.length===0 ? (
+                <div className="opacity-80">No issues detected for this week.</div>
+              ) : (
+                <ul className="space-y-1 max-h-40 overflow-auto pr-1">
+                  {complianceIssues.map((i,idx)=> (
+                    <li key={idx} className="flex items-start gap-2">
+                      <span className={["inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] mt-0.5", i.severity==='hard' ? (dark?"bg-red-900/40 border-red-700":"bg-red-100 border-red-300") : (dark?"bg-amber-900/30 border-amber-700":"bg-amber-100 border-amber-300")].join(' ')}>{i.severity}</span>
+                      <span className="truncate">
+                        <strong>{i.person}</strong>{i.day?` • ${i.day}`:''}: {(i.rule||'').split('_').join(' ')}{i.details?` — ${i.details}`:''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
                     )}
                   </div>
                 )
               })()}
               {(!proposalDetail || !liveDoc) && (<div className="text-xs opacity-60">Select a proposal to see its diff</div>)}
             </div>
+          </div>
+        </div>
+      )}
+
+      {subtab==='Integrations' && (
+        <div className={["rounded-xl p-3 border space-y-2", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold">Zoom Phone Connections</div>
+              <div className="text-xs opacity-70">Link teammate accounts so the ingester can pull user-scoped call analytics.</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={loadZoomConnections}
+                className={["px-2.5 py-1.5 rounded-xl border text-xs font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={handleConnectZoom}
+                className={["px-2.5 py-1.5 rounded-xl border text-xs font-medium", dark?"bg-blue-500/20 border-blue-400 text-blue-200 hover:bg-blue-500/30":"bg-blue-600 text-white border-blue-600 hover:bg-blue-700"].join(' ')}
+              >
+                Connect Zoom
+              </button>
+            </div>
+          </div>
+          {zoomError && (<div className={["text-xs", dark?"text-red-300":"text-red-600"].join(' ')}>{zoomError}</div>)}
+          <div className="space-y-2">
+            {zoomLoading && (<div className="text-xs opacity-70">Loading…</div>)}
+            {!zoomLoading && zoomConnections.length===0 && (
+              <div className={["text-xs px-3 py-2 rounded-lg border", dark?"bg-neutral-900 border-neutral-800 text-neutral-300":"bg-white border-neutral-200 text-neutral-600"].join(' ')}>
+                No Zoom accounts linked yet.
+              </div>
+            )}
+            {zoomConnections.map(conn=> (
+              <div
+                key={conn.id}
+                className={["flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between rounded-lg border px-3 py-2", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}
+              >
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="text-sm font-semibold truncate">{conn.displayName || conn.email || conn.zoomUserId}</div>
+                  <div className="text-xs opacity-70 break-all">Email: {conn.email || '—'}</div>
+                  <div className="text-xs opacity-70 break-all">Zoom ID: {conn.zoomUserId}</div>
+                  {conn.accountId && (<div className="text-xs opacity-70 break-all">Account: {conn.accountId}</div>)}
+                  <div className="text-xs opacity-70">Scope: {conn.scope || '—'}</div>
+                  <div className="text-xs opacity-70">Token expires: {formatUnixTs(conn.expiresAt)}</div>
+                  <div className="text-xs opacity-70">Last sync: {conn.lastSyncedAt ? formatUnixTs(conn.lastSyncedAt) : '—'}</div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={()=>handleRemoveZoom(conn.id)}
+                    className={["px-2 py-1 text-xs rounded-lg border", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
+                  >
+                    Revoke
+                  </button>
+                  <div className="text-[10px] opacity-60">
+                    Updated {formatUnixTs(conn.updatedAt)}
+                    {conn.hasSyncCursor ? ' • Cursor retained' : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] opacity-60">
+            Tip: ask teammates to revoke the integration from Zoom’s App Marketplace if they need to expire tokens immediately.
+          </div>
+          <div className="pt-3 border-t border-neutral-800/30">
+            <ZoomAnalyticsMock dark={dark} />
+          </div>
+          <div className="pt-3 border-t border-neutral-800/30">
+            <TeamsCommandsMock dark={dark} />
+          </div>
+        </div>
+      )}
+
+      {subtab==='Clock & Breaks' && (
+        <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
+          <div className="space-y-3">
+            <TimeTrackingMock dark={dark} />
+            <LunchPlannerMock dark={dark} />
           </div>
         </div>
       )}
@@ -999,6 +1375,21 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             sortMode={sortMode}
             sortDir={sortDir}
             highlightIds={modifiedIds}
+            complianceHighlightIds={showCompliance ? complianceHighlightIds : undefined}
+            complianceTipsByShiftId={showCompliance ? (function(){
+              const map: Record<string,string[]> = {}
+              for(const i of complianceIssues){
+                if(!i.shiftId) continue
+                const arr = map[i.shiftId] || (map[i.shiftId] = [])
+                const ruleName = (i.rule||'').split('_').join(' ')
+                const sev = i.severity || 'soft'
+                const who = i.person || ''
+                const when = i.day ? ` • ${i.day}` : ''
+                const details = i.details ? ` — ${i.details}` : ''
+                arr.push(`${sev}: ${ruleName}${when}${details}`)
+              }
+              return map
+            })() : undefined}
             selectedIds={selectedShiftIds}
             onToggleSelect={(id)=>{
               setSelectedShiftIds(prev=>{
@@ -1039,7 +1430,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               setModifiedIds(ids)
               setIsDirty(true)
             }}
-            onDragShift={(name, id, delta)=>{
+          onDragShift={(name, id, delta)=>{
               const DAYS_ = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
               const idxOf = (d:string)=> DAYS_.indexOf(d as any)
               const byIndex = (i:number)=> DAYS_[((i%7)+7)%7] as any
@@ -1089,8 +1480,61 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               }
               setModifiedIds(nextModified)
               setIsDirty(true)
-            }}
-          />
+          }}
+          onResizeShift={(name, id, deltaEdge, delta)=>{
+            // Resize only this shift; keep other selected shifts unchanged
+            const DAYS_ = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
+            const idxOf = (d:string)=> DAYS_.indexOf(d as any)
+            const byIndex = (i:number)=> DAYS_[((i%7)+7)%7] as any
+            const toMin = (t:string)=>{ const [h,m]=t.split(':').map(Number); return (h||0)*60+(m||0) }
+            const addMin = (t:string, dm:number)=>{
+              const [h,m]=t.split(':').map(Number); const tot=((h||0)*60+(m||0)+dm+10080)%1440; const hh=Math.floor(tot/60).toString().padStart(2,'0'); const mm=(tot%60).toString().padStart(2,'0'); return `${hh}:${mm}`
+            }
+            const s = workingShifts.find(s=> s.id===id)
+            if(!s) return
+            // Undo snapshot
+            pushShiftsUndo([{ id: s.id, patch: { day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay } }])
+            const sd = idxOf(s.day); const ed = idxOf((s as any).endDay || s.day)
+            const sAbs = sd*1440 + toMin(s.start)
+            let eAbs = ed*1440 + toMin(s.end); if(eAbs<=sAbs) eAbs+=1440
+            let ns = sAbs; let ne = eAbs
+            const MIN = 15
+            if(deltaEdge==='start'){
+              ns = sAbs + delta
+              if(ne - ns < MIN) ns = ne - MIN
+            }else{
+              ne = eAbs + delta
+              if(ne - ns < MIN) ne = ns + MIN
+            }
+            const nsDay = Math.floor(((ns/1440)%7+7)%7)
+            const neDay = Math.floor(((ne/1440)%7+7)%7)
+            const nsMin = ((ns%1440)+1440)%1440
+            const neMin = ((ne%1440)+1440)%1440
+            const patch = { day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
+            setWorkingShifts(prev=> prev.map(x=> x.id===s.id ? { ...x, ...patch } : x))
+            setModifiedIds(prev=>{ const n=new Set(prev); n.add(s.id); return n })
+            setIsDirty(true)
+          }}
+        />
+        {showCompliance && (
+          <div className={["mt-2 rounded-xl p-2 border text-xs", dark?"bg-red-950/20 border-red-800 text-red-200":"bg-red-50 border-red-200 text-red-800"].join(' ')}>
+            <div className="font-semibold mb-1">Compliance</div>
+            {complianceIssues.length===0 ? (
+              <div className="opacity-80">No issues detected for this week.</div>
+            ) : (
+              <ul className="space-y-1 max-h-40 overflow-auto pr-1">
+                {complianceIssues.map((i,idx)=> (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className={["inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] mt-0.5", i.severity==='hard' ? (dark?"bg-red-900/40 border-red-700":"bg-red-100 border-red-300") : (dark?"bg-amber-900/30 border-amber-700":"bg-amber-100 border-amber-300")].join(' ')}>{i.severity}</span>
+                    <span className="truncate">
+                      <strong>{i.person}</strong>{i.day?` • ${i.day}`:''}: {(i.rule||'').split('_').join(' ')}{i.details?` — ${i.details}`:''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
           {(()=>{
             // bottom sticky coverage heatmap aligned with visible agents/days
             const visibleAgents = (includeHiddenAgents ? localAgents : localAgents.filter(a=> !a.hidden))
@@ -1131,32 +1575,36 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   <div className="grid grid-cols-1 gap-3">
                     <label className="text-sm flex flex-col">
                       <span className="mb-1">Agent</span>
-                      <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignee} onChange={e=>setAssignee(e.target.value)}>
-                        <option value="">—</option>
-                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                      </select>
+                      <ComboBox
+                        value={assignee}
+                        onChange={setAssignee}
+                        options={allPeople}
+                        placeholder="Type or select agent"
+                        dark={dark}
+                        inputClassName="px-3 py-2"
+                      />
                     </label>
-                    <div className="grid grid-cols-4 gap-3">
-                      <label className="text-sm flex flex-col col-span-1">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.1fr_1.1fr_1fr_1fr] md:items-end">
+                      <label className="text-sm flex flex-col">
                         <span className="mb-1">Day</span>
-                        <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignDay} onChange={e=>setAssignDay(e.target.value as any)}>
+                        <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={assignDay} onChange={e=>handleAssignDayChange(e.target.value as any)}>
                           {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
                         </select>
                       </label>
-                      <label className="text-sm flex flex-col col-span-1">
+                      <label className="text-sm flex flex-col">
+                        <span className="mb-1">End Day</span>
+                        <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={assignEndDay} onChange={e=>handleAssignEndDayChange(e.target.value as any)}>
+                          {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-sm flex flex-col">
                         <span className="mb-1">Start</span>
-                        <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignStart} onChange={e=>setAssignStart(e.target.value)} />
+                        <input type="time" className={["w-full border rounded-xl px-3 py-2 tabular-nums", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={assignStart} onChange={e=>handleAssignStartChange(e.target.value)} />
                       </label>
-                      <label className="text-sm flex flex-col col-span-1">
+                      <label className="text-sm flex flex-col">
                         <span className="mb-1">End</span>
-                        <input type="time" className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignEnd} onChange={e=>setAssignEnd(e.target.value)} />
+                        <input type="time" className={["w-full border rounded-xl px-3 py-2 tabular-nums", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={assignEnd} onChange={e=>handleAssignEndChange(e.target.value)} />
                       </label>
-                        <label className="text-sm flex flex-col col-span-1">
-                          <span className="mb-1">End Day</span>
-                          <select className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={assignEndDay} onChange={e=>setAssignEndDay(e.target.value as any)}>
-                            {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
-                          </select>
-                        </label>
                     </div>
                     <button
                       onClick={()=>{
@@ -1168,6 +1616,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
                         // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
                           setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
+                        const nextStartDay = assignEndDay
+                        const nextStartTime = assignEnd
+                        setAssignDay(nextStartDay)
+                        setAssignStart(nextStartTime)
+                        const { endDay: nextDefaultEndDay, endTime: nextDefaultEnd } = computeDefaultPostureEnd(nextStartDay, nextStartTime)
+                        setAssignEnd(nextDefaultEnd)
+                        setAssignEndDay(nextDefaultEndDay)
                       }}
                       className={["h-10 rounded-xl border font-medium px-4", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}
                     >Add assignment</button>
@@ -1252,34 +1707,39 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 {editingIdx!=null && (
                   <div className={["rounded-xl p-3 border", dark?"border-neutral-800 bg-neutral-900":"border-neutral-200 bg-white"].join(' ')}>
                     <div className="text-sm font-medium mb-2">Edit assignment</div>
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.6fr_1.8fr_1fr_1fr_1fr_1fr] md:items-end">
                       <label className="text-sm flex flex-col">
                         <span className="mb-1">Agent</span>
-                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaPerson} onChange={e=>setEaPerson(e.target.value)}>
-                          {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
+                        <ComboBox
+                          value={eaPerson}
+                          onChange={setEaPerson}
+                          options={allPeople}
+                          placeholder="Type or select agent"
+                          dark={dark}
+                          inputClassName="px-2 py-1"
+                        />
+                      </label>
+                      <label className="text-sm flex flex-col">
+                        <span className="mb-1">Posture</span>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={eaTaskId} onChange={e=>setEaTaskId(e.target.value)}>
+                          {tasks.filter(t=>!t.archived).map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                       </label>
                       <label className="text-sm flex flex-col">
                         <span className="mb-1">Day</span>
-                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaDay} onChange={e=>setEaDay(e.target.value as any)}>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={eaDay} onChange={e=>setEaDay(e.target.value as any)}>
                           {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
                         </select>
                       </label>
-                      <label className="text-sm flex flex-col"><span className="mb-1">Start</span><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaStart} onChange={e=>setEaStart(e.target.value)} /></label>
-                      <label className="text-sm flex flex-col"><span className="mb-1">End</span><input type="time" className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaEnd} onChange={e=>setEaEnd(e.target.value)} /></label>
                       <label className="text-sm flex flex-col">
                         <span className="mb-1">End Day</span>
-                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaEndDay} onChange={e=>setEaEndDay(e.target.value as any)}>
+                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={eaEndDay} onChange={e=>setEaEndDay(e.target.value as any)}>
                           {DAYS.map(d=> <option key={d} value={d}>{d}</option>)}
                         </select>
                       </label>
-                      <label className="text-sm flex flex-col">
-                        <span className="mb-1">Posture</span>
-                        <select className={["w-full border rounded px-2 py-1", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={eaTaskId} onChange={e=>setEaTaskId(e.target.value)}>
-                          {tasks.filter(t=>!t.archived).map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                      </label>
-                      <div className="md:col-span-6 flex gap-2">
+                      <label className="text-sm flex flex-col"><span className="mb-1">Start</span><input type="time" className={["w-full border rounded px-2 py-1 tabular-nums", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={eaStart} onChange={e=>setEaStart(e.target.value)} /></label>
+                      <label className="text-sm flex flex-col"><span className="mb-1">End</span><input type="time" className={["w-full border rounded px-2 py-1 tabular-nums", dark&&"bg-neutral-900 border-neutral-700 text-neutral-100 focus:border-neutral-500"].filter(Boolean).join(' ')} value={eaEnd} onChange={e=>setEaEnd(e.target.value)} /></label>
+                      <div className="md:col-span-full flex gap-2">
                         <button onClick={()=>{
                           if(editingIdx==null) return
                           if(!eaPerson.trim()) return alert('Choose an agent')
@@ -1332,7 +1792,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 </div>
                 <div className="px-3 py-3 space-y-4">
                   <form
-                    className="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm"
+                    className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm"
                     onSubmit={(e)=>{
                       e.preventDefault()
                       const person = pt_agent.trim()
@@ -1347,14 +1807,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   >
                     <label className="flex flex-col gap-1">
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
-                      <select
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                      <ComboBox
                         value={pt_agent}
-                        onChange={(e)=> setPtAgent(e.target.value)}
-                      >
-                        <option value="">—</option>
-                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                      </select>
+                        onChange={(next)=> setPtAgent(next)}
+                        options={allPeople}
+                        placeholder="Type or select agent"
+                        dark={dark}
+                      />
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
@@ -1374,22 +1833,24 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         onChange={(e)=> setPtEnd(e.target.value)}
                       />
                     </label>
-                    <label className="flex flex-col gap-1 md:col-span-2">
-                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
-                      <input
-                        type="text"
-                        placeholder="Optional"
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                        value={pt_notes}
-                        onChange={(e)=> setPtNotes(e.target.value)}
-                      />
-                    </label>
-                      <div className="md:col-span-5 flex flex-wrap items-center justify-end gap-2">
+                    <div className="md:col-span-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                      <label className="flex flex-col gap-1 md:flex-1">
+                        <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
+                        <input
+                          type="text"
+                          placeholder="Optional"
+                          className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                          value={pt_notes}
+                          onChange={(e)=> setPtNotes(e.target.value)}
+                        />
+                      </label>
+                      <div className="flex justify-end gap-2">
                         <button
                           type="submit"
                           className={["inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium border", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
                         >Add PTO</button>
                       </div>
+                    </div>
                   </form>
                   <div className="overflow-x-auto">
                     {filteredPto.length===0 ? (
@@ -1447,7 +1908,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                     <span className="text-xs opacity-70">{agentDisplayName(localAgents as any, ptoEditing.agentId, ptoEditing.person)}</span>
                   </div>
                   <form
-                    className="px-3 py-3 grid grid-cols-1 md:grid-cols-5 gap-3 text-sm"
+                    className="px-3 py-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm"
                     onSubmit={(e)=>{
                       e.preventDefault()
                       if(!ptoEditing) return
@@ -1468,13 +1929,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   >
                     <label className="flex flex-col gap-1">
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
-                      <select
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                      <ComboBox
                         value={pt_e_person}
-                        onChange={(e)=> setPtEPerson(e.target.value)}
-                      >
-                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                      </select>
+                        onChange={(next)=> setPtEPerson(next)}
+                        options={allPeople}
+                        placeholder="Type or select agent"
+                        dark={dark}
+                      />
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
@@ -1494,25 +1955,27 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         onChange={(e)=> setPtEEnd(e.target.value)}
                       />
                     </label>
-                    <label className="flex flex-col gap-1 md:col-span-2">
-                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
-                      <input
-                        type="text"
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                        value={pt_e_notes}
-                        onChange={(e)=> setPtENotes(e.target.value)}
-                      />
-                    </label>
-                    <div className="md:col-span-5 flex justify-end gap-2">
-                      <button
-                        type="submit"
-                        className={["px-3 py-2 rounded-lg text-sm font-medium border", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
-                      >Save</button>
-                      <button
-                        type="button"
-                        className={["px-3 py-2 rounded-lg text-sm font-medium border", dark ? "border-neutral-700 text-neutral-200 hover:bg-neutral-900" : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
-                        onClick={clearPtoEdit}
-                      >Cancel</button>
+                    <div className="md:col-span-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                      <label className="flex flex-col gap-1 md:flex-1">
+                        <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
+                        <input
+                          type="text"
+                          className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                          value={pt_e_notes}
+                          onChange={(e)=> setPtENotes(e.target.value)}
+                        />
+                      </label>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="submit"
+                          className={["px-3 py-2 rounded-lg text-sm font-medium border", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
+                        >Save</button>
+                        <button
+                          type="button"
+                          className={["px-3 py-2 rounded-lg text-sm font-medium border", dark ? "border-neutral-700 text-neutral-200 hover:bg-neutral-900" : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+                          onClick={clearPtoEdit}
+                        >Cancel</button>
+                      </div>
                     </div>
                   </form>
                 </section>
@@ -1553,14 +2016,13 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   >
                     <label className="flex flex-col gap-1 lg:col-span-2">
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
-                      <select
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                      <ComboBox
                         value={ov_agent}
-                        onChange={(e)=> setOvAgent(e.target.value)}
-                      >
-                        <option value="">—</option>
-                        {allPeople.map(p=> <option key={p} value={p}>{p}</option>)}
-                      </select>
+                        onChange={(next)=> setOvAgent(next)}
+                        options={allPeople}
+                        placeholder="Type or select agent"
+                        dark={dark}
+                      />
                     </label>
                     <label className="flex flex-col gap-1 lg:col-span-2">
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
@@ -1584,7 +2046,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start time (optional)</span>
                       <input
                         type="time"
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        className={["w-full border rounded-lg px-2 py-1.5 text-left", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
                         value={ov_tstart}
                         onChange={(e)=>{
                           const val = e.target.value
@@ -1604,7 +2066,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       <span className="text-xs font-medium uppercase tracking-wide opacity-70">End time (optional)</span>
                       <input
                         type="time"
-                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        className={["w-full border rounded-lg px-2 py-1.5 text-left", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
                         value={ov_tend}
                         onChange={(e)=> setOvTEnd(e.target.value)}
                       />

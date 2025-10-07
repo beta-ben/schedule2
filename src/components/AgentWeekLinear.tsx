@@ -20,6 +20,7 @@ export default function AgentWeekLinear({
   dayLabelFontPx,
   onDragAll,
   onDragShift,
+  onResizeShift,
   draggable = true,
   showDayLabels = true,
   showWeekLabel = true,
@@ -30,10 +31,12 @@ export default function AgentWeekLinear({
   alwaysShowTimeTags = false,
   forceOuterTimeTags = false,
   highlightIds,
+  complianceHighlightIds,
   showEdgeTimeTagsForHighlights,
   selectedIds,
   onToggleSelect,
   avoidLabelOverlap,
+  warningTipsById,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -51,6 +54,7 @@ export default function AgentWeekLinear({
   dayLabelFontPx?: number
   onDragAll?: (deltaMinutes:number)=>void
   onDragShift?: (id:string, deltaMinutes:number)=>void
+  onResizeShift?: (id:string, edge:'start'|'end', deltaMinutes:number)=>void
   draggable?: boolean
   showDayLabels?: boolean
   showWeekLabel?: boolean
@@ -63,11 +67,14 @@ export default function AgentWeekLinear({
   // When true, place the time tags outside the chip edges (left of start, right of end)
   forceOuterTimeTags?: boolean
   highlightIds?: Set<string> | string[]
+  complianceHighlightIds?: Set<string> | string[]
   showEdgeTimeTagsForHighlights?: boolean
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
   // When true, suppress outer time tags that would overlap neighboring tags
   avoidLabelOverlap?: boolean
+  // Optional: shift-level compliance tooltip lines keyed by shift id
+  warningTipsById?: Record<string, string[]>
 }){
   // Detect theme from root [data-theme] for Night/Noir/Prism adjustments
   const theme: 'system'|'light'|'dark'|'night'|'noir'|'prism' = (()=>{
@@ -206,8 +213,9 @@ export default function AgentWeekLinear({
   const NOW_TAG_F = 10
 
   const containerRef = React.useRef<HTMLDivElement|null>(null)
-  const [drag, setDrag] = React.useState<null | { mode:'all'|'single'; id?:string; selectedIds?: Set<string>; startX:number; pxToMin:number; delta:number; minDelta:number; maxDelta:number }>(null)
+  const [drag, setDrag] = React.useState<null | { mode:'all'|'single'|'resize-start'|'resize-end'; id?:string; selectedIds?: Set<string>; startX:number; pxToMin:number; delta:number; minDelta:number; maxDelta:number }>(null)
   const step = 30
+  const stepResize = 15
   const [containerW, setContainerW] = React.useState(0)
   const [hoverBand, setHoverBand] = React.useState(false)
   const [hoverGroupId, setHoverGroupId] = React.useState<string|null>(null)
@@ -237,6 +245,14 @@ export default function AgentWeekLinear({
     const h12 = ((h%12)||12)
     const mm = m===0 ? '' : m===30 ? ':30' : `:${m.toString().padStart(2,'0')}`
     return `${h12}${mm}${am?'a':'p'}`
+  }
+
+  // Format minutes as HH:MM, but when rendering an end tag exactly at midnight
+  // prefer showing "24:00" to convey end-of-day instead of "00:00".
+  const fmtEndAware = (min:number, asEnd=false)=>{
+    const m = ((min % 1440) + 1440) % 1440
+    if(asEnd && m === 0) return '24:00'
+    return minToHHMM(m)
   }
 
   const beginAllDrag = (e: React.MouseEvent)=>{
@@ -304,12 +320,35 @@ export default function AgentWeekLinear({
     setDrag({ mode:'single', id, selectedIds: selSet, startX: e.clientX, pxToMin, delta:0, minDelta, maxDelta })
   }
 
+  // Resize edge handlers (15m increments)
+  const beginResize = (id:string, edge:'start'|'end', e: React.MouseEvent)=>{
+    if(!draggable) return
+    e.stopPropagation()
+    if(!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const pxToMin = totalMins / rect.width
+    const g = groups.find(g=> g.id===id)
+    if(!g) return
+    const minDur = 15
+    const dur = Math.max(0, g.latest - g.earliest)
+    if(edge==='start'){
+      const minDelta = -1e9
+      const maxDelta = Math.max(0, dur - minDur)
+      setDrag({ mode:'resize-start', id, startX: e.clientX, pxToMin, delta:0, minDelta: -Math.abs(maxDelta), maxDelta })
+    }else{
+      const minDelta = -Math.max(0, dur - minDur)
+      const maxDelta = 1e9
+      setDrag({ mode:'resize-end', id, startX: e.clientX, pxToMin, delta:0, minDelta, maxDelta })
+    }
+  }
+
   React.useEffect(()=>{
     if(!drag) return
   const onMove = (ev: MouseEvent)=>{
       const raw = (ev.clientX - drag.startX) * drag.pxToMin
-      // round to step
-      const rounded = Math.round(raw/step)*step
+      // round to step (resizes use 15m, moves use 30m)
+      const useStep = (drag.mode==='resize-start' || drag.mode==='resize-end') ? stepResize : step
+      const rounded = Math.round(raw/useStep)*useStep
       const clamped = Math.max(drag.minDelta, Math.min(drag.maxDelta, rounded))
   if(clamped !== 0) didDragRef.current = true
   setDrag(prev=> prev ? { ...prev, delta: clamped } : prev)
@@ -318,15 +357,28 @@ export default function AgentWeekLinear({
       if(drag.delta !== 0){
         if(drag.mode==='all') onDragAll?.(drag.delta)
         else if(drag.mode==='single' && drag.id) onDragShift?.(drag.id, drag.delta)
+        else if((drag.mode==='resize-start' || drag.mode==='resize-end') && drag.id){ onResizeShift?.(drag.id, drag.mode==='resize-start' ? 'start' : 'end', drag.delta) }
       }
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('blur', onCancel)
+      document.removeEventListener('visibilitychange', onVis)
       setDrag(null)
     }
+    function onCancel(){
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('blur', onCancel)
+      document.removeEventListener('visibilitychange', onVis)
+      setDrag(null)
+    }
+    function onVis(){ if(document.visibilityState === 'hidden') onCancel() }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-    return ()=>{ window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [drag, onDragAll, onDragShift])
+    window.addEventListener('blur', onCancel)
+    document.addEventListener('visibilitychange', onVis)
+    return ()=>{ window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('blur', onCancel); document.removeEventListener('visibilitychange', onVis) }
+  }, [drag, onDragAll, onDragShift, onResizeShift])
 
   // Keyboard nudging: when hovering band (not over a chip), ArrowLeft/Right shifts all by 15m;
   // when hovering a chip, ArrowLeft/Right shifts just that chip by 15m.
@@ -410,6 +462,7 @@ export default function AgentWeekLinear({
             const isAllDragging = drag && drag.mode==='all'
             const isThisDragging = drag && drag.mode==='single' && drag.id===g.id
             const isMultiDragMember = drag && drag.mode==='single' && drag.selectedIds && drag.selectedIds.has(g.id)
+            const isResizingThis = drag && (drag.mode==='resize-start' || drag.mode==='resize-end') && drag.id===g.id
             const delta = (isAllDragging || isThisDragging || isMultiDragMember) ? drag!.delta : 0
             const border = dark?'#52525b':'#94a3b8'
             const bg = dark? 'rgba(59,130,246,0.64)' : 'rgba(59,130,246,0.625)'
@@ -418,8 +471,17 @@ export default function AgentWeekLinear({
             const groupStartMin = mod1440(g.startMin + delta)
             const groupEndMin   = mod1440(g.endMin   + delta)
             return g.segments.flatMap((seg)=>{
-              const newStart = seg.startAbs + delta
-              const newEnd = seg.endAbs + delta
+              let newStart = seg.startAbs + delta
+              let newEnd = seg.endAbs + delta
+              if(isResizingThis){
+                if(drag!.mode==='resize-start'){
+                  newStart = seg.startAbs + drag!.delta
+                  newEnd = seg.endAbs
+                }else if(drag!.mode==='resize-end'){
+                  newStart = seg.startAbs
+                  newEnd = seg.endAbs + drag!.delta
+                }
+              }
               const dur = Math.max(0, newEnd - newStart)
               const modT = (v:number)=> ((v % totalMins) + totalMins) % totalMins
               const a = modT(newStart)
@@ -428,8 +490,10 @@ export default function AgentWeekLinear({
                 const leftPct = (pLeft/totalMins)*100
                 const widthPct = ((pRight - pLeft)/totalMins)*100
                 const pxW = (pRight - pLeft)/totalMins * containerW
-                // Labels use group-level logical start/end times for correctness across wrap
-                const label = `${fmtRough(groupStartMin)}-${fmtRough(groupEndMin)}`
+                // Labels use group-level times; preview updates during resize
+                const previewStart = isResizingThis && drag?.mode==='resize-start' ? mod1440(g.startMin + drag.delta) : groupStartMin
+                const previewEnd = isResizingThis && drag?.mode==='resize-end' ? mod1440(g.endMin + drag.delta) : groupEndMin
+                const label = `${fmtRough(previewStart)}-${fmtRough(previewEnd)}`
     const isHover = hoverGroupId === g.id
   const isHi = !!highlightIds && (
                   highlightIds instanceof Set
@@ -445,6 +509,11 @@ export default function AgentWeekLinear({
                   selectedIds instanceof Set
                     ? selectedIds.has(g.id)
                     : (selectedIds as string[]).includes(g.id)
+                )
+                const isComplianceHi = !!complianceHighlightIds && (
+                  complianceHighlightIds instanceof Set
+                    ? complianceHighlightIds.has(g.id)
+                    : (complianceHighlightIds as string[]).includes(g.id)
                 )
                 // Use high-contrast hover ring; when framed (overflow-hidden), use inset to avoid clipping top/bottom
                 const hoverRingColor = isNight
@@ -462,7 +531,7 @@ export default function AgentWeekLinear({
                     : 'rgba(234,179,8,0.95)'
                 const ringSelected = isSel ? `0 0 0 2px ${selectedRingColor}` : ''
                 const boxShadow = [ringHover, ringSelected].filter(Boolean).join(', ')
-                const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || (showEdgeTimeTagsForHighlights && isHi) || isSel
+                const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || (showEdgeTimeTagsForHighlights && (isHi || isComplianceHi)) || isSel
                 // Collision avoidance for outer labels when requested
                 let allowStartTag = showTags && showStart
                 let allowEndTag = showTags && showEnd
@@ -472,7 +541,10 @@ export default function AgentWeekLinear({
                     ? (dark ? 'bg-black text-white' : 'bg-white text-black border border-black/20')
                     : (dark ? 'bg-black/70 text-white' : 'bg-black/70 text-white')
                 // If the chip piece is extremely narrow (< approx 2 label widths), avoid showing both tags which can jitter
-                if(pxW < (LABEL_W * 1.6)){
+                // When alwaysShowTimeTags is on, or the user is actively hovering/dragging/has selected the shift,
+                // prefer keeping both even if narrow for clearer feedback.
+                const priorityShowBoth = (isHover || isThisDragging || isAllDragging || isSel)
+                if(!alwaysShowTimeTags && !priorityShowBoth && pxW < (LABEL_W * 1.6)){
                   // Prefer the edge-gated tag; when both requested, keep only one to reduce churn
                   if(allowStartTag && allowEndTag){
                     // Keep the tag closer to band edge for clarity
@@ -481,7 +553,14 @@ export default function AgentWeekLinear({
                     else allowStartTag = false
                   }
                 }
-                if(avoidLabelOverlap){
+                // On hover/drag/selection, explicitly allow both tags to show regardless of segment gating.
+                // This ensures consistent visibility of both start and end times when inspecting a shift.
+                if(priorityShowBoth){
+                  allowStartTag = true
+                  allowEndTag = true
+                }
+                // Only suppress tags for overlap when not explicitly forcing all labels
+                if(avoidLabelOverlap && !alwaysShowTimeTags){
                   const chipLeftPx = (pLeft/totalMins) * containerW
                   const chipRightPx = (pRight/totalMins) * containerW
                   // Reset trackers on wrap (monotonicity break)
@@ -530,16 +609,26 @@ export default function AgentWeekLinear({
                 }
                 // Build posture tooltip lines for this piece from its sub-segments
                 const tooltipLines: string[] = []
+                const warnLines: string[] = []
                 if(seg.sub && tasks){
                   for(const sub of seg.sub){
                     const t = (tasks||[]).find(t=>t.id===sub.taskId)
                     // Convert sub offsets to absolute minutes within week post-delta
                     const absStart = newStart + sub.stOff
                     const absEnd = newStart + sub.enOff
-                    tooltipLines.push(`${t?.name || 'Task'}: ${minToHHMM(absStart % 1440)}–${minToHHMM(absEnd % 1440)}`)
+                    const sStr = fmtEndAware(absStart, false)
+                    const eStr = fmtEndAware(absEnd, true)
+                    tooltipLines.push(`${t?.name || 'Task'}: ${sStr}–${eStr}`)
                   }
                 }
-        return (
+                // Compliance warnings tooltip lines (shift-level)
+                try{
+                  const tips = (warningTipsById as any)?.[g.id]
+                  if(Array.isArray(tips)){
+                    for(const t of tips){ warnLines.push(String(t)) }
+                  }
+                }catch{}
+                return (
                   <div
                     key={partKey}
           className={"absolute inset-y-0"}
@@ -572,11 +661,19 @@ export default function AgentWeekLinear({
                         base.animation = 'prismChip 12s ease-in-out infinite'
                         base.animationDelay = `${-((h % 7) * 0.33)}s`
                       }else{
-                        ;(base as any).background = chipBg
+                        // Compliance highlight takes precedence, use red tones; otherwise modified highlight uses orange.
+                        const compBg = isComplianceHi ? (isNight ? 'rgba(239,68,68,0.62)' : (dark ? 'rgba(239,68,68,0.78)' : 'rgba(239,68,68,0.72)')) : null
+                        ;(base as any).background = compBg || chipBg
                       }
                       return base
                     })()}
-                    title={(titlePrefix ? `${titlePrefix} • ${g.title}` : g.title) + (tooltipLines.length? `\n\nPostures:\n${tooltipLines.join('\n')}`:'')}
+                    title={(function(){
+                      const base = (titlePrefix ? `${titlePrefix} • ${g.title}` : g.title)
+                      const lines: string[] = []
+                      if(tooltipLines.length){ lines.push('', 'Postures:', ...tooltipLines) }
+                      if(warnLines.length){ lines.push('', 'Compliance:', ...warnLines) }
+                      return base + (lines.length ? `\n${lines.join('\n')}` : '')
+                    })()}
                     onMouseDown={draggable ? (e)=>beginSingleDrag(g.id, e) : undefined}
                     onMouseEnter={()=>{ setHoverGroupId(g.id); setHoverBand(false) }}
                     onMouseLeave={()=> { setHoverGroupId(null); setHoverBand(true) }}
@@ -586,6 +683,21 @@ export default function AgentWeekLinear({
                       onToggleSelect?.(g.id)
                     }}
                   >
+                    {/* Resize handles */}
+                    {(isHover || isThisDragging) && (
+                      <>
+                        <div
+                          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize"
+                          onMouseDown={(e)=> beginResize(g.id, 'start', e)}
+                          aria-hidden
+                        />
+                        <div
+                          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize"
+                          onMouseDown={(e)=> beginResize(g.id, 'end', e)}
+                          aria-hidden
+                        />
+                      </>
+                    )}
                     {/* Posture overlays: subtle and on-theme; animated gradient in Prism */}
                     {seg.sub && tasks && seg.sub.map((sub, idx)=>{
                       // Absolute (week) minutes after drag
@@ -629,14 +741,14 @@ export default function AgentWeekLinear({
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
             ((opts?.forceStartOuter || forceOuterTimeTags)) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
                         timeTagTone].join(' ')}>
-                        {minToHHMM(groupStartMin)}
+                        {fmtEndAware(groupStartMin, false)}
                       </div>
                     )}
           {allowEndTag && (
                       <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
             ((opts?.forceEndOuter || forceOuterTimeTags)) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
                         timeTagTone].join(' ')}>
-                        {minToHHMM(groupEndMin)}
+                        {fmtEndAware(groupEndMin, true)}
                       </div>
                     )}
                   </div>
