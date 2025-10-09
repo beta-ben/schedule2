@@ -102,9 +102,22 @@ export default function ShortcutsOverlay({ dark, view, onClose }: Props){
               </ul>
             </div>
           )}
+          {view==='manageV2' && (
+            <div>
+              <div className="text-xs font-medium mb-1 opacity-80">Schedule Editor</div>
+              <ul className="space-y-1 text-sm">
+                <li className="flex items-center gap-2">{pill('1')} <span>Show live schedule</span></li>
+                <li className="flex items-center gap-2">{pill('2')} <span>Show staging schedule</span></li>
+                <li className="flex items-center gap-2">{pill('Cmd/Ctrl+Z')} <span>Undo shift edits</span></li>
+                <li className="flex items-center gap-2">{pill('Cmd/Ctrl+Shift+Z')} <span>Redo shift edits</span></li>
+                <li className="flex items-center gap-2">{pill('Delete')} <span>Delete selected shift(s)</span></li>
+                <li className="flex items-start gap-2">{pill('Double-click')} <span>Blank space to add an 8.5 hr shift</span></li>
+                <li className="flex items-start gap-2">{pill('Double-click shift')} <span>Open shift editor</span></li>
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
-

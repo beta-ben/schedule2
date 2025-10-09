@@ -13,7 +13,7 @@ import type { StageDoc } from '../domain/stage'
 import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
 import { DAYS } from '../constants'
-import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, minToHHMM, applyOverrides } from '../lib/utils'
+import { uid, toMin, shiftsForDayInTZ, agentIdByName, agentDisplayName, parseYMD, addDays, fmtYMD, fmtNice, minToHHMM, applyOverrides } from '../lib/utils'
 import { mapAgentsToPayloads } from '../lib/agents'
 import ZoomAnalyticsMock from '../components/ZoomAnalyticsMock'
 import TimeTrackingMock from '../components/TimeTrackingMock'
@@ -25,6 +25,7 @@ import useStageHook from '../hooks/useStage'
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
 type StageChangeEntry = { id: string; type: 'added' | 'updated' | 'removed'; person: string; stage?: Shift; live?: Shift }
+type OverrideCalendarDayEntry = { override: Override; occurrenceStart: string; occurrenceEnd: string }
 
 const DEFAULT_POSTURE_DURATION_MIN = 3 * 60
 
@@ -842,20 +843,17 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const scheduleShifts = useStagingInfra ? stageEffectiveShifts : effectiveWorkingShifts
   const schedulePto = useStagingInfra ? stageWorkingPto : pto
   const scheduleAgents = useStagingInfra ? stageAgents : localAgents
-  const statusBadgeText = useStagingInfra ? stageBadgeText : (isDirty ? 'Unpublished changes' : 'Live')
   const modeSubtitleText = useStagingInfra ? stageSubtitleText : (isDirty ? 'Unpublished local edits' : 'Live data preview')
-  const statusBadgeClasses = useStagingInfra
-    ? (dark ? 'bg-neutral-900 border-violet-500/60 text-violet-300' : 'bg-white border-violet-500/70 text-violet-700')
-    : (isDirty
-        ? (dark ? 'bg-neutral-900 border-amber-600 text-amber-400' : 'bg-white border-amber-500 text-amber-700')
-        : (dark ? 'bg-neutral-900 border-neutral-800 text-neutral-400' : 'bg-white border-neutral-200 text-neutral-500'))
+  const stagingStatusBadgeClasses = dark ? 'bg-neutral-900 border-violet-500/60 text-violet-300' : 'bg-white border-violet-500/70 text-violet-700'
   const modeSubtitleClassName = [
     'text-[10px]',
     useStagingInfra && stageError
       ? (dark ? 'text-red-300' : 'text-red-600')
       : 'opacity-60'
   ].join(' ')
+  const livePublishDisabled = manualPublishPending || !isDirty
   const stagePublishSummaryLines = stagePublishSummary?.lines ?? []
+  const livePublishLabel = manualPublishPending ? 'Saving…' : 'Save changes to live'
   React.useEffect(()=>{
     if(!showStagePublishConfirm){
       setStageRemovalAck(false)
@@ -908,6 +906,18 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         if(useStagingInfra) redoStageShifts()
         else redoShifts()
         return
+      }
+      if(!e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey){
+        if(e.key==='1'){
+          e.preventDefault()
+          setUseStagingInfra(false)
+          return
+        }
+        if(e.key==='2'){
+          e.preventDefault()
+          setUseStagingInfra(true)
+          return
+        }
       }
       const isDeleteKey = e.key === 'Delete' || (e.key === 'Backspace' && (e.ctrlKey || e.metaKey))
       if(isDeleteKey && selectedShiftIds.size>0){
@@ -1006,6 +1016,40 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const [ov_notes, setOvNotes] = React.useState('')
   const [ov_recurring, setOvRecurring] = React.useState(false)
   const [ov_until, setOvUntil] = React.useState('') // YYYY-MM-DD (optional)
+  const [overrideEditing, setOverrideEditing] = React.useState<Override | null>(null)
+  const [ov_e_agent, setOvEAgent] = React.useState('')
+  const [ov_e_start, setOvEStart] = React.useState('')
+  const [ov_e_end, setOvEEnd] = React.useState('')
+  const [ov_e_tstart, setOvETStart] = React.useState('')
+  const [ov_e_tend, setOvETEnd] = React.useState('')
+  const [ov_e_kind, setOvEKind] = React.useState('')
+  const [ov_e_notes, setOvENotes] = React.useState('')
+  const [ov_e_recurring, setOvERecurring] = React.useState(false)
+  const [ov_e_until, setOvEUntil] = React.useState('')
+  const startOverrideEdit = (entry: Override)=>{
+    setOverrideEditing(entry)
+    setOvEAgent(entry.person)
+    setOvEStart(entry.startDate)
+    setOvEEnd(entry.endDate)
+    setOvETStart(entry.start || '')
+    setOvETEnd(entry.end || '')
+    setOvEKind(entry.kind || '')
+    setOvENotes(entry.notes || '')
+    setOvERecurring(Boolean(entry.recurrence))
+    setOvEUntil(entry.recurrence?.until || '')
+  }
+  const clearOverrideEdit = ()=>{
+    setOverrideEditing(null)
+    setOvEAgent('')
+    setOvEStart('')
+    setOvEEnd('')
+    setOvETStart('')
+    setOvETEnd('')
+    setOvEKind('')
+    setOvENotes('')
+    setOvERecurring(false)
+    setOvEUntil('')
+  }
   const filteredOverrides = React.useMemo(()=>{
     return workingOverrides
       .slice()
@@ -1019,6 +1063,79 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         return timeA.localeCompare(timeB)
       })
   }, [workingOverrides])
+  const calendarWeeks = React.useMemo(()=>{
+    const base = parseYMD(weekStart)
+    return [
+      { key: 'current', label: 'Current week', startDate: base },
+      { key: 'next', label: 'Next week', startDate: addDays(base, 7) }
+    ] as const
+  }, [weekStart])
+  const overrideCalendarData = React.useMemo(()=>{
+    return calendarWeeks.map(({ key, label, startDate })=>{
+      const dayEntries = DAYS.map((day, idx)=>{
+        const dateObj = addDays(startDate, idx)
+        return { day, ymd: fmtYMD(dateObj), dateObj }
+      })
+      const buckets = new Map<string, OverrideCalendarDayEntry[]>(dayEntries.map(({ ymd })=> [ymd, []]))
+      const week0 = startDate
+      const week6 = addDays(startDate, 6)
+      for(const ov of workingOverrides){
+        let s = parseYMD(ov.startDate)
+        let e = parseYMD(ov.endDate)
+        const pushRange = (start: Date, end: Date)=>{
+          const occurrenceStart = fmtYMD(start)
+          const occurrenceEnd = fmtYMD(end)
+          let cur = new Date(start)
+          const last = new Date(end)
+          while(cur <= last){
+            const ymd = fmtYMD(cur)
+            const bucket = buckets.get(ymd)
+            if(bucket){
+              bucket.push({ override: ov, occurrenceStart, occurrenceEnd })
+            }
+            cur = addDays(cur, 1)
+          }
+        }
+        if(ov.recurrence?.rule === 'weekly'){
+          const until = ov.recurrence.until ? parseYMD(ov.recurrence.until) : null
+          let guard = 0
+          while(e < week0 && guard < 200){
+            s = addDays(s, 7)
+            e = addDays(e, 7)
+            guard++
+            if(until && s > until) break
+          }
+          while(s <= week6 && (!until || s <= until)){
+            pushRange(s, e)
+            s = addDays(s, 7)
+            e = addDays(e, 7)
+          }
+        }else{
+          pushRange(s, e)
+        }
+      }
+      for(const bucket of buckets.values()){
+        bucket.sort((a,b)=>{
+          const personCmp = a.override.person.localeCompare(b.override.person)
+          if(personCmp!==0) return personCmp
+          const startA = a.override.start || ''
+          const startB = b.override.start || ''
+          return startA.localeCompare(startB)
+        })
+      }
+      return {
+        key,
+        label,
+        startDate,
+        days: dayEntries.map(({ day, ymd, dateObj })=> ({
+          day,
+          ymd,
+          dateObj,
+          entries: buckets.get(ymd) ?? []
+        }))
+      }
+    })
+  }, [calendarWeeks, workingOverrides])
 
   // Removed: saved draft snapshots and related actions — drafts are deprecated
   // Persist agent selection across tab switches
@@ -1258,9 +1375,31 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 </div>
               </div>
             </div>
-            <span className={["inline-flex items-center px-2 py-1 rounded-xl border font-medium", statusBadgeClasses].join(' ')}>
-              {statusBadgeText}
-            </span>
+            {useStagingInfra ? (
+              <span className={["inline-flex items-center px-2 py-1 rounded-xl border font-medium", stagingStatusBadgeClasses].join(' ')}>
+                {stageBadgeText}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleManualPublish}
+                disabled={livePublishDisabled}
+                title={!isDirty ? 'No unpublished changes' : undefined}
+                className={[
+                  "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
+                  livePublishDisabled
+                    ? (dark ? "bg-neutral-900 border-neutral-800 text-neutral-400 cursor-not-allowed opacity-60" : "bg-white border-neutral-200 text-neutral-500 cursor-not-allowed opacity-60")
+                    : (dark ? "bg-blue-600 border-blue-500 text-white hover:bg-blue-500" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500")
+                ].join(' ')}
+              >
+                {manualPublishPending ? (
+                  <svg aria-hidden className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                ) : (
+                  <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                )}
+                <span>{livePublishLabel}</span>
+              </button>
+            )}
             {useStagingInfra && (
               <button
                 type="button"
@@ -2576,7 +2715,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                             <th className="px-3 py-2 text-left text-xs font-semibold">Dates</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold">Details</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold">Recurrence</th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold w-24">Actions</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold w-32">Actions</th>
                           </tr>
                         </thead>
                         <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
@@ -2601,7 +2740,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                                 </td>
                                 <td className="px-3 py-2 text-xs opacity-80">{recurrenceText}</td>
                                 <td className="px-3 py-2">
-                                  <div className="flex justify-end">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      className={["px-2 py-1 rounded border text-xs", dark ? "border-neutral-700 text-neutral-200 hover:bg-neutral-900" : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+                                      onClick={()=> startOverrideEdit(o)}
+                                    >Edit</button>
                                     <button
                                       type="button"
                                       className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white hover:bg-red-500"].join(' ')}
@@ -2609,6 +2753,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                                         if(confirm('Delete override?')){
                                           setWorkingOverrides(prev=> prev.filter(x=> x.id!==o.id))
                                           markDirty()
+                                          if(overrideEditing && overrideEditing.id===o.id){
+                                            clearOverrideEdit()
+                                          }
                                         }
                                       }}
                                     >Delete</button>
@@ -2623,6 +2770,149 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   </div>
                 </div>
               </section>
+              {overrideEditing && (
+                <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
+                  <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+                    <span className="text-sm font-semibold">Edit Override</span>
+                    <span className="text-xs opacity-70">{agentDisplayName(localAgents as any, overrideEditing.agentId, overrideEditing.person)}</span>
+                  </div>
+                  <form
+                    className="px-3 py-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 text-sm"
+                    onSubmit={(e)=>{
+                      e.preventDefault()
+                      if(!overrideEditing) return
+                      const person = ov_e_agent.trim()
+                      if(!person){ alert('Choose an agent'); return }
+                      if(!ov_e_start || !ov_e_end){ alert('Choose start and end dates'); return }
+                      if(ov_e_end < ov_e_start){ alert('End date must be on/after start date'); return }
+                      if((ov_e_tstart && !ov_e_tend) || (!ov_e_tstart && ov_e_tend)){ alert('Provide both start and end times, or leave both blank'); return }
+                      setWorkingOverrides(prev=> prev.map(x=> x.id===overrideEditing.id ? {
+                        ...x,
+                        person,
+                        agentId: agentIdByName(localAgents as any, person),
+                        startDate: ov_e_start,
+                        endDate: ov_e_end,
+                        start: ov_e_tstart || undefined,
+                        end: ov_e_tend || undefined,
+                        kind: ov_e_kind.trim() ? ov_e_kind.trim() : undefined,
+                        notes: ov_e_notes.trim() ? ov_e_notes.trim() : undefined,
+                        recurrence: ov_e_recurring ? { rule: 'weekly', until: ov_e_until || undefined } : undefined
+                      } : x))
+                      clearOverrideEdit()
+                      markDirty()
+                    }}
+                  >
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Agent</span>
+                      <ComboBox
+                        value={ov_e_agent}
+                        onChange={(next)=> setOvEAgent(next)}
+                        options={allPeople}
+                        placeholder="Type or select agent"
+                        dark={dark}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_e_start}
+                        onChange={(e)=> setOvEStart(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">End date</span>
+                      <input
+                        type="date"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_e_end}
+                        onChange={(e)=> setOvEEnd(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Start time (optional)</span>
+                      <input
+                        type="time"
+                        className={["w-full border rounded-lg px-2 py-1.5 text-left", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_e_tstart}
+                        onChange={(e)=>{
+                          const val = e.target.value
+                          const addMin = (t:string, m:number)=> minToHHMM(((toMin(t)+m)%1440+1440)%1440)
+                          const prevDefault = ov_e_tstart ? addMin(ov_e_tstart, 510) : null
+                          setOvETStart(val)
+                          if(val){
+                            const nextDefault = addMin(val, 510)
+                            if(!ov_e_tend || (prevDefault && ov_e_tend===prevDefault)){
+                              setOvETEnd(nextDefault)
+                            }
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-2">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">End time (optional)</span>
+                      <input
+                        type="time"
+                        className={["w-full border rounded-lg px-2 py-1.5 text-left", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_e_tend}
+                        onChange={(e)=> setOvETEnd(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-3">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Kind</span>
+                      <input
+                        type="text"
+                        placeholder="e.g., Swap, Half-day"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_e_kind}
+                        onChange={(e)=> setOvEKind(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 lg:col-span-3">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-70">Notes</span>
+                      <input
+                        type="text"
+                        placeholder="Optional"
+                        className={["w-full border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                        value={ov_e_notes}
+                        onChange={(e)=> setOvENotes(e.target.value)}
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-3 lg:col-span-6">
+                      <label className="inline-flex items-center gap-2 text-sm">
+                        <Toggle ariaLabel="Weekly recurrence" dark={dark} size="md" checked={ov_e_recurring} onChange={(v)=>{
+                          setOvERecurring(v)
+                          if(!v) setOvEUntil('')
+                        }} />
+                        <span>Weekly recurrence</span>
+                      </label>
+                      {ov_e_recurring && (
+                        <label className="flex items-center gap-2 text-sm">
+                          <span className="opacity-70">Until</span>
+                          <input
+                            type="date"
+                            className={["border rounded-lg px-2 py-1.5", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100" : "bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                            value={ov_e_until}
+                            onChange={(e)=> setOvEUntil(e.target.value)}
+                          />
+                        </label>
+                      )}
+                      <div className="ml-auto flex gap-2">
+                        <button
+                          type="submit"
+                          className={["inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium border", dark ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:bg-neutral-800" : "bg-blue-600 border-blue-600 text-white hover:bg-blue-500"].join(' ')}
+                        >Save</button>
+                        <button
+                          type="button"
+                          className={["inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium border", dark ? "border-neutral-700 text-neutral-200 hover:bg-neutral-900" : "border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+                          onClick={clearOverrideEdit}
+                        >Cancel</button>
+                      </div>
+                    </div>
+                  </form>
+                </section>
+              )}
             </div>
           </div>
           <div className={["mt-4 rounded-lg border overflow-hidden", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
@@ -2630,52 +2920,130 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               <span className="text-sm font-semibold">Weekly PTO calendar</span>
               <span className="text-xs opacity-70">Full-day entries by person</span>
             </div>
-            <div className="px-3 pb-3">
-              {(()=>{
+            <div className="px-3 pb-3 space-y-6">
+              {calendarWeeks.map(({ key, label, startDate })=>{
                 const H_PX = 220
                 const dayHeight = 22
-                const week0 = parseYMD(weekStart)
-                const ymds = DAYS.map((_,i)=> fmtYMD(addDays(week0, i)))
+                const ymds = DAYS.map((_, i)=> fmtYMD(addDays(startDate, i)))
                 return (
+                  <div key={key}>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <span className="text-sm font-semibold">{label}</span>
+                      <span className="text-xs opacity-70">Week of {fmtNice(startDate)}</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
+                      {DAYS.map((day, di)=>{
+                        const ymd = ymds[di]
+                        const dayItems = workingPto
+                          .filter(p=> p.startDate <= ymd && p.endDate >= ymd)
+                          .slice()
+                          .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
+                        const laneByPerson = new Map<string, number>()
+                        let nextLane = 0
+                        const placed = dayItems.map(p=>{
+                          let lane = laneByPerson.get(p.person)
+                          if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
+                          return { p, lane }
+                        })
+                        const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
+                        return (
+                          <div key={`${key}-${day}`} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
+                            <div className="font-medium mb-1 flex items-baseline justify-between">
+                              <span>{day}</span>
+                              <span className="text-xs opacity-70">{parseInt(ymd.slice(8), 10)}</span>
+                            </div>
+                            <div className="absolute left-2 right-2 bottom-2 top-7">
+                              {placed.map(({p, lane})=>{
+                                const top = lane * (dayHeight + 6)
+                                const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
+                                return (
+                                  <div key={`${p.id}-${key}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}${p.notes ? ` • ${p.notes}` : ''}`}>
+                                    <span className="truncate">{disp}</span>
+                                    {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div className={["mt-4 rounded-lg border overflow-hidden", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
+            <div className={["flex items-center justify-between px-3 py-2 border-b", dark?"border-neutral-800 bg-neutral-900 text-neutral-100":"border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+              <span className="text-sm font-semibold">Overrides calendar</span>
+              <span className="text-xs opacity-70">Current + next week</span>
+            </div>
+            <div className="px-3 pb-3 space-y-6">
+              {overrideCalendarData.map(({ key, label, startDate, days })=>(
+                <div key={key}>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <span className="text-sm font-semibold">{label}</span>
+                    <span className="text-xs opacity-70">Week of {fmtNice(startDate)}</span>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-7 gap-3 text-sm">
-                    {DAYS.map((day, di)=>{
-                      const ymd = ymds[di]
-                      const dayItems = workingPto
-                        .filter(p=> p.startDate <= ymd && p.endDate >= ymd)
-                        .slice()
-                        .sort((a,b)=> a.person.localeCompare(b.person) || a.startDate.localeCompare(b.startDate))
-                      const laneByPerson = new Map<string, number>()
-                      let nextLane = 0
-                      const placed = dayItems.map(p=>{
-                        let lane = laneByPerson.get(p.person)
-                        if(lane==null){ lane = nextLane++; laneByPerson.set(p.person, lane) }
-                        return { p, lane }
-                      })
-                      const heightPx = Math.min(H_PX, Math.max(placed.length * (dayHeight+6) + 28, 120))
+                    {days.map(({ day, ymd, entries })=>{
+                      const dayNumber = parseInt(ymd.slice(8), 10)
                       return (
-                        <div key={day} className={["rounded-lg p-2 relative overflow-hidden", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')} style={{ height: heightPx }}>
+                        <div key={`${key}-${ymd}`} className={["rounded-lg p-2", dark?"bg-neutral-950":"bg-neutral-50"].join(' ')}>
                           <div className="font-medium mb-1 flex items-baseline justify-between">
                             <span>{day}</span>
-                            <span className="text-xs opacity-70">{parseInt(ymd.slice(8), 10)}</span>
+                            <span className="text-xs opacity-70">{dayNumber}</span>
                           </div>
-                          <div className="absolute left-2 right-2 bottom-2 top-7">
-                            {placed.map(({p, lane})=>{
-                              const top = lane * (dayHeight + 6)
-                              const disp = agentDisplayName(localAgents as any, p.agentId, p.person)
-                              return (
-                                <div key={`${p.id}-${ymd}`} className={["absolute left-0 right-0 rounded-md px-2 h-[22px] flex items-center justify-between", dark?"bg-neutral-800 text-neutral-100 border border-neutral-700":"bg-white text-neutral-900 border border-neutral-300 shadow-sm"].join(' ')} style={{ top }} title={`${disp} • ${p.startDate} → ${p.endDate}`}>
-                                  <span className="truncate">{disp}</span>
-                                  {p.notes && (<span className="ml-2 text-[11px] opacity-70 truncate">{p.notes}</span>)}
-                                </div>
-                              )
-                            })}
+                          <div className="space-y-2 text-xs">
+                            {entries.length===0 ? (
+                              <div className="opacity-60">No overrides</div>
+                            ) : (
+                              entries.map((entry, idx)=>{
+                                const { override: ov, occurrenceStart, occurrenceEnd } = entry
+                                const disp = agentDisplayName(localAgents as any, ov.agentId, ov.person)
+                                let timeLabel = 'All day'
+                                let titleWindow = 'All day'
+                                if(ov.start && ov.end){
+                                  const startValue = ov.start
+                                  const endValue = ov.end
+                                  const overnight = endValue !== '24:00' && toMin(endValue) <= toMin(startValue)
+                                  const endLabel = ov.endDay && ov.endDay !== day ? `${ov.endDay} ${endValue}` : (overnight ? `${endValue} (+1)` : endValue)
+                                  timeLabel = `${startValue} – ${endLabel}`
+                                  titleWindow = `${startValue} – ${endValue}`
+                                }
+                                const metaParts: string[] = []
+                                if(ov.kind) metaParts.push(ov.kind)
+                                if(ov.notes) metaParts.push(ov.notes)
+                                const metaLabel = metaParts.join(' • ')
+                                const recurrenceLabel = ov.recurrence?.rule === 'weekly'
+                                  ? `Weekly${ov.recurrence.until ? ` until ${ov.recurrence.until}` : ''}`
+                                  : null
+                                const titleParts = [
+                                  disp,
+                                  `${occurrenceStart} → ${occurrenceEnd}`,
+                                  titleWindow,
+                                  metaLabel || null,
+                                  recurrenceLabel
+                                ].filter(Boolean)
+                                return (
+                                  <div key={`${ov.id}:${occurrenceStart}:${idx}`} className={["rounded-md border px-2 py-2", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-900 shadow-sm"].join(' ')} title={titleParts.join(' • ')}>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium truncate">{disp}</span>
+                                      <span className="text-[11px] opacity-70 shrink-0">{timeLabel}</span>
+                                    </div>
+                                    {metaLabel && <div className="text-[11px] opacity-70 truncate mt-1">{metaLabel}</div>}
+                                    {recurrenceLabel && <div className="text-[10px] uppercase tracking-wide opacity-60 mt-1">{recurrenceLabel}</div>}
+                                  </div>
+                                )
+                              })
+                            )}
                           </div>
                         </div>
                       )
                     })}
                   </div>
-                )
-              })()}
+                </div>
+              ))}
             </div>
           </div>
           </div>
