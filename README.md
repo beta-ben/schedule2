@@ -65,7 +65,7 @@ Key actions
 Publishing
 - Discard: abandon working changes and return to the live schedule.
 - Publish: write current working data to live.
-Note: Named “Drafts” tools were removed. We’re migrating to a proposal workflow; unpublished changes are autosaved locally only. You can now create proposals from working changes, review diffs, approve/reject, and merge approved proposals to live.
+Note: When the Stage flow is enabled, Shifts editing happens in a dedicated Stage workspace. Local draft autosave is disabled—stage your shift edits, compare against live, and publish when ready.
 
 ## Postures tab (Tasks & calendar assignments)
 

@@ -37,6 +37,10 @@ export default function AgentWeekLinear({
   onToggleSelect,
   avoidLabelOverlap,
   warningTipsById,
+  onDoubleClickShift,
+  dimUnhighlighted = false,
+  highlightColor,
+  chipTone = 'default',
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -75,6 +79,14 @@ export default function AgentWeekLinear({
   avoidLabelOverlap?: boolean
   // Optional: shift-level compliance tooltip lines keyed by shift id
   warningTipsById?: Record<string, string[]>
+  // Double-click handler to request inline editing for a shift
+  onDoubleClickShift?: (id: string)=>void
+  // When true, lower the opacity for non-highlighted shifts
+  dimUnhighlighted?: boolean
+  // Optional override for highlight chip color
+  highlightColor?: { light: string; dark: string }
+  // Visual tone (default/live ghost/stage overlay)
+  chipTone?: 'default' | 'stage' | 'ghost'
 }){
   // Detect theme from root [data-theme] for Night/Noir/Prism adjustments
   const theme: 'system'|'light'|'dark'|'night'|'noir'|'prism' = (()=>{
@@ -465,7 +477,15 @@ export default function AgentWeekLinear({
             const isResizingThis = drag && (drag.mode==='resize-start' || drag.mode==='resize-end') && drag.id===g.id
             const delta = (isAllDragging || isThisDragging || isMultiDragMember) ? drag!.delta : 0
             const border = dark?'#52525b':'#94a3b8'
-            const bg = dark? 'rgba(59,130,246,0.64)' : 'rgba(59,130,246,0.625)'
+            const isStageTone = chipTone==='stage'
+            const isGhostTone = chipTone==='ghost'
+            const baseBgDefault = dark? 'rgba(59,130,246,0.64)' : 'rgba(59,130,246,0.625)'
+            let bg = baseBgDefault
+            if(isStageTone){
+              bg = dark ? 'rgba(245,158,11,0.65)' : 'rgba(251,191,36,0.65)'
+            }else if(isGhostTone){
+              bg = dark ? 'rgba(96,165,250,0.28)' : 'rgba(96,165,250,0.24)'
+            }
             // Label times based on original shift minutes-of-day, adjusted by delta
             const mod1440 = (v:number)=> ((v % 1440) + 1440) % 1440
             const groupStartMin = mod1440(g.startMin + delta)
@@ -486,7 +506,7 @@ export default function AgentWeekLinear({
               const modT = (v:number)=> ((v % totalMins) + totalMins) % totalMins
               const a = modT(newStart)
               const b = modT(newEnd)
-              const mkPart = (pLeft:number, pRight:number, partKey:string, showStart:boolean, showEnd:boolean, opts?: { forceStartOuter?: boolean; forceEndOuter?: boolean })=>{
+              const mkPart = (pLeft:number, pRight:number, partKey:string, showStart:boolean, showEnd:boolean, opts?: { forceStartOuter?: boolean; forceEndOuter?: boolean; pieceIndex?: number; pieceCount?: number })=>{
                 const leftPct = (pLeft/totalMins)*100
                 const widthPct = ((pRight - pLeft)/totalMins)*100
                 const pxW = (pRight - pLeft)/totalMins * containerW
@@ -500,11 +520,20 @@ export default function AgentWeekLinear({
                     ? highlightIds.has(g.id)
                     : (highlightIds as string[]).includes(g.id)
                 )
+  const defaultHighlight = dark ? 'rgba(251,146,60,0.78)' : 'rgba(251,146,60,0.72)'
+  let highlightTone = highlightColor ? (dark ? highlightColor.dark : highlightColor.light) : defaultHighlight
+  if(!highlightColor){
+    if(isStageTone){
+      highlightTone = dark ? 'rgba(74,222,128,0.95)' : 'rgba(22,163,74,0.95)'
+    }else if(isGhostTone){
+      highlightTone = dark ? 'rgba(147,197,253,0.6)' : 'rgba(96,165,250,0.5)'
+    }
+  }
   const chipBg = isNight
     ? '#050505'
     : isNoir
       ? (dark ? '#111111' : '#f5f5f5')
-      : (isHi ? (dark? 'rgba(251,146,60,0.78)':'rgba(251,146,60,0.72)') : bg)
+      : (isHi ? highlightTone : bg)
                 const isSel = !!selectedIds && (
                   selectedIds instanceof Set
                     ? selectedIds.has(g.id)
@@ -530,8 +559,9 @@ export default function AgentWeekLinear({
                     ? (dark ? 'rgba(245,245,245,0.55)' : 'rgba(34,34,34,0.45)')
                     : 'rgba(234,179,8,0.95)'
                 const ringSelected = isSel ? `0 0 0 2px ${selectedRingColor}` : ''
-                const boxShadow = [ringHover, ringSelected].filter(Boolean).join(', ')
-                const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || (showEdgeTimeTagsForHighlights && (isHi || isComplianceHi)) || isSel
+                let boxShadow = [ringHover, ringSelected].filter(Boolean).join(', ')
+                const tagByHighlight = (showEdgeTimeTagsForHighlights && (isHi || isComplianceHi))
+                const showTags = alwaysShowTimeTags || (isAllDragging || isThisDragging) || isHover || tagByHighlight || isSel
                 // Collision avoidance for outer labels when requested
                 let allowStartTag = showTags && showStart
                 let allowEndTag = showTags && showEnd
@@ -540,6 +570,22 @@ export default function AgentWeekLinear({
                   : isNoir
                     ? (dark ? 'bg-black text-white' : 'bg-white text-black border border-black/20')
                     : (dark ? 'bg-black/70 text-white' : 'bg-black/70 text-white')
+                const pieceIndex = opts?.pieceIndex ?? 0
+                const pieceCount = opts?.pieceCount ?? 1
+                const isFirstPiece = pieceIndex === 0
+                const isLastPiece = pieceIndex === (pieceCount - 1)
+                const isEarliestSeg = seg.startAbs === g.earliest
+                const isLatestSeg = seg.endAbs === g.latest
+                if(allowStartTag){
+                  if(!isEarliestSeg || !isFirstPiece){
+                    allowStartTag = false
+                  }
+                }
+                if(allowEndTag){
+                  if(!isLatestSeg || !isLastPiece){
+                    allowEndTag = false
+                  }
+                }
                 // If the chip piece is extremely narrow (< approx 2 label widths), avoid showing both tags which can jitter
                 // When alwaysShowTimeTags is on, or the user is actively hovering/dragging/has selected the shift,
                 // prefer keeping both even if narrow for clearer feedback.
@@ -559,16 +605,19 @@ export default function AgentWeekLinear({
                   allowStartTag = true
                   allowEndTag = true
                 }
-                // Only suppress tags for overlap when not explicitly forcing all labels
-                if(avoidLabelOverlap && !alwaysShowTimeTags){
+                // Only suppress tags for overlap when not explicitly forcing all labels.
+                // Apply collision avoidance for highlight-driven labels as well, but do not
+                // override interactive states (hover/drag/selection).
+                const shouldAvoid = (avoidLabelOverlap || tagByHighlight) && !priorityShowBoth
+                if(shouldAvoid && !alwaysShowTimeTags){
                   const chipLeftPx = (pLeft/totalMins) * containerW
                   const chipRightPx = (pRight/totalMins) * containerW
                   // Reset trackers on wrap (monotonicity break)
                   if(chipLeftPx < lastStartEdgePx) lastStartEdgePx = -Infinity
                   if(chipRightPx < (lastEndRightPx - LABEL_W)) lastEndRightPx = -Infinity
 
-                  const wantsOuterStart = (opts?.forceStartOuter || forceOuterTimeTags)
-                  const wantsOuterEnd = (opts?.forceEndOuter || forceOuterTimeTags)
+                  const wantsOuterStart = (opts?.forceStartOuter || forceOuterTimeTags || tagByHighlight)
+                  const wantsOuterEnd = (opts?.forceEndOuter || forceOuterTimeTags || tagByHighlight)
                   // Special case: if a piece touches the band edge due to wrap (left==0 or right==T),
                   // keep the corresponding outer tag even if it would otherwise be suppressed.
                   const atBandLeft = pLeft === 0
@@ -636,8 +685,6 @@ export default function AgentWeekLinear({
                       const base: React.CSSProperties = {
                         left: `${leftPct}%`,
                         width: `${widthPct}%`,
-                        // No borders for dense look; rely on hover outline only
-                        boxShadow: boxShadow || undefined,
                       }
                       if(isPrism){
                         // Animated darker gradient with multiply for readability, stagger per group
@@ -661,9 +708,20 @@ export default function AgentWeekLinear({
                         base.animation = 'prismChip 12s ease-in-out infinite'
                         base.animationDelay = `${-((h % 7) * 0.33)}s`
                       }else{
-                        // Compliance highlight takes precedence, use red tones; otherwise modified highlight uses orange.
+                        // Compliance highlight takes precedence, use red tones; otherwise use computed chip tone.
                         const compBg = isComplianceHi ? (isNight ? 'rgba(239,68,68,0.62)' : (dark ? 'rgba(239,68,68,0.78)' : 'rgba(239,68,68,0.72)')) : null
                         ;(base as any).background = compBg || chipBg
+                      }
+                      if(isStageTone){
+                        boxShadow = [boxShadow, '0 6px 14px rgba(0,0,0,0.45)'].filter(Boolean).join(', ')
+                        base.border = `1px solid ${dark ? 'rgba(250,204,21,0.35)' : 'rgba(245,158,11,0.4)'}`
+                      }else if(isGhostTone){
+                        base.opacity = Math.min(typeof base.opacity === 'number' ? base.opacity : 1, 0.4)
+                        base.mixBlendMode = dark ? 'screen' : 'multiply'
+                      }
+                      base.boxShadow = boxShadow || undefined
+                      if(dimUnhighlighted && !isHi && !isComplianceHi){
+                        base.opacity = 0.35
                       }
                       return base
                     })()}
@@ -677,6 +735,7 @@ export default function AgentWeekLinear({
                     onMouseDown={draggable ? (e)=>beginSingleDrag(g.id, e) : undefined}
                     onMouseEnter={()=>{ setHoverGroupId(g.id); setHoverBand(false) }}
                     onMouseLeave={()=> { setHoverGroupId(null); setHoverBand(true) }}
+                    onDoubleClick={(e)=>{ e.stopPropagation(); onDoubleClickShift?.(g.id) }}
                     onClick={(e)=>{
                       e.stopPropagation()
                       if(didDragRef.current) return
@@ -775,14 +834,14 @@ export default function AgentWeekLinear({
                   const endGateP0   = isEndSeg   || p0R === totalMins
                   const startGateP1 = isStartSeg || p1L === 0
                   return [
-                    mkPart(p0L, p0R, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGateP0, { forceEndOuter: true }),
-                    mkPart(p1L, p1R, `${seg.key}-p1`, /*showStart*/ startGateP1, /*showEnd*/ false, { forceStartOuter: true })
+                    mkPart(p0L, p0R, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGateP0, { forceEndOuter: true, pieceIndex: 0, pieceCount: 2 }),
+                    mkPart(p1L, p1R, `${seg.key}-p1`, /*showStart*/ startGateP1, /*showEnd*/ false, { forceStartOuter: true, pieceIndex: 1, pieceCount: 2 })
                   ]
                 }else{
                   // Entire remainder fits before band end
                   const p0L = a, p0R = a+lenFirst
                   const endGateP0 = isEndSeg || p0R === totalMins
-                  return [ mkPart(p0L, p0R, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGateP0, { forceEndOuter: true }) ]
+                  return [ mkPart(p0L, p0R, `${seg.key}-p0`, /*showStart*/ false, /*showEnd*/ endGateP0, { forceEndOuter: true, pieceIndex: 0, pieceCount: 1 }) ]
                 }
               }
             })

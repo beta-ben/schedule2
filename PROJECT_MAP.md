@@ -10,7 +10,7 @@
 ## Boot Flow
 1. `src/main.tsx` mounts `<App />` into `#root` and pulls in global CSS.
 2. `src/App.tsx` manages auth gating, timezone/week selection, data fetch (`cloudGet`), local draft state, and routing between Schedule, Manage V2, and Teams views via hash.
-3. Manage view delegates to `src/components/v2/WeekEditor.tsx` plus supporting components for agents, shifts, postures, PTO, overrides, and proposal workflows.
+3. Manage view delegates to `src/components/v2/WeekEditor.tsx` plus supporting components for agents, shifts, postures, PTO, overrides, and the Stage publishing flow.
 4. Schedule view (`src/pages/SchedulePage.tsx`) renders read-only ribbons with slimline pane toggles; Teams view aggregates meeting cohorts.
 
 ## Data & State
@@ -30,7 +30,7 @@
 
 ### Pages (`src/pages/`)
 - `SchedulePage.tsx`: Read-only weekly schedule view with slimline toggle events and localStorage persistence for pane state.
-- `ManageV2Page.tsx`: Primary admin editor with tabs (Agents, Shifts, Postures, PTO & Overrides, Proposals), undo stacks, publish flow, and diagnostics.
+- `ManageV2Page.tsx`: Primary admin editor with tabs (Agents, Shifts, Postures, PTO & Overrides, Integrations, Clock & Breaks), undo stacks, Stage tools, publish flow, and diagnostics.
 - `ManageEditor.tsx` / `ManagePage.tsx`: Legacy manage UI retained for reference/migration.
 - `TeamsPage.tsx`: Team-focused overview leveraging meeting cohorts and overrides.
 
@@ -39,7 +39,7 @@
 - `src/components/v2/WeekEditor.tsx`: Coordinates Manage V2 tabs, local state, and dialog flows; imports many v2 components.
 - `src/components/v2/AgentDetailsPanel.tsx`, `WeekEditor.tsx`, `DeleteAllShiftsModals.tsx`: Manage V2 editing widgets and modals.
 - `src/components/AllAgentsWeekRibbons.tsx`, `AgentWeekGrid.tsx`, `DayGrid.tsx`: Schedule ribbons with drag, sort, and selection features.
-- `src/components/CoverageHeatmap.tsx`, `WeeklyPTOCalendar.tsx`, `ProposalDiffVisualizer.tsx`, `TaskConfigPanel.tsx`: Supporting visuals for coverage, PTO, diffing proposals, and task CRUD.
+- `src/components/CoverageHeatmap.tsx`, `WeeklyPTOCalendar.tsx`, `StageDiffPreview.tsx`, `TaskConfigPanel.tsx`: Supporting visuals for coverage, PTO, staging diffs, and task CRUD.
 - `src/components/PostureToday.tsx`, `UpNext.tsx`: Dashboard-style summaries for live schedule views.
 
 ### Lib & Domain

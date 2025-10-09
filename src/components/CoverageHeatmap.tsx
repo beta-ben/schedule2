@@ -11,6 +11,7 @@ export default function CoverageHeatmap({
   visibleAgentNames,
   visibleDays = 7,
   scrollChunk = 0,
+  headerRight,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -19,6 +20,7 @@ export default function CoverageHeatmap({
   visibleAgentNames: string[]
   visibleDays?: number
   scrollChunk?: number
+  headerRight?: React.ReactNode
 }){
   // Collapsed state (persisted)
   const [collapsed, setCollapsed] = React.useState<boolean>(()=>{
@@ -110,7 +112,6 @@ export default function CoverageHeatmap({
 
   const CELL_H = 7 // px (slightly taller for visibility)
   const GAP_Y = 1
-  const HEADER_H = 18
   // Name column width (to align heatmap under the schedule scroller)
   const [nameColPx, setNameColPx] = React.useState<number>(()=>{
     try{
@@ -146,8 +147,8 @@ export default function CoverageHeatmap({
   return (
     <div className={["sticky bottom-0 z-30", dark?"bg-neutral-950/92":"bg-white/95","backdrop-blur","border-t", dark?"border-neutral-800":"border-neutral-200"].join(' ')}>
       <div className="px-2 py-1.5">
-        <div className="relative h-6">
-          <div className={["absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-2 text-xs font-medium", dark?"text-neutral-200":"text-neutral-700"].join(' ')}>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className={["flex items-center gap-2 text-xs font-medium", dark?"text-neutral-200":"text-neutral-700"].join(' ')}>
             <span>Coverage</span>
             <button
               onClick={()=> setCollapsed(v=>!v)}
@@ -185,6 +186,11 @@ export default function CoverageHeatmap({
               )
             })()}
           </div>
+          {headerRight && (
+            <div className="flex items-center gap-2 text-[10px] opacity-80 ml-auto">
+              {headerRight}
+            </div>
+          )}
         </div>
         {!collapsed && (
           <div className="flex items-stretch gap-1 mt-1">

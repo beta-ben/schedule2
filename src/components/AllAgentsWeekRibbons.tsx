@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import AgentWeekLinear from './AgentWeekLinear'
 import type { PTO, Shift, Task } from '../types'
 import type { CalendarSegment } from '../lib/utils'
@@ -22,14 +22,21 @@ export default function AllAgentsWeekRibbons({
   onDragAll,
   onDragShift,
   onResizeShift,
+  onDoubleClickShift,
   sortMode = 'start',
   sortDir = 'asc',
   highlightIds,
   complianceHighlightIds,
+  highlightColor,
+  fixedOrder,
+  onOrderChange,
+  chipTone = 'default',
   selectedIds,
   onToggleSelect,
   complianceTipsByShiftId,
   showNameColumn = true,
+  showShiftLabels = true,
+  dimUnhighlighted = false,
 }:{
   dark: boolean
   tz: { id:string; label:string; offset:number }
@@ -45,14 +52,21 @@ export default function AllAgentsWeekRibbons({
   onDragAll?: (name:string, deltaMinutes:number)=>void
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
   onResizeShift?: (name:string, id:string, edge:'start'|'end', deltaMinutes:number)=>void
+  onDoubleClickShift?: (id: string)=>void
   sortMode?: 'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'
   sortDir?: 'asc'|'desc'
   highlightIds?: Set<string> | string[]
   complianceHighlightIds?: Set<string> | string[]
+  highlightColor?: { light: string; dark: string }
+  fixedOrder?: string[]
+  onOrderChange?: (order: string[])=>void
+  chipTone?: 'default' | 'stage' | 'ghost'
   selectedIds?: Set<string> | string[]
   onToggleSelect?: (id:string)=>void
   complianceTipsByShiftId?: Record<string, string[]>
   showNameColumn?: boolean
+  showShiftLabels?: boolean
+  dimUnhighlighted?: boolean
 }){
   // Hover state for global time indicator (across all agents)
   const [hoverX, setHoverX] = React.useState<number|null>(null)
@@ -82,17 +96,26 @@ export default function AllAgentsWeekRibbons({
     try{ window.dispatchEvent(new CustomEvent('schedule:namecol', { detail: { px: nameColPx } })) }catch{}
   }, [nameColPx])
   const nameColClass = "shrink-0 text-left pl-1 text-sm truncate"
-  const agentNamesSorted = useMemo(()=>{
+  const computedOrder = useMemo(()=>{
     const names = agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' '))
     const tzShifts = convertShiftsToTZ(shifts, tz.offset)
     const dayIndex = new Map(DAYS.map((d,i)=>[d,i]))
+    const offsetMin = tz.offset * 60
+    const wrap = (value: number, modBy: number)=> ((value % modBy) + modBy) % modBy
+    const WEEK_MIN = 7 * 1440
+    const localStartAbs = (shift: Shift)=>{
+      const idx = dayIndex.get(shift.day as any)
+      if(idx == null) return Infinity
+      const startMin = toMin(shift.start)
+      if(!Number.isFinite(startMin)) return Infinity
+      const abs = idx*1440 + startMin + offsetMin
+      return wrap(abs, WEEK_MIN)
+    }
     const earliestStartAbs = (name: string)=>{
       let minAbs = Infinity
-      for(const s of tzShifts){
+      for(const s of shifts){
         if(s.person !== name) continue
-        const di = dayIndex.get(s.day as any) ?? -1
-        if(di < 0) continue
-        const abs = di*1440 + toMin(s.start)
+        const abs = localStartAbs(s)
         if(abs < minAbs) minAbs = abs
       }
       return minAbs
@@ -130,10 +153,12 @@ export default function AllAgentsWeekRibbons({
       for(const s of tzShifts){ if(s.person===name){ const di = dayIndex.get(s.day as any) ?? Infinity; if(di < min) min = di } }
       return min
     }
-    const rows = names.map(n=>({
-      name: n,
-      startKey: earliestStartAbs(n),
-      startHas: Number.isFinite(earliestStartAbs(n)),
+    const rows = names.map(n=>{
+      const startKey = earliestStartAbs(n)
+      return {
+        name: n,
+        startKey,
+        startHas: Number.isFinite(startKey) && startKey < Infinity,
       endKey: latestEndAbs(n),
       endHas: Number.isFinite(latestEndAbs(n)),
       totalKey: totalMinutes(n),
@@ -143,7 +168,8 @@ export default function AllAgentsWeekRibbons({
       tzHas: !!tzOf(n),
       dayKey: firstDayIdx(n),
       dayHas: Number.isFinite(firstDayIdx(n)),
-    }))
+      }
+    })
     const byName = (a:any,b:any)=> a.name.localeCompare(b.name)
     const sign = sortDir==='asc' ? 1 : -1
     if(sortMode==='name') return rows.sort((a,b)=> sign * byName(a,b)).map(x=> x.name)
@@ -187,6 +213,24 @@ export default function AllAgentsWeekRibbons({
       return cmp!==0 ? cmp : byName(a,b)
     }).map(x=> x.name)
   }, [agents, shifts, tz.offset, sortMode, sortDir])
+
+  const agentNamesSorted = React.useMemo(()=>{
+    if(Array.isArray(fixedOrder) && fixedOrder.length){
+      const nameSet = new Set(agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' ')))
+      const normalized = fixedOrder.filter(nameSet.has, nameSet)
+      const extras = agents
+        .map(a=> [a.firstName, a.lastName].filter(Boolean).join(' '))
+        .filter(name=> !normalized.includes(name))
+      return normalized.concat(extras)
+    }
+    return computedOrder
+  }, [computedOrder, fixedOrder, agents])
+
+  useEffect(()=>{
+    if(!fixedOrder && onOrderChange){
+      onOrderChange(computedOrder)
+    }
+  }, [computedOrder, fixedOrder, onOrderChange])
   // Full names are shown; we still compute titles for hover via name itself
 
   // Visible-day scaling: show fewer days by widening content so it's horizontally scrollable
@@ -301,14 +345,14 @@ export default function AllAgentsWeekRibbons({
             {/* Ribbons list */}
             {agentNamesSorted.length>0 && agentNamesSorted.map(name=> (
               <div key={name} className="py-0 m-0">
-            <AgentWeekLinear
-              dark={dark}
-              tz={tz}
-              weekStart={weekStart}
-              agent={name}
-              shifts={shifts}
-              pto={pto}
-              tasks={tasks}
+                <AgentWeekLinear
+                  dark={dark}
+                  tz={tz}
+                  weekStart={weekStart}
+                  agent={name}
+                  shifts={shifts}
+                  pto={pto}
+                  tasks={tasks}
               calendarSegs={(calendarSegs||[]).flatMap(cs=>{
                 const sameDay = !(cs as any).endDay || (cs as any).endDay === cs.day
                 if(sameDay){ return [cs] }
@@ -322,21 +366,25 @@ export default function AllAgentsWeekRibbons({
               onDragAll={(d)=> onDragAll?.(name, d)}
               onDragShift={(id,d)=> onDragShift?.(name, id, d)}
               onResizeShift={(id, edge, d)=> onResizeShift?.(name, id, edge, d)}
-              showDayLabels={false}
-              showWeekLabel={false}
-              framed={false}
-              showNowLabel={false}
-              showShiftLabels={true}
-              bandHeight={BAND_H}
+                  showDayLabels={false}
+                  showWeekLabel={false}
+                  framed={false}
+                  showNowLabel={false}
+                  showShiftLabels={showShiftLabels}
+                  bandHeight={BAND_H}
               alwaysShowTimeTags={showAllTimeLabels}
               forceOuterTimeTags={showAllTimeLabels}
               avoidLabelOverlap={showAllTimeLabels}
               highlightIds={highlightIds}
               complianceHighlightIds={complianceHighlightIds}
+              highlightColor={highlightColor}
+              chipTone={chipTone}
+              onDoubleClickShift={onDoubleClickShift}
               showEdgeTimeTagsForHighlights={true}
               selectedIds={selectedIds}
               onToggleSelect={onToggleSelect}
               warningTipsById={complianceTipsByShiftId}
+              dimUnhighlighted={dimUnhighlighted}
             />
           </div>
         ))}

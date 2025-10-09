@@ -269,116 +269,6 @@ export async function ensureSiteSession(password?: string){
   return false
 }
 
-export async function cloudCreateProposal(input: {
-  title?: string;
-  description?: string;
-  weekStart?: string;
-  tzId?: string;
-  baseUpdatedAt?: string;
-  shifts?: Shift[];
-  pto?: PTO[];
-  overrides?: Override[];
-  calendarSegs?: CalendarSegment[];
-  agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>;
-}): Promise<{ ok: boolean; id?: string; status?: number; error?: string }>{
-  if(!(await ensureV2Support())) return { ok:false, status: 404, error: 'unsupported' }
-  try{
-    const csrf = getCsrfToken()
-    const headers: Record<string,string> = { 'Content-Type':'application/json' }
-    if(csrf) headers['x-csrf-token'] = csrf
-    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals`,{
-      method:'POST', credentials:'include', headers, body: JSON.stringify(input)
-    })
-    let id: string | undefined
-    try{ const j = await r.clone().json(); if(j && typeof j.id==='string') id = j.id }catch{}
-    if(r.ok) return { ok:true, id, status:r.status }
-    if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
-    return { ok:false, status:r.status }
-  }catch{
-    markV2Unsupported()
-    return { ok:false }
-  }
-}
-
-export async function cloudListProposals(): Promise<{ ok: boolean; proposals?: Array<{ id:string; title?:string; status:string; createdAt:number; updatedAt:number; weekStart?:string; tzId?:string }>; status?: number }>{
-  if(!(await ensureV2Support())) return { ok:false, status: 404 }
-  try{
-    const csrf = getCsrfToken()
-    const headers: Record<string,string> = {}
-    if(csrf) headers['x-csrf-token'] = csrf
-    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
-    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals`,{ method:'GET', credentials:'include', headers })
-    if(!r.ok){
-      if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
-      return { ok:false, status: r.status }
-    }
-    const j = await r.json()
-    return { ok:true, proposals: Array.isArray(j?.proposals) ? j.proposals : [] }
-  }catch{
-    markV2Unsupported()
-    return { ok:false }
-  }
-}
-
-export async function cloudGetProposal(id: string): Promise<{ ok: boolean; proposal?: any; status?: number }>{
-  if(!(await ensureV2Support())) return { ok:false, status: 404 }
-  try{
-    const csrf = getCsrfToken()
-    const headers: Record<string,string> = {}
-    if(csrf) headers['x-csrf-token'] = csrf
-    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
-    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}`,{ method:'GET', credentials:'include', headers })
-    if(!r.ok){
-      if(isV2UnsupportedStatus(r.status)) markV2Unsupported()
-      return { ok:false, status: r.status }
-    }
-    const j = await r.json()
-    return { ok:true, proposal: j?.proposal }
-  }catch{
-    markV2Unsupported()
-    return { ok:false }
-  }
-}
-
-export async function cloudUpdateProposal(id: string, input: { status?: 'open'|'in_review'|'approved'|'rejected'|'closed'|'merged'; title?: string; description?: string }): Promise<{ ok: boolean; status?: number }>{
-  if(!(await ensureV2Support())) return { ok:false, status: 404 }
-  try{
-    const csrf = getCsrfToken()
-    const headers: Record<string,string> = { 'Content-Type':'application/json' }
-    if(csrf) headers['x-csrf-token'] = csrf
-    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    const r = await fetch(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}`,{
-      method:'PATCH', credentials:'include', headers, body: JSON.stringify(input||{})
-    })
-    return { ok: r.ok, status: r.status }
-  }catch{ return { ok:false } }
-}
-
-export async function cloudMergeProposal(id: string, opts?: { force?: boolean }): Promise<{ ok: boolean; updatedAt?: string; status?: number; error?: string }>{
-  if(!(await ensureV2Support())) return { ok:false, status: 404 }
-  try{
-    const csrf = getCsrfToken()
-    const headers: Record<string,string> = {}
-    if(csrf) headers['x-csrf-token'] = csrf
-    if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
-    if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
-    const url = new URL(`${API_BASE}${API_PREFIX}/v2/proposals/${encodeURIComponent(id)}/merge`, window.location.origin)
-    if(opts?.force) url.searchParams.set('force','1')
-    const r = await fetch(url.toString(),{ method:'POST', credentials:'include', headers })
-    let updatedAt: string | undefined
-    let error: string | undefined
-    try{
-      const j = await r.clone().json()
-      if(j && typeof j.updatedAt==='string') updatedAt = j.updatedAt
-      if(j && typeof j.error==='string') error = j.error
-    }catch{}
-    return { ok: r.ok, status: r.status, updatedAt, error }
-  }catch{ return { ok:false } }
-}
-
 export type ZoomConnectionSummary = {
   id: string
   zoomUserId: string
@@ -449,6 +339,37 @@ export async function getZoomConnections(): Promise<{ ok: boolean; connections: 
   }catch{
     return { ok:false, connections: [] }
   }
+}
+
+// Proposals API was removed upstream; provide benign fallbacks so legacy UI still compiles.
+export async function cloudCreateProposal(_: {
+  title: string
+  weekStart: string
+  tzId: string
+  shifts: Shift[]
+  pto: PTO[]
+  overrides: Override[]
+  calendarSegs?: CalendarSegment[]
+  agents?: ReturnType<typeof mapAgentsToPayloads>
+  baseUpdatedAt?: string
+}): Promise<{ ok: boolean; status?: number; id?: string }> {
+  return { ok: false, status: 501 }
+}
+
+export async function cloudListProposals(): Promise<{ ok: boolean; status?: number; proposals?: any[] }> {
+  return { ok: false, status: 501, proposals: [] }
+}
+
+export async function cloudGetProposal(_: string): Promise<{ ok: boolean; status?: number; proposal?: any }> {
+  return { ok: false, status: 501 }
+}
+
+export async function cloudUpdateProposal(_: string, __: Record<string, unknown>): Promise<{ ok: boolean; status?: number }> {
+  return { ok: false, status: 501 }
+}
+
+export async function cloudMergeProposal(_: string, __?: { force?: boolean }): Promise<{ ok: boolean; status?: number; error?: string }> {
+  return { ok: false, status: 501, error: 'proposals_disabled' }
 }
 
 export async function deleteZoomConnection(id: string): Promise<{ ok: boolean; status?: number }>{
