@@ -1,4 +1,5 @@
 import type { PTO, Shift, Override } from '../types'
+import type { StageDoc, StageKey, LiveDoc as StageLiveDoc } from '../domain/stage'
 import type { CalendarSegment } from './utils'
 import { mapAgentsToPayloads } from './agents'
 
@@ -20,6 +21,8 @@ let V2_SUPPORT_PROMISE: Promise<boolean> | null = null
 
 function markV2Unsupported(){ V2_SUPPORT = false }
 function isV2UnsupportedStatus(status?: number){ return typeof status === 'number' && V2_UNSUPPORTED_STATUSES.has(status) }
+const STAGE_UNSUPPORTED_STATUSES = new Set([404, 405, 501])
+function isStageUnsupportedStatus(status?: number){ return typeof status === 'number' && STAGE_UNSUPPORTED_STATUSES.has(status) }
 async function ensureV2Support(): Promise<boolean>{
   if(OFFLINE) return false
   if(V2_SUPPORT === true) return true
@@ -338,6 +341,280 @@ export async function getZoomConnections(): Promise<{ ok: boolean; connections: 
     return { ok:true, connections: normalized }
   }catch{
     return { ok:false, connections: [] }
+  }
+}
+
+function ensureStagePayload(doc: StageDoc): StageDoc{
+  return {
+    ...doc,
+    shifts: Array.isArray(doc.shifts) ? doc.shifts : [],
+    pto: Array.isArray(doc.pto) ? doc.pto : [],
+    overrides: Array.isArray(doc.overrides) ? doc.overrides : [],
+    calendarSegs: Array.isArray(doc.calendarSegs) ? doc.calendarSegs : [],
+    agents: Array.isArray(doc.agents) ? doc.agents : undefined,
+  }
+}
+
+function makeStageReadHeaders(): Record<string,string>{
+  const headers: Record<string,string> = { accept: 'application/json' }
+  const csrf = getCsrfToken()
+  if(csrf) headers['x-csrf-token'] = csrf
+  if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
+  if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
+  return headers
+}
+
+function makeStageWriteHeaders(opts?: { ifMatch?: string }): { headers: Record<string,string>; hasAuth: boolean }{
+  const headers: Record<string,string> = { 'content-type': 'application/json' }
+  const csrf = getCsrfToken()
+  if(csrf) headers['x-csrf-token'] = csrf
+  if(ADMIN_SID_MEM) headers['x-admin-sid'] = ADMIN_SID_MEM
+  if(DEV_BEARER) headers['authorization'] = `Bearer ${DEV_BEARER}`
+  const ifMatch = opts?.ifMatch
+  if(ifMatch){
+    headers['if-match'] = ifMatch
+    headers['x-if-match'] = ifMatch
+  }
+  return { headers, hasAuth: !!csrf || !!DEV_BEARER }
+}
+
+async function readStageError(res: Response): Promise<string | undefined>{
+  try{
+    const ct = res.headers.get('content-type') || ''
+    if(ct.includes('application/json')){
+      const body = await res.json().catch(()=>null)
+      if(body && typeof body.error === 'string') return body.error
+      if(body && typeof body.message === 'string') return body.message
+    }else{
+      const text = await res.text().catch(()=>null)
+      if(text) return text.slice(0, 2000)
+    }
+  }catch{}
+  return undefined
+}
+
+async function safeStageJson<T = any>(res: Response): Promise<T | null>{
+  try{
+    if(res.status === 204 || res.status === 205) return null
+    const contentLength = res.headers.get('content-length')
+    if(contentLength && Number(contentLength) === 0) return null
+    const text = await res.text()
+    if(!text) return null
+    return JSON.parse(text) as T
+  }catch{
+    return null
+  }
+}
+
+export type StageGetResult = {
+  ok: boolean
+  status?: number
+  stage?: StageDoc | null
+  live?: StageLiveDoc | null
+  unsupported?: boolean
+}
+
+export type StageSaveResult = {
+  ok: boolean
+  status?: number
+  stage?: StageDoc
+  updatedAt?: string
+  conflict?: boolean
+  unsupported?: boolean
+  error?: string
+}
+
+export type StageResetResult = {
+  ok: boolean
+  status?: number
+  stage?: StageDoc
+  unsupported?: boolean
+  error?: string
+}
+
+export type StagePublishResult = {
+  ok: boolean
+  status?: number
+  conflict?: boolean
+  live?: StageLiveDoc | null
+  unsupported?: boolean
+  error?: string
+}
+
+export type StageSnapshotResult = {
+  ok: boolean
+  status?: number
+  id?: string
+  unsupported?: boolean
+  error?: string
+}
+
+export async function stageGet(key: StageKey): Promise<StageGetResult>{
+  if(OFFLINE){
+    return { ok:false, status: 503 }
+  }
+  try{
+    const params = new URLSearchParams()
+    if(key.weekStart) params.set('weekStart', key.weekStart)
+    if(key.tzId) params.set('tzId', key.tzId)
+    const query = params.toString()
+    const url = `${API_BASE}${API_PREFIX}/v2/stage${query ? `?${query}` : ''}`
+    const res = await fetch(url, { method:'GET', credentials:'include', headers: makeStageReadHeaders() })
+    if(isStageUnsupportedStatus(res.status)){
+      return { ok:false, status: res.status, unsupported: true }
+    }
+    if(!res.ok){
+      return { ok:false, status: res.status }
+    }
+    const json = await safeStageJson<Record<string, unknown>>(res)
+    const stage = (json && typeof json.stage === 'object') ? json.stage as StageDoc : null
+    const live = (json && typeof json.live === 'object') ? json.live as StageLiveDoc : null
+    return { ok:true, status: res.status, stage, live }
+  }catch{
+    return { ok:false }
+  }
+}
+
+export async function stageSave(doc: StageDoc, opts?: { ifMatch?: string }): Promise<StageSaveResult>{
+  if(OFFLINE){
+    try{ localStorage.setItem(`schedule_stage_last_save.${doc.weekStart}.${doc.tzId}`, JSON.stringify(doc)) }catch{}
+    return { ok:true, status: 200, stage: doc, updatedAt: doc.updatedAt }
+  }
+  const { headers, hasAuth } = makeStageWriteHeaders({ ifMatch: opts?.ifMatch })
+  if(!hasAuth){
+    return { ok:false, error: 'missing_csrf' }
+  }
+  try{
+    const payload = ensureStagePayload(doc)
+    const res = await fetch(`${API_BASE}${API_PREFIX}/v2/stage`, {
+      method:'PUT',
+      credentials:'include',
+      headers,
+      body: JSON.stringify(payload)
+    })
+    if(isStageUnsupportedStatus(res.status)){
+      return { ok:false, status: res.status, unsupported: true }
+    }
+    if(res.status === 409 || res.status === 412){
+      return { ok:false, status: res.status, conflict: true }
+    }
+    if(!res.ok){
+      return { ok:false, status: res.status, error: await readStageError(res) }
+    }
+    const json = await safeStageJson<Record<string, unknown>>(res)
+    const stage = (json && typeof json.stage === 'object') ? json.stage as StageDoc : undefined
+    const updatedAt = typeof json?.updatedAt === 'string' ? json.updatedAt : stage?.updatedAt
+    return { ok:true, status: res.status, stage: stage || (updatedAt ? { ...payload, updatedAt } : payload), updatedAt: updatedAt || payload.updatedAt }
+  }catch{
+    return { ok:false }
+  }
+}
+
+export async function stageReset(key: StageKey, live?: StageLiveDoc): Promise<StageResetResult>{
+  if(OFFLINE){
+    const now = new Date().toISOString()
+    const fallback: StageDoc = {
+      ...key,
+      updatedAt: now,
+      baseLiveUpdatedAt: live?.updatedAt,
+      shifts: Array.isArray(live?.shifts) ? live.shifts : [],
+      pto: Array.isArray(live?.pto) ? live.pto : [],
+      overrides: Array.isArray(live?.overrides) ? live.overrides : [],
+      calendarSegs: Array.isArray(live?.calendarSegs) ? live.calendarSegs : [],
+      agents: Array.isArray(live?.agents) ? live.agents : undefined,
+    }
+    return { ok:true, stage: fallback, status: 200 }
+  }
+  const { headers, hasAuth } = makeStageWriteHeaders()
+  if(!hasAuth){
+    return { ok:false, error: 'missing_csrf' }
+  }
+  try{
+    const body: Record<string, unknown> = { key }
+    if(live) body.live = live
+    const res = await fetch(`${API_BASE}${API_PREFIX}/v2/stage/reset`, {
+      method:'POST',
+      credentials:'include',
+      headers,
+      body: JSON.stringify(body)
+    })
+    if(isStageUnsupportedStatus(res.status)){
+      return { ok:false, status: res.status, unsupported: true }
+    }
+    if(!res.ok){
+      return { ok:false, status: res.status, error: await readStageError(res) }
+    }
+    const json = await safeStageJson<Record<string, unknown>>(res)
+    const stage = (json && typeof json.stage === 'object') ? json.stage as StageDoc : undefined
+    return { ok:true, status: res.status, stage }
+  }catch{
+    return { ok:false }
+  }
+}
+
+export async function stagePublish(doc: StageDoc, live?: StageLiveDoc, opts?: { force?: boolean; ifMatch?: string }): Promise<StagePublishResult>{
+  if(OFFLINE){
+    return { ok:true, status: 200, live: live ?? null }
+  }
+  const { headers, hasAuth } = makeStageWriteHeaders({ ifMatch: opts?.ifMatch })
+  if(!hasAuth){
+    return { ok:false, error: 'missing_csrf' }
+  }
+  try{
+    const body: Record<string, unknown> = { stage: ensureStagePayload(doc) }
+    if(live) body.live = live
+    if(opts?.force) body.force = true
+    const res = await fetch(`${API_BASE}${API_PREFIX}/v2/stage/publish`, {
+      method:'POST',
+      credentials:'include',
+      headers,
+      body: JSON.stringify(body)
+    })
+    if(isStageUnsupportedStatus(res.status)){
+      return { ok:false, status: res.status, unsupported: true }
+    }
+    if(res.status === 409 || res.status === 412){
+      return { ok:false, status: res.status, conflict: true }
+    }
+    if(!res.ok){
+      return { ok:false, status: res.status, error: await readStageError(res) }
+    }
+    const json = await safeStageJson<Record<string, unknown>>(res)
+    const liveDoc = (json && typeof json.live === 'object') ? json.live as StageLiveDoc : undefined
+    return { ok:true, status: res.status, live: liveDoc ?? null }
+  }catch{
+    return { ok:false }
+  }
+}
+
+export async function stageSnapshot(doc: StageDoc, title?: string): Promise<StageSnapshotResult>{
+  if(OFFLINE){
+    return { ok:true, status: 200, id: 'offline' }
+  }
+  const { headers, hasAuth } = makeStageWriteHeaders()
+  if(!hasAuth){
+    return { ok:false, error: 'missing_csrf' }
+  }
+  try{
+    const body: Record<string, unknown> = { stage: ensureStagePayload(doc) }
+    if(title) body.title = title
+    const res = await fetch(`${API_BASE}${API_PREFIX}/v2/stage/snapshot`, {
+      method:'POST',
+      credentials:'include',
+      headers,
+      body: JSON.stringify(body)
+    })
+    if(isStageUnsupportedStatus(res.status)){
+      return { ok:false, status: res.status, unsupported: true }
+    }
+    if(!res.ok){
+      return { ok:false, status: res.status, error: await readStageError(res) }
+    }
+    const json = await safeStageJson<Record<string, unknown>>(res)
+    const id = typeof json?.id === 'string' ? json.id : undefined
+    return { ok:true, status: res.status, id }
+  }catch{
+    return { ok:false }
   }
 }
 

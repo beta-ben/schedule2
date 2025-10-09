@@ -1,6 +1,6 @@
 import React from 'react'
 import type { StageDoc, StageKey, LiveDoc, StageStore } from '../domain/stage'
-import { makeLocalStageStore } from '../lib/stage/localStageStore'
+import { makeApiStageStore } from '../lib/stage/apiStageStore'
 import { cloudGet } from '../lib/api'
 
 type UseStageOpts = { weekStart: string; tzId: string; enabled?: boolean }
@@ -9,7 +9,7 @@ export function useStage(opts: UseStageOpts){
   const { weekStart, tzId, enabled } = opts
   const key = React.useMemo<StageKey>(()=> ({ weekStart, tzId }), [weekStart, tzId])
   const storeRef = React.useRef<StageStore | null>(null)
-  if(storeRef.current == null){ storeRef.current = makeLocalStageStore() }
+  if(storeRef.current == null){ storeRef.current = makeApiStageStore() }
   const store = storeRef.current
   const [loading, setLoading] = React.useState(false)
   const [stage, setStage] = React.useState<StageDoc | null>(null)
@@ -30,8 +30,14 @@ export function useStage(opts: UseStageOpts){
   React.useEffect(()=>{ reload() }, [reload])
 
   const save = React.useCallback(async(s: StageDoc)=>{
-    const res = await store.save(s, s.updatedAt)
-    if(res.ok){ setStage(prev=> prev ? { ...prev, updatedAt: res.updatedAt! } : prev) }
+    const res = await store.save(s, { ifMatch: s.updatedAt })
+    if(res.ok){
+      setStage(prev=>{
+        if(res.stage) return res.stage
+        if(prev && res.updatedAt) return { ...prev, updatedAt: res.updatedAt }
+        return prev
+      })
+    }
     return res
   }, [store])
 
@@ -51,4 +57,3 @@ export function useStage(opts: UseStageOpts){
 }
 
 export default useStage
-

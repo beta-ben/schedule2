@@ -7,7 +7,7 @@ type AgentRow = { firstName: string; lastName: string; tzId?: string }
 type DiffMode = 'overlay' | 'side'
 
 const LIVE_HIGHLIGHT = { light: 'rgba(59,130,246,0.55)', dark: 'rgba(96,165,250,0.75)' }
-const STAGE_HIGHLIGHT = { light: 'rgba(34,197,94,0.92)', dark: 'rgba(134,239,172,0.92)' }
+const STAGE_HIGHLIGHT = { light: 'rgba(251,146,60,0.85)', dark: 'rgba(253,186,116,0.88)' }
 
 type StageDiffPreviewProps = {
   dark: boolean
@@ -142,7 +142,7 @@ export default function StageDiffPreview(props: StageDiffPreviewProps){
         </div>
       </div>
       <div className="text-[10px] opacity-70">
-        Orange highlights show staged edits. Blue ghosts indicate removed or modified live shifts.
+        Purple highlights show staged edits. Blue ghosts indicate removed or modified live shifts.
       </div>
     </div>
   )

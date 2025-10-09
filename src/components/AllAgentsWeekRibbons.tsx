@@ -23,6 +23,7 @@ export default function AllAgentsWeekRibbons({
   onDragShift,
   onResizeShift,
   onDoubleClickShift,
+  onCreateShift,
   sortMode = 'start',
   sortDir = 'asc',
   highlightIds,
@@ -53,6 +54,7 @@ export default function AllAgentsWeekRibbons({
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
   onResizeShift?: (name:string, id:string, edge:'start'|'end', deltaMinutes:number)=>void
   onDoubleClickShift?: (id: string)=>void
+  onCreateShift?: (person: string, minutesFromWeekStart: number)=>void
   sortMode?: 'start'|'name'
   sortDir?: 'asc'|'desc'
   highlightIds?: Set<string> | string[]
@@ -375,8 +377,9 @@ export default function AllAgentsWeekRibbons({
               draggable={Boolean(onDragAll || onDragShift)}
               onDragAll={(d)=> onDragAll?.(name, d)}
               onDragShift={(id,d)=> onDragShift?.(name, id, d)}
-              onResizeShift={(id, edge, d)=> onResizeShift?.(name, id, edge, d)}
-                  showDayLabels={false}
+            onResizeShift={(id, edge, d)=> onResizeShift?.(name, id, edge, d)}
+              onDoubleClickEmpty={(minutes)=> onCreateShift?.(name, minutes)}
+              showDayLabels={false}
                   showWeekLabel={false}
                   framed={false}
                   showNowLabel={false}

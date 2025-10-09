@@ -98,6 +98,25 @@ export type Agent = {
 }
 export type ScheduleDoc = { schemaVersion: number; agents?: Agent[]; shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; updatedAt?: string; agentsIndex?: Record<string,string> }
 
+export type StageKey = { weekStart: string; tzId: string }
+export type StageDoc = StageKey & {
+  updatedAt: string
+  baseLiveUpdatedAt?: string
+  shifts: Shift[]
+  pto: PTO[]
+  overrides: Override[]
+  calendarSegs: CalendarSegment[]
+  agents?: Agent[]
+}
+export type StageLiveDoc = {
+  updatedAt?: string
+  shifts: Shift[]
+  pto: PTO[]
+  overrides?: Override[]
+  calendarSegs?: CalendarSegment[]
+  agents?: Agent[]
+}
+
 // Router
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -127,6 +146,11 @@ export default {
 
   if (req.method === 'GET' && path === '/api/schedule') return getSchedule(req, env, cors)
   if (req.method === 'POST' && path === '/api/schedule') return postSchedule(req, env, cors)
+  if (req.method === 'GET' && path === '/api/v2/stage') return getStageV2(req, env, cors)
+  if (req.method === 'PUT' && path === '/api/v2/stage') return putStageV2(req, env, cors)
+  if (req.method === 'POST' && path === '/api/v2/stage/reset') return resetStageV2(req, env, cors)
+  if (req.method === 'POST' && path === '/api/v2/stage/publish') return publishStageV2(req, env, cors)
+  if (req.method === 'POST' && path === '/api/v2/stage/snapshot') return snapshotStageV2(req, env, cors)
   // v2 (D1) read-only endpoints for canary/parity
   if (req.method === 'GET' && path === '/api/v2/agents') return getAgentsV2(req, env, cors)
   if (req.method === 'GET' && path === '/api/v2/shifts') return getShiftsV2(req, env, cors)
@@ -636,6 +660,221 @@ async function writeDoc(env: Env, doc: ScheduleDoc){
   }
 }
 
+function sanitizeWeekStart(value: string){
+  const trimmed = (value||'').trim()
+  if(/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  // Best-effort slice the first 10 chars to keep YYYY-MM-DD
+  if(trimmed.length >= 10) return trimmed.slice(0, 10)
+  return trimmed
+}
+
+function sanitizeTzId(value: string){
+  return (value||'').trim()
+}
+
+function stageStorageKey(key: StageKey){
+  const week = sanitizeWeekStart(key.weekStart || '')
+  const tz = sanitizeTzId(key.tzId || '')
+  const safeTz = tz.replace(/[^A-Za-z0-9_\-./@]/g, '_')
+  const identifier = `${week}::${safeTz || 'tz'}`
+  return `stage.${identifier}`
+}
+
+function cloneArrayDeep<T>(value: unknown): T[]{
+  if(!Array.isArray(value)) return []
+  try{
+    return JSON.parse(JSON.stringify(value)) as T[]
+  }catch{
+    return (value as T[]).map(item=>{
+      if(item && typeof item === 'object'){
+        return { ...(item as Record<string, unknown>) } as T
+      }
+      return item
+    })
+  }
+}
+
+function hydrateStageDoc(raw: any, key: StageKey, fallbackUpdatedAt?: string): StageDoc | null{
+  if(!raw || typeof raw !== 'object') return null
+  const weekStart = sanitizeWeekStart(raw.weekStart || key.weekStart)
+  const tzId = sanitizeTzId(raw.tzId || key.tzId)
+  if(!weekStart || !tzId) return null
+  const updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : (fallbackUpdatedAt || nowIso())
+  const baseLiveUpdatedAt = typeof raw.baseLiveUpdatedAt === 'string' ? raw.baseLiveUpdatedAt : undefined
+  const stage: StageDoc = {
+    weekStart,
+    tzId,
+    updatedAt,
+    baseLiveUpdatedAt,
+    shifts: cloneArrayDeep<Shift>(raw.shifts),
+    pto: cloneArrayDeep<PTO>(raw.pto),
+    overrides: cloneArrayDeep<Override>(raw.overrides),
+    calendarSegs: cloneArrayDeep<CalendarSegment>(raw.calendarSegs),
+    agents: Array.isArray(raw.agents) ? cloneArrayDeep<Agent>(raw.agents) : undefined
+  }
+  return stage
+}
+
+function normalizeStageDoc(input: any, key: StageKey, prev?: StageDoc | null): StageDoc{
+  const baseLiveUpdatedAt = typeof input?.baseLiveUpdatedAt === 'string'
+    ? input.baseLiveUpdatedAt
+    : (prev && typeof prev.baseLiveUpdatedAt === 'string' ? prev.baseLiveUpdatedAt : undefined)
+  const stamp = nowIso()
+  const merged = {
+    ...input,
+    weekStart: input?.weekStart || key.weekStart,
+    tzId: input?.tzId || key.tzId,
+    baseLiveUpdatedAt,
+    shifts: Array.isArray(input?.shifts) ? input.shifts : (prev?.shifts ?? []),
+    pto: Array.isArray(input?.pto) ? input.pto : (prev?.pto ?? []),
+    overrides: Array.isArray(input?.overrides) ? input.overrides : (prev?.overrides ?? []),
+    calendarSegs: Array.isArray(input?.calendarSegs) ? input.calendarSegs : (prev?.calendarSegs ?? []),
+    agents: Array.isArray(input?.agents) ? input.agents : (prev?.agents ?? []),
+    updatedAt: stamp
+  }
+  const next = hydrateStageDoc(merged, key, stamp)
+  if(!next) throw new Error('invalid_stage_doc')
+  next.updatedAt = stamp
+  return next
+}
+
+function toStageLiveDoc(doc: ScheduleDoc | null | undefined): StageLiveDoc | null{
+  if(!doc) return null
+  return {
+    updatedAt: doc.updatedAt,
+    shifts: cloneArrayDeep<Shift>(doc.shifts || []),
+    pto: cloneArrayDeep<PTO>(doc.pto || []),
+    overrides: cloneArrayDeep<Override>(doc.overrides || []),
+    calendarSegs: cloneArrayDeep<CalendarSegment>(doc.calendarSegs || []),
+    agents: cloneArrayDeep<Agent>(doc.agents || [])
+  }
+}
+
+function buildStageDocFromLive(key: StageKey, live: StageLiveDoc | ScheduleDoc | null | undefined): StageDoc{
+  const liveDoc = (live && 'schemaVersion' in (live as any)) ? toStageLiveDoc(live as ScheduleDoc) : (live as StageLiveDoc | null)
+  const data = {
+    weekStart: key.weekStart,
+    tzId: key.tzId,
+    baseLiveUpdatedAt: liveDoc?.updatedAt,
+    shifts: liveDoc?.shifts ?? [],
+    pto: liveDoc?.pto ?? [],
+    overrides: liveDoc?.overrides ?? [],
+    calendarSegs: liveDoc?.calendarSegs ?? [],
+    agents: liveDoc?.agents ?? []
+  }
+  const stage = hydrateStageDoc({ ...data, updatedAt: nowIso() }, key)
+  if(!stage) throw new Error('failed_to_build_stage')
+  return stage
+}
+
+function normalizeStageLiveInput(live: any): StageLiveDoc{
+  if(!live || typeof live !== 'object'){
+    return { updatedAt: undefined, shifts: [], pto: [], overrides: [], calendarSegs: [], agents: [] }
+  }
+  return {
+    updatedAt: typeof live.updatedAt === 'string' ? live.updatedAt : undefined,
+    shifts: cloneArrayDeep<Shift>(live.shifts),
+    pto: cloneArrayDeep<PTO>(live.pto),
+    overrides: cloneArrayDeep<Override>(live.overrides),
+    calendarSegs: cloneArrayDeep<CalendarSegment>(live.calendarSegs),
+    agents: cloneArrayDeep<Agent>(live.agents)
+  }
+}
+
+async function readStageDoc(env: Env, key: StageKey): Promise<StageDoc | null>{
+  const storageKey = stageStorageKey(key)
+  if(useD1(env)){
+    const doc = await readStageDocD1(env, key)
+    if(doc) return doc
+    try{
+      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+      if(kvNs){
+        const raw = await kvNs.get(storageKey)
+        if(raw){
+          try{
+            const parsed = JSON.parse(raw)
+            const hydrated = hydrateStageDoc(parsed, key)
+            if(hydrated){
+              await writeStageDocD1(env, key, hydrated)
+              return hydrated
+            }
+          }catch{}
+        }
+      }
+    }catch{}
+    return null
+  } else {
+    try{
+      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+      if(kvNs){
+        const raw = await kvNs.get(storageKey)
+        if(raw){
+          try{
+            const hydrated = hydrateStageDoc(JSON.parse(raw), key)
+            if(hydrated){
+              try{ await writeStageDocD1(env, key, hydrated) }catch{}
+              return hydrated
+            }
+          }catch{}
+        }
+      }
+    }catch{}
+    const fromD1 = await readStageDocD1(env, key)
+    if(fromD1){
+      try{
+        const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+        if(kvNs) await kvNs.put(storageKey, JSON.stringify(fromD1, null, 2))
+      }catch{}
+      return fromD1
+    }
+    return null
+  }
+}
+
+async function writeStageDoc(env: Env, key: StageKey, doc: StageDoc){
+  const storageKey = stageStorageKey(key)
+  const json = JSON.stringify(doc, null, 2)
+  if(useD1(env)){
+    await writeStageDocD1(env, key, doc)
+    try{
+      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+      if(kvNs) await kvNs.put(storageKey, json)
+    }catch{}
+  } else {
+    const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+    if(kvNs) await kvNs.put(storageKey, json)
+    try{ await writeStageDocD1(env, key, doc) }catch{}
+  }
+}
+
+async function readStageDocD1(env: Env, key: StageKey): Promise<StageDoc | null>{
+  if(!env.DB) return null
+  try{
+    await ensureD1Schema(env)
+    const storageKey = stageStorageKey(key)
+    const row = await env.DB.prepare('SELECT val FROM settings WHERE key=?1').bind(storageKey).first<{ val: string }>()
+    if(!row || row.val == null) return null
+    try{
+      return hydrateStageDoc(JSON.parse(String(row.val)), key)
+    }catch{
+      return null
+    }
+  }catch{
+    return null
+  }
+}
+
+async function writeStageDocD1(env: Env, key: StageKey, doc: StageDoc){
+  if(!env.DB) throw new Error('d1_unavailable')
+  const storageKey = stageStorageKey(key)
+  const json = JSON.stringify(doc, null, 2)
+  await ensureD1Schema(env)
+  await env.DB.prepare(
+    `INSERT INTO settings (key,val,updated_at) VALUES (?1,?2,unixepoch())
+     ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=unixepoch()`
+  ).bind(storageKey, json).run()
+}
+
 // Auth handlers
 async function loginAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
@@ -747,6 +986,122 @@ async function postSchedule(req: Request, env: Env, cors: Headers){
 
   await writeDoc(env, toWrite)
   return json({ ok:true, updatedAt: toWrite.updatedAt }, 200, cors)
+}
+
+async function getStageV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  const url = new URL(req.url)
+  const weekStartRaw = url.searchParams.get('weekStart') || ''
+  const tzIdRaw = url.searchParams.get('tzId') || ''
+  const weekStart = sanitizeWeekStart(weekStartRaw)
+  const tzId = sanitizeTzId(tzIdRaw)
+  if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
+  const key: StageKey = { weekStart, tzId }
+  const liveDoc = await readDoc(env)
+  const live = toStageLiveDoc(liveDoc)
+  let stage = await readStageDoc(env, key)
+  if(!stage && live){
+    try{
+      stage = buildStageDocFromLive(key, live)
+      await writeStageDoc(env, key, stage)
+    }catch{}
+  }
+  return json({ ok:true, stage: stage ?? null, live }, 200, cors)
+}
+
+async function putStageV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  const body = await safeJson<any>(req)
+  const candidate = body && typeof body === 'object' && body.stage && typeof body.stage === 'object' ? body.stage : body
+  if(!candidate || typeof candidate !== 'object') return json({ error:'invalid_body' }, 400, cors)
+  const weekStart = sanitizeWeekStart(candidate.weekStart || '')
+  const tzId = sanitizeTzId(candidate.tzId || '')
+  if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
+  const key: StageKey = { weekStart, tzId }
+  const existing = await readStageDoc(env, key)
+  const ifMatchHeader = req.headers.get('if-match') || req.headers.get('x-if-match') || (typeof candidate.updatedAt === 'string' ? candidate.updatedAt : '')
+  if(existing && ifMatchHeader && existing.updatedAt !== ifMatchHeader){
+    return json({ error:'conflict', updatedAt: existing.updatedAt }, 409, cors)
+  }
+  let next: StageDoc
+  try{
+    next = normalizeStageDoc(candidate, key, existing)
+  }catch(e:any){
+    return json({ error:'invalid_stage', message: e?.message || String(e) }, 400, cors)
+  }
+  await writeStageDoc(env, key, next)
+  return json({ ok:true, stage: next, updatedAt: next.updatedAt }, 200, cors)
+}
+
+async function resetStageV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  const body = await safeJson<{ key?: StageKey; live?: StageLiveDoc }>(req)
+  const keyRaw = body?.key || (body as any)
+  const weekStart = sanitizeWeekStart((keyRaw?.weekStart) || '')
+  const tzId = sanitizeTzId((keyRaw?.tzId) || '')
+  if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
+  const key: StageKey = { weekStart, tzId }
+  let live: StageLiveDoc | null = null
+  if(body && typeof body === 'object' && body.live){
+    live = normalizeStageLiveInput(body.live)
+  }else{
+    live = toStageLiveDoc(await readDoc(env))
+  }
+  const stage = buildStageDocFromLive(key, live)
+  await writeStageDoc(env, key, stage)
+  return json({ ok:true, stage }, 200, cors)
+}
+
+async function publishStageV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  const body = await safeJson<{ stage?: any; live?: any; force?: boolean }>(req)
+  const rawStage = body && typeof body === 'object' && body.stage ? body.stage : body
+  if(!rawStage || typeof rawStage !== 'object') return json({ error:'invalid_body' }, 400, cors)
+  const weekStart = sanitizeWeekStart(rawStage.weekStart || '')
+  const tzId = sanitizeTzId(rawStage.tzId || '')
+  if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
+  const key: StageKey = { weekStart, tzId }
+  const existing = await readStageDoc(env, key)
+  let stageDoc: StageDoc
+  try{
+    stageDoc = normalizeStageDoc(rawStage, key, existing)
+  }catch(e:any){
+    return json({ error:'invalid_stage', message: e?.message || String(e) }, 400, cors)
+  }
+  const liveDoc = await readDoc(env)
+  if(!liveDoc){
+    return json({ error:'live_unavailable' }, 503, cors)
+  }
+  const force = body?.force === true
+  if(!force && stageDoc.baseLiveUpdatedAt && liveDoc.updatedAt && stageDoc.baseLiveUpdatedAt !== liveDoc.updatedAt){
+    return json({ error:'conflict', liveUpdatedAt: liveDoc.updatedAt, stageBaseUpdatedAt: stageDoc.baseLiveUpdatedAt }, 409, cors)
+  }
+  const incoming: Partial<ScheduleDoc> = {
+    schemaVersion: liveDoc.schemaVersion || 2,
+    shifts: stageDoc.shifts,
+    pto: stageDoc.pto,
+    overrides: stageDoc.overrides,
+    calendarSegs: stageDoc.calendarSegs,
+    agents: stageDoc.agents && stageDoc.agents.length > 0 ? stageDoc.agents : liveDoc.agents
+  }
+  const result = normalizeAndValidate(incoming as Partial<ScheduleDoc>, liveDoc)
+  if(!result.ok){
+    return json({ error: result.error, details: result.details }, 400, cors)
+  }
+  await writeDoc(env, result.doc)
+  const syncedStage = buildStageDocFromLive(key, result.doc)
+  await writeStageDoc(env, key, syncedStage)
+  return json({ ok:true, live: toStageLiveDoc(result.doc) }, 200, cors)
+}
+
+async function snapshotStageV2(req: Request, env: Env, cors: Headers){
+  const admin = await requireAdmin(req, env)
+  if(!admin.ok) return json(admin.body, admin.status, cors)
+  return json({ error:'stage_snapshots_unavailable' }, 501, cors)
 }
 
 // Body parser

@@ -1,6 +1,12 @@
 import React from 'react'
 
-type Size = 'sm' | 'md'
+type Size = 'sm' | 'md' | 'lg'
+
+const SIZE_STYLES: Record<Size, { trackW: string; trackH: string; knob: string; translate: string }> = {
+  sm: { trackW: 'w-8', trackH: 'h-4', knob: 'w-3 h-3', translate: 'translate-x-4' },
+  md: { trackW: 'w-10', trackH: 'h-6', knob: 'w-5 h-5', translate: 'translate-x-5' },
+  lg: { trackW: 'w-16', trackH: 'h-8', knob: 'w-7 h-7', translate: 'translate-x-8' },
+}
 
 export default function Toggle({
   checked,
@@ -19,10 +25,7 @@ export default function Toggle({
   className?: string
   ariaLabel?: string
 }){
-  const baseW = size==='sm' ? 'w-8' : 'w-10'
-  const baseH = size==='sm' ? 'h-4' : 'h-6'
-  const knobSize = size==='sm' ? 'w-3 h-3' : 'w-5 h-5'
-  const translate = size==='sm' ? 'translate-x-4' : 'translate-x-5'
+  const { trackW, trackH, knob, translate } = SIZE_STYLES[size] || SIZE_STYLES.md
   const offBg = dark ? 'bg-neutral-700' : 'bg-neutral-300'
   const onBg = 'bg-blue-600'
   const ring = dark ? 'ring-neutral-600' : 'ring-neutral-300'
@@ -36,7 +39,7 @@ export default function Toggle({
       onClick={()=> !disabled && onChange(!checked)}
       className={[
         'relative inline-flex items-center rounded-full transition-colors focus:outline-none focus:ring-2',
-        baseW, baseH,
+        trackW, trackH,
         checked ? onBg : offBg,
         disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
         'focus:ring-offset-0', ring,
@@ -46,7 +49,7 @@ export default function Toggle({
       <span
         className={[
           'inline-block rounded-full bg-white shadow transform transition-transform',
-          knobSize,
+          knob,
           'translate-x-1',
           checked ? translate : ''
         ].join(' ')}
@@ -54,4 +57,3 @@ export default function Toggle({
     </button>
   )
 }
-

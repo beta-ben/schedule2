@@ -21,6 +21,7 @@ export default function AgentWeekLinear({
   onDragAll,
   onDragShift,
   onResizeShift,
+  onDoubleClickEmpty,
   draggable = true,
   showDayLabels = true,
   showWeekLabel = true,
@@ -81,6 +82,7 @@ export default function AgentWeekLinear({
   warningTipsById?: Record<string, string[]>
   // Double-click handler to request inline editing for a shift
   onDoubleClickShift?: (id: string)=>void
+  onDoubleClickEmpty?: (minutesFromWeekStart: number)=>void
   // When true, lower the opacity for non-highlighted shifts
   dimUnhighlighted?: boolean
   // Optional override for highlight chip color
@@ -136,9 +138,9 @@ export default function AgentWeekLinear({
           else eAbs += 1440
         }
       }
-  const st = Math.max(0, Math.min(totalMins, sAbs))
-  // Do not clamp end to totalMins so wrapped segments (Sat->Sun) render the Sunday part (0..b)
-  const en = Math.max(0, eAbs)
+      const st = Math.max(0, Math.min(totalMins, sAbs))
+      // Do not clamp end to totalMins so wrapped segments (Sat->Sun) render the Sunday part (0..b)
+      const en = Math.max(0, eAbs)
       if(en <= st) continue
       const title = `${s.day} ${s.start} – ${(s as any).endDay || s.day} ${s.end}`
       const rawStartMin = toMin(s.start)
@@ -443,6 +445,17 @@ export default function AgentWeekLinear({
       onMouseDown={draggable ? beginAllDrag : undefined}
   onMouseEnter={()=> setHoverBand(true)}
   onMouseLeave={()=> { setHoverBand(false); setHoverGroupId(null) }}
+      onDoubleClick={(e)=>{
+        if(!onDoubleClickEmpty || !containerRef.current) return
+        const rect = containerRef.current.getBoundingClientRect()
+        if(rect.width <= 0) return
+        const x = e.clientX - rect.left
+        const clampedX = Math.max(0, Math.min(rect.width, x))
+        const minutes = (clampedX / rect.width) * totalMins
+        if(Number.isFinite(minutes)){
+          onDoubleClickEmpty(minutes)
+        }
+      }}
         >
       {/* AM highlight bands (00:00–12:00 each day) */}
           {Array.from({length:7},(_,i)=>{
@@ -482,7 +495,7 @@ export default function AgentWeekLinear({
             const baseBgDefault = dark? 'rgba(59,130,246,0.64)' : 'rgba(59,130,246,0.625)'
             let bg = baseBgDefault
             if(isStageTone){
-              bg = dark ? 'rgba(245,158,11,0.65)' : 'rgba(251,191,36,0.65)'
+              bg = dark ? 'rgba(91,33,182,0.65)' : 'rgba(124,58,237,0.6)'
             }else if(isGhostTone){
               bg = dark ? 'rgba(96,165,250,0.28)' : 'rgba(96,165,250,0.24)'
             }
@@ -524,7 +537,7 @@ export default function AgentWeekLinear({
   let highlightTone = highlightColor ? (dark ? highlightColor.dark : highlightColor.light) : defaultHighlight
   if(!highlightColor){
     if(isStageTone){
-      highlightTone = dark ? 'rgba(74,222,128,0.95)' : 'rgba(22,163,74,0.95)'
+      highlightTone = dark ? 'rgba(253,186,116,0.95)' : 'rgba(251,146,60,0.95)'
     }else if(isGhostTone){
       highlightTone = dark ? 'rgba(147,197,253,0.6)' : 'rgba(96,165,250,0.5)'
     }
@@ -714,7 +727,6 @@ export default function AgentWeekLinear({
                       }
                       if(isStageTone){
                         boxShadow = [boxShadow, '0 6px 14px rgba(0,0,0,0.45)'].filter(Boolean).join(', ')
-                        base.border = `1px solid ${dark ? 'rgba(250,204,21,0.35)' : 'rgba(245,158,11,0.4)'}`
                       }else if(isGhostTone){
                         base.opacity = Math.min(typeof base.opacity === 'number' ? base.opacity : 1, 0.4)
                         base.mixBlendMode = dark ? 'screen' : 'multiply'
