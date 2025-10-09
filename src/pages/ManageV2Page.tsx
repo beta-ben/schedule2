@@ -1,12 +1,11 @@
 import React from 'react'
 import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPostDetailed, ensureSiteSession, login, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, cloudCreateProposal, cloudListProposals, cloudGetProposal, cloudGet, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection, cloudUpdateProposal, cloudMergeProposal } from '../lib/api'
+import { cloudPostDetailed, ensureSiteSession, login, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection } from '../lib/api'
 import type { ZoomConnectionSummary } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import ComboBox from '../components/ComboBox'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
-import ProposalDiffVisualizer from '../components/ProposalDiffVisualizer'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
 import type { PTO, Shift, Task, Override, MeetingCohort } from '../types'
@@ -61,8 +60,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const usingDevProxy = React.useMemo(()=> isUsingDevProxy(), [])
   const [localAgents, setLocalAgents] = React.useState<AgentRow[]>(agents)
   React.useEffect(()=>{ setLocalAgents(agents) }, [agents])
-  const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Proposals','Integrations','Clock & Breaks'] as const
+  const tabs = ['Agents','Shifts','Postures','PTO & Overrides','Integrations','Clock & Breaks'] as const
   type Subtab = typeof tabs[number]
+  const wipTabs: ReadonlyArray<Subtab> = ['Integrations', 'Clock & Breaks']
   const [subtab, setSubtab] = React.useState<Subtab>('Agents')
   const [zoomConnections, setZoomConnections] = React.useState<ZoomConnectionSummary[]>([])
   const [zoomLoading, setZoomLoading] = React.useState(false)
@@ -70,7 +70,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const zoomInitializedRef = React.useRef(false)
   // Shifts tab: show time labels for all shifts
   const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
-  const [sortMode, setSortMode] = React.useState<'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'>('start')
+  const [sortMode, setSortMode] = React.useState<'start'|'name'>('start')
   const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc')
   // Shifts tab: option to include hidden agents (default off, persisted)
   const INCLUDE_HIDDEN_KEY = React.useMemo(()=> `schedule2.v2.shifts.includeHidden.${weekStart}.${tz.id}`, [weekStart, tz.id])
@@ -87,49 +87,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // Shifts tab: scrollable chunk index when visibleDays < 7
   const [dayChunkIdx, setDayChunkIdx] = React.useState(0)
   React.useEffect(()=>{ setDayChunkIdx(0) }, [visibleDays, weekStart])
-  // Load proposals list and live doc for diff when switching to Proposals tab
-  React.useEffect(()=>{
-    if(subtab !== 'Proposals') return
-    let cancelled = false
-    ;(async()=>{
-      setLoadingProposals(true)
-      const list = await cloudListProposals()
-      if(cancelled) return
-      setLoadingProposals(false)
-      if(list.ok){ setProposals(list.proposals||[]) } else { setProposals([]) }
-      const live = await cloudGet()
-      if(cancelled) return
-      setLiveDoc(live)
-    })()
-    return ()=>{ cancelled = true }
-  }, [subtab])
   // Shifts tab: working copy (draft) of shifts
   const [workingShifts, setWorkingShifts] = React.useState<Shift[]>(shifts)
   // PTO tab: working copy (draft) of PTO entries
   const [workingPto, setWorkingPto] = React.useState<PTO[]>(pto)
   const [workingOverrides, setWorkingOverrides] = React.useState<Override[]>(overrides)
   const [isDirty, setIsDirty] = React.useState(false)
-  // Import panel state
-  const [showImport, setShowImport] = React.useState(false)
-  const [importUrl, setImportUrl] = React.useState<string>('https://team-schedule-api.bsteward.workers.dev/v1/schedule')
-  const [importText, setImportText] = React.useState<string>('')
-  const [importMsg, setImportMsg] = React.useState<string>('')
-  // Publish: optionally route publish through a Proposal (create -> merge)
-  const PUBLISH_VIA_PROP_KEY = React.useMemo(()=> `schedule2.v2.publishViaProposal`, [])
-  const [publishViaProposal, setPublishViaProposal] = React.useState<boolean>(()=>{
-    try{ const v = localStorage.getItem(PUBLISH_VIA_PROP_KEY); return v==='1' }catch{ return false }
-  })
-  React.useEffect(()=>{ try{ localStorage.setItem(PUBLISH_VIA_PROP_KEY, publishViaProposal ? '1' : '0') }catch{} }, [publishViaProposal, PUBLISH_VIA_PROP_KEY])
-  // Proposals tab state
-  type ProposalMeta = { id:string; title?:string; status:string; createdAt:number; updatedAt:number; weekStart?:string; tzId?:string }
-  const [proposals, setProposals] = React.useState<ProposalMeta[]>([])
-  const [loadingProposals, setLoadingProposals] = React.useState(false)
-  const [selectedProposalId, setSelectedProposalId] = React.useState<string>('')
-  const [proposalDetail, setProposalDetail] = React.useState<any>(null)
-  const [proposalActing, setProposalActing] = React.useState<boolean>(false)
-  const [liveDoc, setLiveDoc] = React.useState<any>(null)
-  const [diffMsg, setDiffMsg] = React.useState<string>('')
-  const [showVisualDiff, setShowVisualDiff] = React.useState<boolean>(false)
   // Compliance warnings (Shifts tab)
   const [showCompliance, setShowCompliance] = React.useState<boolean>(false)
   const [complianceIssues, setComplianceIssues] = React.useState<Array<{ rule:string; severity:'hard'|'soft'; person:string; day?:string; shiftId?:string; details?:string }>>([])
@@ -140,6 +103,16 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   }, [complianceIssues])
   // Track whether the working session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
+  const autoPublishTimerRef = React.useRef<number | null>(null)
+  const autoPublishInFlightRef = React.useRef(false)
+  const autoPublishQueuedRef = React.useRef(false)
+  const lastAutoPublishErrorRef = React.useRef<number | null>(null)
+  const markDirty = React.useCallback(()=>{
+    setIsDirty(true)
+    if(autoPublishInFlightRef.current){
+      autoPublishQueuedRef.current = true
+    }
+  }, [])
   // Local autosave for unpublished changes (single snapshot per week/tz)
   const UNPUB_KEY = React.useMemo(()=> `schedule2.v2.unpublished.${weekStart}.${tz.id}`,[weekStart,tz.id])
   const LEGACY_DRAFT_KEY = React.useMemo(()=> `schedule2.v2.draft.${weekStart}.${tz.id}`,[weekStart,tz.id])
@@ -162,7 +135,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         if(Array.isArray(parsed?.pto)) setWorkingPto(parsed.pto as PTO[])
         if(Array.isArray(parsed?.overrides)) setWorkingOverrides(parsed.overrides as Override[])
         if(Array.isArray(parsed?.shifts) || Array.isArray(parsed?.pto) || Array.isArray(parsed?.overrides)){
-          setIsDirty(true)
+          markDirty()
           startedFromLiveRef.current = false
         }
         return
@@ -185,14 +158,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           payload.overrides = parsed.overrides
         }
         if(payload.shifts || payload.pto || payload.overrides){
-          setIsDirty(true)
+          markDirty()
           startedFromLiveRef.current = false
           try{ localStorage.setItem(UNPUB_KEY, JSON.stringify(payload)) }catch{}
         }
         try{ localStorage.removeItem(LEGACY_DRAFT_KEY) }catch{}
       }
     }catch{}
-  }, [UNPUB_KEY, LEGACY_DRAFT_KEY])
+  }, [UNPUB_KEY, LEGACY_DRAFT_KEY, markDirty])
   // Autosave unpublished changes (debounced)
   React.useEffect(()=>{
     if(!isDirty) return
@@ -307,8 +280,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     })
     // Any new action invalidates redo history
     setShiftRedoStack([])
-    setIsDirty(true)
-  }, [isDirty, workingShifts, shifts])
+    markDirty()
+  }, [isDirty, workingShifts, shifts, markDirty])
   const undoShifts = React.useCallback(()=>{
     if(shiftUndoStack.length===0) return
     const last = shiftUndoStack[shiftUndoStack.length-1]
@@ -331,7 +304,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     setShiftUndoStack(prev=> prev.slice(0, -1))
     // Push redo patches on stack
     setShiftRedoStack(prev=> prev.concat([redoPatches]))
-    setIsDirty(true)
+    markDirty()
     // If we've undone the very first change from live, revert to live
     const remaining = shiftUndoStack.length - 1
     if(remaining===0 && startedFromLiveRef.current){
@@ -339,7 +312,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setIsDirty(false)
       startedFromLiveRef.current = false
     }
-  }, [shiftUndoStack, workingShifts, shifts])
+  }, [shiftUndoStack, workingShifts, shifts, markDirty])
   const redoShifts = React.useCallback(()=>{
     if(shiftRedoStack.length===0) return
     const last = shiftRedoStack[shiftRedoStack.length-1]
@@ -360,8 +333,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     })
     setShiftRedoStack(prev=> prev.slice(0, -1))
     setShiftUndoStack(prev=> prev.concat([undoPatches]))
-    setIsDirty(true)
-  }, [shiftRedoStack, workingShifts])
+    markDirty()
+  }, [shiftRedoStack, workingShifts, markDirty])
 
   // Compute effective shifts for display by applying Overrides as replacements.
   // - No-time overrides: remove the agent's shifts for the covered day(s).
@@ -500,57 +473,23 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setSelectedAgentIdx(localAgents.length>0 ? 0 : null)
     }
   }, [selectedAgentIdx, localAgents])
-  function discardWorkingDraft(){
-    setWorkingShifts(shifts)
-    setIsDirty(false)
-    setShiftUndoStack([]); setShiftRedoStack([]); setModifiedIds(new Set())
-    startedFromLiveRef.current = false
-    try{ localStorage.removeItem(UNPUB_KEY) }catch{}
-  }
-  async function publishWorkingToLive(){
+  const publishWorkingToLive = React.useCallback(async ({ silent = false }: { silent?: boolean } = {})=>{
     // Include agents in publish so metadata like supervisor persists
     const agentsPayload = mapAgentsToPayloads(localAgents)
-    if(publishViaProposal){
-      // Publish by creating a proposal and merging it
-      const title = `Publish via Proposal — ${new Date().toLocaleString()}`
-      // Capture current live updatedAt to enable conflict messaging
-      let baseUpdatedAt: string | undefined
-      try{ const live = await cloudGet(); if(live && typeof (live as any).updatedAt === 'string') baseUpdatedAt = (live as any).updatedAt }catch{}
-      const created = await cloudCreateProposal({ title, weekStart, tzId: tz.id, baseUpdatedAt, shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any })
-      if(!created.ok || !created.id){ showToast('Failed to create proposal for publish.', 'error'); return }
-      let merged = await cloudMergeProposal(created.id)
-      if(!merged.ok && merged.status===409){
-        const confirmForce = window.confirm('Live data changed since base. Merge anyway and overwrite with current proposal?')
-        if(!confirmForce) return
-        merged = await cloudMergeProposal(created.id, { force: true })
-      }
-      if(merged.ok){
+    try{
+      const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
+      if(res.ok){
         setIsDirty(false)
-        showToast('Published via proposal.', 'success')
+        if(!silent) showToast('Published to live.', 'success')
         startedFromLiveRef.current = false
+        // Clear modified markers so shift ribbons no longer show edited tags
         setModifiedIds(new Set())
         try{ localStorage.removeItem(UNPUB_KEY) }catch{}
+        // Update parent state to reflect published PTO/Overrides immediately
         setPto(()=> workingPto)
         setOverrides(()=> workingOverrides)
-        return
-      } else {
-        showToast('Publish via proposal failed.', 'error')
-        return
+        return true
       }
-    }
-    // Direct publish to schedule endpoint
-    const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
-    if(res.ok){
-      setIsDirty(false)
-      showToast('Published to live.', 'success')
-      startedFromLiveRef.current = false
-      // Clear modified markers so shift ribbons no longer show edited tags
-      setModifiedIds(new Set())
-      try{ localStorage.removeItem(UNPUB_KEY) }catch{}
-      // Update parent state to reflect published PTO/Overrides immediately
-      setPto(()=> workingPto)
-      setOverrides(()=> workingOverrides)
-    }else{
       if(res.status===404 || res.error==='missing_site_session' || (res.bodyText||'').includes('missing_site_session')){
         await ensureSiteSession()
         showToast('Publish failed: missing or expired site session. Please sign in to view and then try again.', 'error')
@@ -563,117 +502,76 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       }else{
         showToast(`Failed to publish. ${res.status?`HTTP ${res.status}`:''} ${res.error?`— ${res.error}`:''}`, 'error')
       }
+      return false
+    }catch(err:any){
+      const message = err?.message ? `Failed to publish: ${err.message}` : 'Failed to publish.'
+      showToast(message, 'error')
+      return false
     }
-  }
-  // Create a proposal from current working changes
-  async function createProposalFromWorking(){
-    const title = prompt('Proposal title', new Date().toLocaleString()) || new Date().toLocaleString()
-    // Include agents to preserve metadata like hidden/supervisor on review
-    const agentsPayload = mapAgentsToPayloads(localAgents)
-    const res = await cloudCreateProposal({
-      title,
-      weekStart,
-      tzId: tz.id,
-      shifts: workingShifts,
-      pto: workingPto,
-      overrides: workingOverrides,
-      calendarSegs,
-      agents: agentsPayload as any
-    })
-    if(res.ok){
-      showToast('Proposal created.', 'success')
-    } else {
-      showToast('Failed to create proposal.', 'error')
+  }, [localAgents, workingShifts, workingPto, workingOverrides, calendarSegs, showToast, setPto, setOverrides, ensureSiteSession])
+  const flushAutoPublish = React.useCallback(async ()=>{
+    if(autoPublishInFlightRef.current){
+      autoPublishQueuedRef.current = true
+      return
     }
-  }
-  // Proposal diff helpers
-  function diffById<T extends { id: string }>(liveArr: T[] = [], propArr: T[] = [], eq: (a:T,b:T)=>boolean){
-    const liveMap = new Map(liveArr.map(x=> [x.id, x]))
-    const propMap = new Map(propArr.map(x=> [x.id, x]))
-    const added: T[] = []
-    const removed: T[] = []
-    const changed: Array<{ before: T; after: T }> = []
-    for(const [id, after] of propMap){
-      const before = liveMap.get(id)
-      if(!before) added.push(after)
-      else if(!eq(before, after)) changed.push({ before, after })
+    autoPublishInFlightRef.current = true
+    const ok = await publishWorkingToLive({ silent: true })
+    autoPublishInFlightRef.current = false
+    if(!ok){
+      lastAutoPublishErrorRef.current = Date.now()
+    }else{
+      lastAutoPublishErrorRef.current = null
     }
-    for(const [id, before] of liveMap){ if(!propMap.has(id)) removed.push(before) }
-    return { added, removed, changed }
-  }
-  const eqShiftLite = (a: any, b: any)=> a && b && a.id===b.id && a.person===b.person && a.day===b.day && a.start===b.start && a.end===b.end && ((a as any).endDay||'')===((b as any).endDay||'')
-  const eqPtoLite = (a: any, b: any)=> a && b && a.id===b.id && a.person===b.person && a.startDate===b.startDate && a.endDate===b.endDate && (a.notes||'')===(b.notes||'')
-  const eqOverrideLite = (a: any, b: any)=> a && b && a.id===b.id && a.person===b.person && a.startDate===b.startDate && a.endDate===b.endDate && (a.start||'')===(b.start||'') && (a.end||'')===(b.end||'') && ((a as any).endDay||'')===((b as any).endDay||'') && (a.kind||'')===(b.kind||'') && (a.notes||'')===(b.notes||'')
-  async function loadProposalDetail(id: string){
-    setSelectedProposalId(id)
-    setProposalDetail(null)
-    setDiffMsg('')
-    const res = await cloudGetProposal(id)
-    if(!res.ok || !res.proposal){ setDiffMsg('Failed to load proposal'); return }
-    setProposalDetail(res.proposal)
-  }
+    const hasQueued = autoPublishQueuedRef.current
+    autoPublishQueuedRef.current = false
+    if(hasQueued && ok){
+      flushAutoPublish()
+    }
+  }, [publishWorkingToLive])
 
-  async function approveSelectedProposal(){
-    if(!selectedProposalId) return
-    setProposalActing(true)
-    const r = await cloudUpdateProposal(selectedProposalId, { status: 'approved' })
-    setProposalActing(false)
-    if(r.ok){
-      showToast('Proposal approved.', 'success')
-      setProposalDetail((prev:any)=> prev ? { ...prev, status: 'approved' } : prev)
-      // Refresh list lightweight
-      setProposals(prev=> prev.map(p=> p.id===selectedProposalId ? { ...p, status: 'approved' } : p))
-    } else {
-      showToast('Failed to approve proposal.', 'error')
+  React.useEffect(()=>()=>{
+    if(autoPublishTimerRef.current!=null){
+      window.clearTimeout(autoPublishTimerRef.current)
+      autoPublishTimerRef.current = null
     }
-  }
-  async function rejectSelectedProposal(){
-    if(!selectedProposalId) return
-    if(!window.confirm('Reject this proposal?')) return
-    setProposalActing(true)
-    const r = await cloudUpdateProposal(selectedProposalId, { status: 'rejected' })
-    setProposalActing(false)
-    if(r.ok){
-      showToast('Proposal rejected.', 'success')
-      setProposalDetail((prev:any)=> prev ? { ...prev, status: 'rejected' } : prev)
-      setProposals(prev=> prev.map(p=> p.id===selectedProposalId ? { ...p, status: 'rejected' } : p))
-    } else {
-      showToast('Failed to reject proposal.', 'error')
+  }, [])
+
+  React.useEffect(()=>{
+    if(!unlocked || !isDirty){
+      return
     }
-  }
-  async function mergeSelectedProposal(){
-    if(!selectedProposalId) return
-    if(!window.confirm('Merge this proposal into live?')) return
-    setProposalActing(true)
-    let r = await cloudMergeProposal(selectedProposalId)
-    if(!r.ok && r.status===409){
-      setProposalActing(false)
-      const again = window.confirm('Live data changed since this proposal was created. Merge anyway and overwrite with proposal?')
-      if(!again) return
-      setProposalActing(true)
-      r = await cloudMergeProposal(selectedProposalId, { force: true })
+    if(lastAutoPublishErrorRef.current && (Date.now() - lastAutoPublishErrorRef.current) < 5000){
+      return
     }
-    setProposalActing(false)
-    if(r.ok){
-      showToast('Proposal merged to live.', 'success')
-      setProposalDetail((prev:any)=> prev ? { ...prev, status: 'merged' } : prev)
-      setProposals(prev=> prev.map(p=> p.id===selectedProposalId ? { ...p, status: 'merged' } : p))
-      // Refresh live doc for diff view
-      try{ const live = await cloudGet(); setLiveDoc(live) }catch{}
-    } else {
-      const msg = r.error==='conflict' ? 'Merge conflict. Refresh live and retry.' : 'Merge failed.'
-      showToast(msg, 'error')
+    if(autoPublishTimerRef.current!=null){
+      window.clearTimeout(autoPublishTimerRef.current)
     }
-  }
+    autoPublishTimerRef.current = window.setTimeout(()=>{
+      autoPublishTimerRef.current = null
+      flushAutoPublish()
+    }, 600)
+    return ()=>{
+      if(autoPublishTimerRef.current!=null){
+        window.clearTimeout(autoPublishTimerRef.current)
+        autoPublishTimerRef.current = null
+      }
+    }
+  }, [isDirty, unlocked, flushAutoPublish])
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
-  onAddAgent?.(a); setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
-  },[onAddAgent])
+    onAddAgent?.(a)
+    setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
+    markDirty()
+  },[onAddAgent, markDirty])
   const handleUpdate = React.useCallback((index:number, a:AgentRow)=>{
-    onUpdateAgent?.(index, a); setLocalAgents(prev=> prev.map((row,i)=> i===index ? a : row))
-  },[onUpdateAgent])
+    onUpdateAgent?.(index, a)
+    setLocalAgents(prev=> prev.map((row,i)=> i===index ? a : row))
+    markDirty()
+  },[onUpdateAgent, markDirty])
   const handleDelete = React.useCallback((index:number)=>{
-    onDeleteAgent?.(index); setLocalAgents(prev=> prev.filter((_,i)=> i!==index))
-  },[onDeleteAgent])
+    onDeleteAgent?.(index)
+    setLocalAgents(prev=> prev.filter((_,i)=> i!==index))
+    markDirty()
+  },[onDeleteAgent, markDirty])
   if (!unlocked) {
     return (
       <section className={["rounded-2xl p-6", dark ? "bg-neutral-900" : "bg-white shadow-sm"].join(' ')}>
@@ -727,10 +625,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         <div className="flex items-center gap-2">
         {tabs.map(t=>{
           const active = subtab===t
+          const isWip = wipTabs.includes(t)
           return (
             <button
               key={t}
               onClick={()=>setSubtab(t)}
+              title={isWip ? `${t} preview — still in progress` : undefined}
               className={[
                 "px-3 py-1.5 rounded-lg text-sm border",
                 active
@@ -742,56 +642,27 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-100")
               ].join(' ')}
             >
-              <span className="relative inline-block">
+              <span className="inline-flex items-center gap-2">
                 <span>{t}</span>
-                {(t==='Integrations' || t==='Clock & Breaks') && (
+                {isWip && (
                   <span
-                    aria-hidden
                     className={[
-                      'pointer-events-none select-none absolute -right-2 -top-2 rotate-45 text-[9px] leading-none uppercase font-bold px-[3px] py-[2px] shadow-sm',
-                      dark ? 'bg-red-600 text-white' : 'bg-red-600 text-white'
+                      "inline-flex items-center gap-1 rounded-md border text-[10px] font-medium px-2 py-[3px] leading-none",
+                      dark
+                        ? "bg-amber-500/10 border-amber-400/40 text-amber-300"
+                        : "bg-amber-50 border-amber-200 text-amber-600"
                     ].join(' ')}
-                    style={{ borderRadius: 2 }}
-                  >WIP</span>
+                  >
+                    <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-current"></span>
+                    <span>Preview</span>
+                  </span>
                 )}
               </span>
             </button>
           )
         })}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={!isDirty}
-            onClick={discardWorkingDraft}
-            className={[
-              "px-2.5 py-1.5 rounded-xl border font-medium shrink-0",
-              isDirty ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")
-            ].join(' ')}
-            title="Discard working changes"
-            aria-label="Discard"
-          >
-            <span className="inline-flex items-center gap-1">
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
-              <span>Discard</span>
-            </span>
-          </button>
-          <label className="flex items-center gap-1 text-xs select-none">
-            <input type="checkbox" className="accent-blue-600" checked={publishViaProposal} onChange={(e)=> setPublishViaProposal(e.target.checked)} />
-            <span className={dark?"text-neutral-300":"text-neutral-700"}>via proposal</span>
-          </label>
-          <button
-            onClick={publishWorkingToLive}
-            className="px-3 py-1.5 rounded-xl border font-semibold bg-blue-600 border-blue-600 text-white hover:bg-blue-500 shrink-0"
-            title="Publish working changes to live"
-            aria-label="Publish"
-          >
-            <span className="inline-flex items-center gap-1">
-              <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="M16 5h2a2 2 0 0 1 2 2v2"></path></svg>
-              <span>Publish</span>
-            </span>
-          </button>
-        </div>
+
       </div>
 
   {subtab==='Shifts' && (
@@ -816,11 +687,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   aria-label="Sort ribbons"
                 >
                   <option value="start">Earliest start</option>
-                  <option value="end">Latest end</option>
-                  <option value="count">Shift count</option>
-                  <option value="total">Total minutes</option>
-                  <option value="firstDay">First day</option>
-                  <option value="tz">Timezone</option>
                   <option value="name">Name (A–Z)</option>
                 </select>
                 <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -962,206 +828,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               </button>
             </div>
 
-            {/* Removed: draft save/load UI — drafts are deprecated */}
-
-            {/* Create proposal */}
-            <button
-              type="button"
-              onClick={createProposalFromWorking}
-              className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
-              title="Create a proposal from current changes"
-              aria-label="Create proposal"
-            >
-              <span className="inline-flex items-center gap-1">
-                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
-                <span>Proposal</span>
-              </span>
-            </button>
-
-            {/* Import legacy */}
-            <button
-              type="button"
-              onClick={()=>{ setShowImport(v=>!v); setImportMsg('') }}
-              className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
-              title="Import shifts/PTO/postures from a legacy JSON URL or paste"
-              aria-label="Import"
-            >
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path><polyline points="8 17 12 21 16 17"></polyline></svg>
-            </button>
-
-            {/* Publish area: discard then publish at far right */}
-            <button
-              disabled={!isDirty}
-              onClick={discardWorkingDraft}
-              className={["px-2.5 py-1.5 rounded-xl border font-medium shrink-0", isDirty ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")].join(' ')}
-              title="Discard working changes"
-              aria-label="Discard"
-            >
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
-            </button>
-            {/* Publish button moved to global header */}
-          </div>
-        </div>
-      )}
-
-      {subtab==='Proposals' && (
-        <div className={["rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="text-sm font-semibold">Proposals</div>
-            <div className="flex items-center gap-2">
-              <button onClick={()=>{ setLoadingProposals(true); cloudListProposals().then(r=>{ setLoadingProposals(false); setProposals(r.ok?(r.proposals||[]):[]) }) }} className={["px-2.5 py-1.5 rounded-xl border text-xs", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}>Refresh</button>
-            </div>
-          </div>
-          {proposalDetail && (
-            <div className={["rounded-xl p-2 border flex flex-wrap items-center gap-2 mb-3", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
-              <div className="text-xs font-medium">Status: <span className="opacity-80">{proposalDetail.status||'open'}</span></div>
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  type="button"
-                  disabled={proposalActing}
-                  onClick={approveSelectedProposal}
-                  className={["px-2.5 py-1.5 rounded-xl border text-xs font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
-                >Approve</button>
-                <button
-                  type="button"
-                  disabled={proposalActing}
-                  onClick={rejectSelectedProposal}
-                  className={["px-2.5 py-1.5 rounded-xl border text-xs font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
-                >Reject</button>
-                <button
-                  type="button"
-                  disabled={proposalActing}
-                  onClick={mergeSelectedProposal}
-                  className={["px-2.5 py-1.5 rounded-xl border text-xs font-semibold", dark?"bg-blue-500/20 border-blue-400 text-blue-200 hover:bg-blue-500/30":"bg-blue-600 text-white border-blue-600 hover:bg-blue-700"].join(' ')}
-                >Merge to Live</button>
-              </div>
-            </div>
-          )}
-          <div className="space-y-3">
-            <div className={["rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
-              <div className="text-xs font-medium mb-2">List</div>
-              <div className="flex flex-col gap-1 max-h-56 overflow-auto">
-                {loadingProposals && (<div className="text-xs opacity-70">Loading…</div>)}
-                {(!loadingProposals && proposals.length===0) && (<div className="text-xs opacity-70">No proposals</div>)}
-                {proposals.map(p=> (
-                  <button key={p.id} onClick={()=> loadProposalDetail(p.id)} className={["text-left px-2 py-1 rounded-lg border text-xs", selectedProposalId===p.id ? (dark?"bg-neutral-800 border-neutral-700":"bg-neutral-100 border-neutral-300") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}>
-                    <div className="font-medium truncate">{p.title || p.id}</div>
-                    <div className="opacity-70 truncate">{p.status} • {new Date((p.updatedAt||0)*1000).toLocaleString()}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className={["rounded-xl p-2 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-medium">Diff</div>
-                <button
-                  type="button"
-                  onClick={()=> setShowVisualDiff(v=>!v)}
-                  className={["px-2.5 py-1 rounded-lg border text-[11px]", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100"].join(' ')}
-                  aria-pressed={showVisualDiff}
-                >{showVisualDiff? 'Hide visual':'Show visual'}</button>
-              </div>
-              {diffMsg && (<div className="text-xs text-red-600 dark:text-red-300">{diffMsg}</div>)}
-              {proposalDetail && liveDoc && (()=>{
-                const patch = proposalDetail.patch||{}
-                const live = { shifts: liveDoc?.shifts||[], pto: liveDoc?.pto||[], overrides: liveDoc?.overrides||[] }
-                const dShifts = diffById(live.shifts, patch.shifts||[], eqShiftLite)
-                const dPto = diffById(live.pto, patch.pto||[], eqPtoLite)
-                const dOv = diffById(live.overrides, patch.overrides||[], eqOverrideLite)
-                const Badge = ({kind}:{kind:'added'|'removed'|'changed'})=> (
-                  <span className={[
-                    'text-[10px] px-1.5 py-0.5 rounded border',
-                    kind==='added' ? (dark? 'bg-green-900/30 border-green-800 text-green-300':'bg-green-50 border-green-200 text-green-700') :
-                    kind==='removed' ? (dark? 'bg-red-900/30 border-red-800 text-red-300':'bg-red-50 border-red-200 text-red-700') :
-                    (dark? 'bg-amber-900/30 border-amber-800 text-amber-300':'bg-amber-50 border-amber-200 text-amber-700')
-                  ].join(' ')}>{kind}</span>
-                )
-                const Row = ({text,kind}:{text:string;kind:'added'|'removed'|'changed'})=> (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Badge kind={kind} />
-                    <div className="truncate" title={text}>{text}</div>
-                  </div>
-                )
-                const fmtShift = (s:any)=> `${s.person||''} — ${s.day||''} ${s.start||''}–${s.end||''}${s.endDay && s.endDay!==s.day?` (${s.endDay})`:''}`
-                const fmtPto = (p:any)=> `${p.person||''} — ${p.startDate||''} → ${p.endDate||''}${p.notes?` (${p.notes})`:''}`
-                const fmtOv = (o:any)=> `${o.person||''} — ${o.startDate||''} → ${o.endDate||''}${o.start?` ${o.start}`:''}${o.end?`–${o.end}`:''}${o.endDay?` (${o.endDay})`:''}${o.kind?` [${o.kind}]`:''}${o.notes?` (${o.notes})`:''}`
-                const liveHighlights = new Set<string>([
-                  ...dShifts.removed.map((s:any)=> s.id),
-                  ...dShifts.changed.map((c:any)=> c.before?.id).filter(Boolean),
-                ])
-                const proposalHighlights = new Set<string>([
-                  ...dShifts.added.map((s:any)=> s.id),
-                  ...dShifts.changed.map((c:any)=> c.after?.id).filter(Boolean),
-                ])
-                return (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-xs font-semibold mb-1">Shifts</div>
-                      <div className="space-y-1">
-                        {dShifts.added.map((s:any)=> <Row key={'a-'+s.id} kind="added" text={fmtShift(s)} />)}
-                        {dShifts.removed.map((s:any)=> <Row key={'r-'+s.id} kind="removed" text={fmtShift(s)} />)}
-                        {dShifts.changed.map(({before,after}:any)=> <Row key={'c-'+after.id} kind="changed" text={`${fmtShift(before)} → ${fmtShift(after)}`} />)}
-                        {(dShifts.added.length+dShifts.removed.length+dShifts.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold mb-1">PTO</div>
-                      <div className="space-y-1">
-                        {dPto.added.map((p:any)=> <Row key={'pa-'+p.id} kind="added" text={fmtPto(p)} />)}
-                        {dPto.removed.map((p:any)=> <Row key={'pr-'+p.id} kind="removed" text={fmtPto(p)} />)}
-                        {dPto.changed.map(({before,after}:any)=> <Row key={'pc-'+after.id} kind="changed" text={`${fmtPto(before)} → ${fmtPto(after)}`} />)}
-                        {(dPto.added.length+dPto.removed.length+dPto.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold mb-1">Overrides</div>
-                      <div className="space-y-1">
-                        {dOv.added.map((o:any)=> <Row key={'oa-'+o.id} kind="added" text={fmtOv(o)} />)}
-                        {dOv.removed.map((o:any)=> <Row key={'or-'+o.id} kind="removed" text={fmtOv(o)} />)}
-                        {dOv.changed.map(({before,after}:any)=> <Row key={'oc-'+after.id} kind="changed" text={`${fmtOv(before)} → ${fmtOv(after)}`} />)}
-                        {(dOv.added.length+dOv.removed.length+dOv.changed.length===0) && (<div className="text-xs opacity-60">No changes</div>)}
-                      </div>
-                    </div>
-                    {showVisualDiff && (
-                      <div className="pt-2 border-t border-neutral-800/30">
-                        <ProposalDiffVisualizer
-                          dark={dark}
-                          tz={tz}
-                          weekStart={weekStart}
-                          agents={localAgents}
-                          live={{ shifts: live.shifts, pto: live.pto }}
-                          proposal={{ shifts: patch.shifts||[], pto: patch.pto||[] }}
-                          highlightLiveIds={liveHighlights}
-                          highlightProposalIds={proposalHighlights}
-                          tasks={tasks}
-                          calendarSegs={calendarSegs}
-          />
-          {showCompliance && (
-            <div className={["mt-2 rounded-xl p-2 border text-xs", dark?"bg-red-950/20 border-red-800 text-red-200":"bg-red-50 border-red-200 text-red-800"].join(' ')}>
-              <div className="font-semibold mb-1">Compliance</div>
-              {complianceIssues.length===0 ? (
-                <div className="opacity-80">No issues detected for this week.</div>
-              ) : (
-                <ul className="space-y-1 max-h-40 overflow-auto pr-1">
-                  {complianceIssues.map((i,idx)=> (
-                    <li key={idx} className="flex items-start gap-2">
-                      <span className={["inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] mt-0.5", i.severity==='hard' ? (dark?"bg-red-900/40 border-red-700":"bg-red-100 border-red-300") : (dark?"bg-amber-900/30 border-amber-700":"bg-amber-100 border-amber-300")].join(' ')}>{i.severity}</span>
-                      <span className="truncate">
-                        <strong>{i.person}</strong>{i.day?` • ${i.day}`:''}: {(i.rule||'').split('_').join(' ')}{i.details?` — ${i.details}`:''}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
-                    )}
-                  </div>
-                )
-              })()}
-              {(!proposalDetail || !liveDoc) && (<div className="text-xs opacity-60">Select a proposal to see its diff</div>)}
-            </div>
           </div>
         </div>
       )}
@@ -1248,80 +914,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           </div>
         </div>
       )}
-      {showImport && (
-        <div className={["mt-2 rounded-xl p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
-          <div className="text-sm font-semibold mb-2">Import legacy data</div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-            <label className="text-sm flex flex-col md:col-span-2">
-              <span className="mb-1">From URL</span>
-              <input className={["w-full border rounded-xl px-3 py-2", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={importUrl} onChange={(e)=>setImportUrl(e.target.value)} placeholder="https://…/schedule.json" />
-            </label>
-            <div className="flex gap-2">
-              <button
-                className={["h-10 rounded-xl px-4 border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-blue-600 border-blue-600 text-white"].join(' ')}
-                onClick={async()=>{
-                  setImportMsg('')
-                  try{
-                    const r = await fetch(importUrl, { credentials: 'omit' })
-                    if(!r.ok){ setImportMsg(`Fetch failed: ${r.status}`); return }
-                    const j = await r.json()
-                    if(!Array.isArray(j.shifts)) { setImportMsg('Invalid JSON: missing shifts[]'); return }
-                    const importedShifts = (j.shifts as any[]).map((s,i)=> ({ id: s.id || `imp-${i}-${Math.random().toString(36).slice(2)}`, person: s.person, day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay }))
-                    setWorkingShifts(importedShifts as Shift[])
-                    // Merge PTO
-                    if(Array.isArray(j.pto)){
-                      setWorkingPto(j.pto as PTO[])
-                    }
-                    // Merge Overrides
-                    if(Array.isArray(j.overrides)){
-                      setWorkingOverrides(j.overrides as Override[])
-                    }
-                    // Merge calendar segments into parent list via setter
-                    if(Array.isArray(j.calendarSegs)){
-                      setCalendarSegs(prev=> j.calendarSegs as any)
-                    }
-                    setIsDirty(true)
-                    setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.overrides)?`, ${j.overrides.length} overrides`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
-                  }catch(e:any){ setImportMsg(e?.message || 'Import failed') }
-                }}>Fetch</button>
-              <button
-                className={["h-10 rounded-xl px-4 border font-medium", dark?"border-neutral-700":"border-neutral-300"].join(' ')}
-                onClick={()=>{ setImportText(t=> t.trim() ? t : '{\n  "shifts": [],\n  "pto": [],\n  "calendarSegs": []\n}') }}
-              >Paste JSON…</button>
-            </div>
-            <div className="md:col-span-3">
-              {importText!=='' && (
-                <div className="space-y-2">
-                  <textarea className={["w-full h-40 border rounded-xl p-2 font-mono text-xs", dark&&"bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={importText} onChange={(e)=>setImportText(e.target.value)} />
-                  <div className="flex gap-2">
-                    <button className={["h-9 rounded-xl px-4 border font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-blue-600 border-blue-600 text-white"].join(' ')} onClick={()=>{
-                      setImportMsg('')
-                      try{
-                        const j = JSON.parse(importText)
-                        if(!Array.isArray(j.shifts)) { setImportMsg('Invalid JSON: missing shifts[]'); return }
-                        const importedShifts = (j.shifts as any[]).map((s,i)=> ({ id: s.id || `imp-${i}-${Math.random().toString(36).slice(2)}`, person: s.person, day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay }))
-                        setWorkingShifts(importedShifts as Shift[])
-                        if(Array.isArray(j.calendarSegs)) setCalendarSegs(j.calendarSegs as any)
-                        if(Array.isArray(j.pto)) setWorkingPto(j.pto as PTO[])
-                        if(Array.isArray(j.overrides)) setWorkingOverrides(j.overrides as Override[])
-                        setIsDirty(true)
-                        setImportMsg(`Imported ${importedShifts.length} shifts${Array.isArray(j.pto)?`, ${j.pto.length} PTO`:''}${Array.isArray(j.overrides)?`, ${j.overrides.length} overrides`:''}${Array.isArray(j.calendarSegs)?`, ${j.calendarSegs.length} postures`:''}. Review then Publish.`)
-                      }catch(e:any){ setImportMsg(e?.message || 'Invalid JSON') }
-                    }}>Load</button>
-                    <button className={["h-9 rounded-xl px-4 border font-medium", dark?"border-neutral-700":"border-neutral-300"].join(' ')} onClick={()=> setImportText('')}>Clear</button>
-                  </div>
-                </div>
-              )}
-            </div>
-            {importMsg && (
-              <div className={["md:col-span-3 text-sm", importMsg.startsWith('Imported') ? (dark?"text-green-300":"text-green-700") : (dark?"text-red-300":"text-red-700")].join(' ')}>{importMsg}</div>
-            )}
-            <div className="md:col-span-3 text-xs opacity-70">Note: After import, click Publish to write the data to live. Agents list will update automatically from shift names.</div>
-          </div>
-        </div>
-      )}
-
-  {subtab==='Agents' ? (
+      {subtab==='Agents' ? (
         <WeekEditor
           dark={dark}
           agents={localAgents}
@@ -1358,7 +951,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
           onSelectIdx={(idx)=> setSelectedAgentIdx(idx)}
         />
       ) : subtab==='Shifts' ? (
-  <div className={["rounded-xl p-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
+        <div className={["rounded-xl p-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
           <AllAgentsWeekRibbons
             dark={dark}
             tz={tz}
@@ -1428,7 +1021,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               setWorkingShifts(prev=> prev.map(s=> movedMap.get(s.id) || s))
               moved.forEach(s=> ids.add(s.id))
               setModifiedIds(ids)
-              setIsDirty(true)
+              markDirty()
             }}
           onDragShift={(name, id, delta)=>{
               const DAYS_ = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
@@ -1458,7 +1051,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 const patch = { day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
                 setWorkingShifts(prev=> prev.map(x=> x.id===s.id ? { ...x, ...patch } : x))
                 setModifiedIds(prev=>{ const n=new Set(prev); n.add(s.id); return n })
-                setIsDirty(true)
+                markDirty()
                 return
               }
               // Multi-shift move for union
@@ -1479,7 +1072,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 nextModified.add(patched.id)
               }
               setModifiedIds(nextModified)
-              setIsDirty(true)
+              markDirty()
           }}
           onResizeShift={(name, id, deltaEdge, delta)=>{
             // Resize only this shift; keep other selected shifts unchanged
@@ -1513,7 +1106,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             const patch = { day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
             setWorkingShifts(prev=> prev.map(x=> x.id===s.id ? { ...x, ...patch } : x))
             setModifiedIds(prev=>{ const n=new Set(prev); n.add(s.id); return n })
-            setIsDirty(true)
+            markDirty()
           }}
         />
         {showCompliance && (
@@ -1564,7 +1157,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   onCreate={(t)=> setTasks(prev=> prev.concat([{ ...t, id: uid() }]))}
                   onUpdate={(t)=> setTasks(prev=> prev.map(x=> x.id===t.id ? t : x))}
                   onArchive={(id)=> setTasks(prev=> prev.map(x=> x.id===id ? { ...x, archived:true } : x))}
-                  onDelete={(id)=>{ setTasks(prev=> prev.filter(x=> x.id!==id)); setCalendarSegs(prev=> prev.filter(cs=> cs.taskId!==id)) }}
+                  onDelete={(id)=>{
+                    setTasks(prev=> prev.filter(x=> x.id!==id))
+                    setCalendarSegs(prev=> prev.filter(cs=> cs.taskId!==id))
+                    markDirty()
+                  }}
                   dark={dark}
                   selectedId={assignTaskId}
                   onSelect={(id)=> setAssignTaskId(id)}
@@ -1615,7 +1212,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         const dayShiftsLocal = shiftsForDayInTZ(shifts, assignDay as any, tz.offset).filter(s=>s.person===assignee)
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
                         // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
-                          setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
+                        setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
+                        markDirty()
                         const nextStartDay = assignEndDay
                         const nextStartTime = assignEnd
                         setAssignDay(nextStartDay)
@@ -1684,7 +1282,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                                       </div>
                                       <div className="shrink-0 flex gap-1.5">
                     <button onClick={()=>{ setEditingIdx(r._idx); setEaPerson(r.person); setEaDay(r.day as any); setEaStart(r.start); setEaEnd(r.end); setEaTaskId(r.taskId); setEaEndDay((r as any).endDay || (r.day as any)) }} className={["px-2 py-1 rounded border text-xs", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Edit</button>
-                                        <button onClick={()=>{ if(confirm('Remove this assignment?')) setCalendarSegs(prev=> prev.filter((_,i)=> i!==r._idx)) }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
+                                        <button onClick={()=>{ if(confirm('Remove this assignment?')){ setCalendarSegs(prev=> prev.filter((_,i)=> i!==r._idx)); markDirty() } }} className={["px-2 py-1 rounded border text-xs", "bg-red-600 border-red-600 text-white"].join(' ')}>Delete</button>
                                       </div>
                                     </div>
                                   ))}
@@ -1750,6 +1348,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                           const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE=s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
                           // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
                           setCalendarSegs(prev=> prev.map((cs,i)=> i===editingIdx ? { person: eaPerson.trim(), agentId: agentIdByName(localAgents as any, eaPerson.trim()), day: eaDay, endDay: eaEndDay, start: eaStart, end: eaEnd, taskId: eaTaskId } as any : cs))
+                          markDirty()
                           setEditingIdx(null)
                         }} className={["px-3 py-1.5 rounded border text-sm", dark?"bg-neutral-800 border-neutral-700":"bg-blue-600 border-blue-600 text-white"].join(' ')}>Save</button>
                         <button onClick={()=>setEditingIdx(null)} className={["px-3 py-1.5 rounded border text-sm", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>Cancel</button>
@@ -1802,7 +1401,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       const newItem: PTO = { id: uid(), person, agentId: agentIdByName(localAgents as any, person), startDate: pt_start, endDate: pt_end, notes: pt_notes.trim() ? pt_notes.trim() : undefined }
                       setWorkingPto(prev=> prev.concat([newItem]))
                       setPtAgent(''); setPtStart(''); setPtEnd(''); setPtNotes('')
-                      setIsDirty(true)
+                      markDirty()
                     }}
                   >
                     <label className="flex flex-col gap-1">
@@ -1886,7 +1485,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                                       onClick={()=>{
                                         if(confirm('Delete PTO?')){
                                           setWorkingPto(prev=> prev.filter(x=> x.id!==r.id))
-                                          setIsDirty(true)
+                                          markDirty()
                                         }
                                       }}
                                     >Delete</button>
@@ -1924,7 +1523,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                         notes: pt_e_notes.trim() ? pt_e_notes.trim() : undefined
                       } : x))
                       clearPtoEdit()
-                      setIsDirty(true)
+                      markDirty()
                     }}
                   >
                     <label className="flex flex-col gap-1">
@@ -2011,7 +1610,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                       }
                       setWorkingOverrides(prev=> prev.concat([entry]))
                       setOvAgent(''); setOvStart(''); setOvEnd(''); setOvTStart(''); setOvTEnd(''); setOvKind(''); setOvNotes(''); setOvRecurring(false); setOvUntil('')
-                      setIsDirty(true)
+                      markDirty()
                     }}
                   >
                     <label className="flex flex-col gap-1 lg:col-span-2">
@@ -2156,7 +1755,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                                       onClick={()=>{
                                         if(confirm('Delete override?')){
                                           setWorkingOverrides(prev=> prev.filter(x=> x.id!==o.id))
-                                          setIsDirty(true)
+                                          markDirty()
                                         }
                                       }}
                                     >Delete</button>

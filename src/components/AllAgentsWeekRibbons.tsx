@@ -53,7 +53,7 @@ export default function AllAgentsWeekRibbons({
   onDragShift?: (name:string, id:string, deltaMinutes:number)=>void
   onResizeShift?: (name:string, id:string, edge:'start'|'end', deltaMinutes:number)=>void
   onDoubleClickShift?: (id: string)=>void
-  sortMode?: 'start'|'end'|'name'|'count'|'total'|'tz'|'firstDay'
+  sortMode?: 'start'|'name'
   sortDir?: 'asc'|'desc'
   highlightIds?: Set<string> | string[]
   complianceHighlightIds?: Set<string> | string[]
@@ -96,10 +96,59 @@ export default function AllAgentsWeekRibbons({
     try{ window.dispatchEvent(new CustomEvent('schedule:namecol', { detail: { px: nameColPx } })) }catch{}
   }, [nameColPx])
   const nameColClass = "shrink-0 text-left pl-1 text-sm truncate"
+  const continuationIds = useMemo(()=>{
+    const flags = new Map<string, { hasMidnight: boolean; hasNonMidnight: boolean }>()
+    for(const s of shifts){
+      if(!s || !s.id) continue
+      let entry = flags.get(s.id)
+      if(!entry){
+        entry = { hasMidnight: false, hasNonMidnight: false }
+        flags.set(s.id, entry)
+      }
+      const startMin = toMin(s.start)
+      if(startMin === 0){
+        entry.hasMidnight = true
+      }else if(Number.isFinite(startMin)){
+        entry.hasNonMidnight = true
+      }
+    }
+    const spill = new Set<string>()
+    for(const [id, entry] of flags){
+      if(entry.hasMidnight && entry.hasNonMidnight){
+        spill.add(id)
+      }
+    }
+    return spill
+  }, [shifts])
+
+  const dayIndex = useMemo(()=> new Map(DAYS.map((d,i)=>[d,i])), [])
+  const getPrevDay = React.useCallback((day: string)=>{
+    const idx = dayIndex.get(day as any)
+    if(idx == null) return null
+    return DAYS[((idx - 1 + DAYS.length) % DAYS.length)] as typeof DAYS[number]
+  }, [dayIndex])
+  const isContinuationPiece = React.useCallback((shift: Shift)=>{
+    if(toMin(shift.start) !== 0) return false
+    if(continuationIds.has(shift.id)) return true
+    const prevDay = getPrevDay(shift.day as any)
+    if(!prevDay) return false
+    for(const other of shifts){
+      if(other.person !== shift.person) continue
+      const otherDay = other.day as any
+      if(otherDay !== prevDay) continue
+      const endStr = other.end
+      const endMin = endStr === '24:00' ? 1440 : toMin(endStr)
+      const crossesViaEndDay = typeof (other as any).endDay === 'string' && (other as any).endDay !== other.day
+      if(endStr === '24:00' || endMin >= 1435 || crossesViaEndDay){
+        return true
+      }
+    }
+    return false
+  }, [continuationIds, getPrevDay, shifts])
+
   const computedOrder = useMemo(()=>{
     const names = agents.map(a=> [a.firstName, a.lastName].filter(Boolean).join(' '))
     const tzShifts = convertShiftsToTZ(shifts, tz.offset)
-    const dayIndex = new Map(DAYS.map((d,i)=>[d,i]))
     const offsetMin = tz.offset * 60
     const wrap = (value: number, modBy: number)=> ((value % modBy) + modBy) % modBy
     const WEEK_MIN = 7 * 1440
@@ -115,6 +164,7 @@ export default function AllAgentsWeekRibbons({
       let minAbs = Infinity
       for(const s of shifts){
         if(s.person !== name) continue
+        if(isContinuationPiece(s)) continue
         const abs = localStartAbs(s)
         if(abs < minAbs) minAbs = abs
       }
@@ -159,52 +209,12 @@ export default function AllAgentsWeekRibbons({
         name: n,
         startKey,
         startHas: Number.isFinite(startKey) && startKey < Infinity,
-      endKey: latestEndAbs(n),
-      endHas: Number.isFinite(latestEndAbs(n)),
-      totalKey: totalMinutes(n),
-      countKey: shiftCount(n),
-      hasShifts: shiftCount(n) > 0,
-      tzKey: tzOf(n),
-      tzHas: !!tzOf(n),
-      dayKey: firstDayIdx(n),
-      dayHas: Number.isFinite(firstDayIdx(n)),
+        hasShifts: shiftCount(n) > 0,
       }
     })
     const byName = (a:any,b:any)=> a.name.localeCompare(b.name)
     const sign = sortDir==='asc' ? 1 : -1
     if(sortMode==='name') return rows.sort((a,b)=> sign * byName(a,b)).map(x=> x.name)
-    if(sortMode==='tz') return rows.sort((a,b)=>{
-      if(a.tzHas && !b.tzHas) return -1
-      if(!a.tzHas && b.tzHas) return 1
-      const cmp = a.tzKey.localeCompare(b.tzKey) * sign
-      return cmp!==0 ? cmp : byName(a,b)
-    }).map(x=> x.name)
-    if(sortMode==='end') return rows.sort((a,b)=>{
-      if(a.endHas && !b.endHas) return -1
-      if(!a.endHas && b.endHas) return 1
-      const cmp = (a.endKey - b.endKey) * sign
-      return cmp!==0 ? cmp : byName(a,b)
-    }).map(x=> x.name)
-    if(sortMode==='firstDay') return rows.sort((a,b)=>{
-      if(a.dayHas && !b.dayHas) return -1
-      if(!a.dayHas && b.dayHas) return 1
-      const cmp = (a.dayKey - b.dayKey) * sign
-      return cmp!==0 ? cmp : byName(a,b)
-    }).map(x=> x.name)
-    if(sortMode==='count') return rows.sort((a,b)=>{
-      const aHas = a.hasShifts, bHas = b.hasShifts
-      if(aHas && !bHas) return -1
-      if(!aHas && bHas) return 1
-      const cmp = (a.countKey - b.countKey) * sign
-      return cmp!==0 ? cmp : byName(a,b)
-    }).map(x=> x.name)
-    if(sortMode==='total') return rows.sort((a,b)=>{
-      const aHas = a.hasShifts, bHas = b.hasShifts
-      if(aHas && !bHas) return -1
-      if(!aHas && bHas) return 1
-      const cmp = (a.totalKey - b.totalKey) * sign
-      return cmp!==0 ? cmp : byName(a,b)
-    }).map(x=> x.name)
     // default: earliest start
     return rows.sort((a,b)=>{
       if(a.startHas && !b.startHas) return -1
@@ -212,7 +222,7 @@ export default function AllAgentsWeekRibbons({
       const cmp = (a.startKey - b.startKey) * sign
       return cmp!==0 ? cmp : byName(a,b)
     }).map(x=> x.name)
-  }, [agents, shifts, tz.offset, sortMode, sortDir])
+  }, [agents, shifts, tz.offset, sortMode, sortDir, continuationIds, isContinuationPiece, dayIndex])
 
   const agentNamesSorted = React.useMemo(()=>{
     if(Array.isArray(fixedOrder) && fixedOrder.length){
