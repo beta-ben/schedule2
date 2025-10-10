@@ -1211,7 +1211,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setManualPublishPending(false)
     }
   }, [manualPublishPending, publishWorkingToLive])
-
   React.useEffect(()=>()=>{
     if(autoPublishTimerRef.current!=null){
       window.clearTimeout(autoPublishTimerRef.current)
