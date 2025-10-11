@@ -35,9 +35,9 @@ export type LiveDoc = {
 }
 
 export interface StageStore {
-  get(key: StageKey): Promise<{ stage: StageDoc | null; live: LiveDoc | null }>
-  save(doc: StageDoc, opts?: { ifMatch?: string } | string): Promise<{ ok: boolean; updatedAt?: string; conflict?: boolean; stage?: StageDoc; status?: number; unsupported?: boolean; error?: string }>
-  reset(key: StageKey, live: LiveDoc): Promise<{ ok: boolean; stage: StageDoc; status?: number; unsupported?: boolean; error?: string }>
-  publish?(doc: StageDoc, live?: LiveDoc, opts?: { force?: boolean }): Promise<{ ok: boolean; conflict?: boolean; status?: number; unsupported?: boolean; error?: string }>
-  snapshot?(doc: StageDoc, title?: string): Promise<{ ok: boolean; id?: string; status?: number; unsupported?: boolean; error?: string }>
+  get(key: StageKey): Promise<{ stage: StageDoc | null; live: LiveDoc | null; unauthorized?: boolean }>
+  save(doc: StageDoc, opts?: { ifMatch?: string } | string): Promise<{ ok: boolean; updatedAt?: string; conflict?: boolean; stage?: StageDoc; status?: number; unsupported?: boolean; unauthorized?: boolean; error?: string }>
+  reset(key: StageKey, live: LiveDoc): Promise<{ ok: boolean; stage?: StageDoc; status?: number; unsupported?: boolean; unauthorized?: boolean; error?: string }>
+  publish?(doc: StageDoc, live?: LiveDoc, opts?: { force?: boolean }): Promise<{ ok: boolean; conflict?: boolean; status?: number; unsupported?: boolean; unauthorized?: boolean; error?: string }>
+  snapshot?(doc: StageDoc, title?: string): Promise<{ ok: boolean; id?: string; status?: number; unsupported?: boolean; unauthorized?: boolean; error?: string }>
 }

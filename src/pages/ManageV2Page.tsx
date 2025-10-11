@@ -1,14 +1,14 @@
 import React from 'react'
 import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPostDetailed, ensureSiteSession, login, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, requestMagicLink, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection, stagePublish } from '../lib/api'
-import type { ZoomConnectionSummary } from '../lib/api'
+import { cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection, stagePublish } from '../lib/api'
+import type { ZoomConnectionSummary, StageSaveResult } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import ComboBox from '../components/ComboBox'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
 import CoverageHeatmap from '../components/CoverageHeatmap'
-import type { PTO, Shift, Task, Override, MeetingCohort } from '../types'
+import type { PTO, Shift, Task, Override } from '../types'
 import type { StageDoc } from '../domain/stage'
 import type { CalendarSegment } from '../lib/utils'
 import TaskConfigPanel from '../components/TaskConfigPanel'
@@ -19,15 +19,58 @@ import ZoomAnalyticsMock from '../components/ZoomAnalyticsMock'
 import TimeTrackingMock from '../components/TimeTrackingMock'
 import LunchPlannerMock from '../components/LunchPlannerMock'
 import TeamsCommandsMock from '../components/TeamsCommandsMock'
+import MagicLoginPanel from './manageV2/MagicLoginPanel'
 import { computeComplianceWarnings } from '../domain/compliance'
 import { makeLocalStageStore } from '../lib/stage/localStageStore'
+import { isStageDebugEnabled, stageDebugLog } from '../lib/stage/debug'
 import useStageHook from '../hooks/useStage'
-
-type AgentRow = { firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: MeetingCohort | null }
-type StageChangeEntry = { id: string; type: 'added' | 'updated' | 'removed'; person: string; stage?: Shift; live?: Shift }
+import type { AgentRow } from './manageV2/types'
+import { useStageChanges, describeShiftWindow } from './manageV2/useStageChanges'
+import { eqShift, eqShifts } from './manageV2/shiftUtils'
 type OverrideCalendarDayEntry = { override: Override; occurrenceStart: string; occurrenceEnd: string }
 
 const DEFAULT_POSTURE_DURATION_MIN = 3 * 60
+const STAGE_MODE_STORAGE_KEY = 'schedule2.v2.scheduleMode'
+const STAGE_FEATURE_ENABLED_BY_ENV = (()=> {
+  const raw = (import.meta.env as any)?.VITE_STAGE_FLOW
+  if(typeof raw === 'string'){
+    const normalized = raw.trim().toLowerCase()
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'stage' || normalized === 'on'
+  }
+  if(typeof raw === 'number'){ return raw === 1 }
+  if(typeof raw === 'boolean'){ return raw }
+  return false
+})()
+
+function summarizeShift(s: Shift){
+  const endDay = (s as any).endDay
+  const endLabel = endDay && endDay !== s.day ? `${endDay} ${s.end}` : s.end
+  return `${s.person || 'Unassigned'} • ${s.day} ${s.start} → ${endLabel}`
+}
+
+function diffShifts(before: Shift[], after: Shift[]){
+  const beforeMap = new Map(before.map(s=> [s.id, s]))
+  const afterMap = new Map(after.map(s=> [s.id, s]))
+  const changed: Array<{ id:string; before: string; after: string }> = []
+  const removed: Array<{ id:string; before: string }> = []
+  const added: Array<{ id:string; after: string }> = []
+  for(const [id, prev] of beforeMap){
+    const next = afterMap.get(id)
+    if(!next){
+      removed.push({ id, before: summarizeShift(prev) })
+      continue
+    }
+    if(!eqShift(prev, next)){
+      changed.push({ id, before: summarizeShift(prev), after: summarizeShift(next) })
+    }
+  }
+  for(const [id, next] of afterMap){
+    if(!beforeMap.has(id)){
+      added.push({ id, after: summarizeShift(next) })
+    }
+  }
+  return { changed, removed, added }
+}
 
 function computeDefaultPostureEnd(day: typeof DAYS[number], start: string){
   const startIdxRaw = DAYS.indexOf(day as any)
@@ -41,24 +84,7 @@ function computeDefaultPostureEnd(day: typeof DAYS[number], start: string){
   return { endDay, endTime }
 }
 
-function formatStageTimestamp(iso?: string){
-  if(!iso) return ''
-  try{
-    const dt = new Date(iso)
-    if(Number.isNaN(dt.getTime())) return ''
-    return dt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  }catch{
-    return ''
-  }
-}
-
-function describeShiftWindow(shift: Shift){
-  const endDay = (shift as any).endDay
-  const endLabel = endDay && endDay !== shift.day ? `${endDay} ${shift.end}` : shift.end
-  return `${shift.day} ${shift.start} – ${endLabel}`
-}
-
-export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, overrides, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setCalendarSegs, setPto, setOverrides }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; overrides: Override[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void; setOverrides: (f:(prev:Override[])=>Override[])=>void }){
+export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, onDeleteAgent, weekStart, tz, shifts, pto, overrides, tasks, calendarSegs, onUpdateShift, onDeleteShift, onAddShift, setTasks, setShifts, setCalendarSegs, setPto, setOverrides }:{ dark:boolean; agents: AgentRow[]; onAddAgent?: (a:{ firstName:string; lastName:string; tzId:string })=>void; onUpdateAgent?: (index:number, a:AgentRow)=>void; onDeleteAgent?: (index:number)=>void; weekStart: string; tz:{ id:string; label:string; offset:number }; shifts: Shift[]; pto: PTO[]; overrides: Override[]; tasks: Task[]; calendarSegs: CalendarSegment[]; onUpdateShift?: (id:string, patch: Partial<Shift>)=>void; onDeleteShift?: (id:string)=>void; onAddShift?: (s: Shift)=>void; setTasks: (f:(prev:Task[])=>Task[])=>void; setShifts: (f:(prev:Shift[])=>Shift[])=>void; setCalendarSegs: (f:(prev:CalendarSegment[])=>CalendarSegment[])=>void; setPto: (f:(prev:PTO[])=>PTO[])=>void; setOverrides: (f:(prev:Override[])=>Override[])=>void }){
   // Admin auth gate: unlocked if CSRF cookie exists (dev proxy or prod API)
   const [unlocked, setUnlocked] = React.useState(false)
   const [pwInput, setPwInput] = React.useState('')
@@ -92,9 +118,44 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const zoomInitializedRef = React.useRef(false)
   // Schedule Editor tab: show time labels for all shifts
   const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
-  // Schedule Editor tab: staging infra preview toggle
-  const [useStagingInfra, setUseStagingInfra] = React.useState(false)
-  const { stage: stageDoc, loading: stageLoading, error: stageError, save: saveStageDoc, reload: reloadStageDoc } = useStageHook({ weekStart, tzId: tz.id, enabled: useStagingInfra })
+  // Schedule Editor tab: staging infra toggle + mode selection
+  const stageFeatureEnabled = React.useMemo(()=> STAGE_FEATURE_ENABLED_BY_ENV, [])
+  const [scheduleMode, setScheduleMode] = React.useState<'live'|'stage'>(()=>{
+    if(!stageFeatureEnabled) return 'live'
+    if(typeof window === 'undefined') return 'live'
+    try{
+      const stored = localStorage.getItem(STAGE_MODE_STORAGE_KEY)
+      return stored === 'stage' ? 'stage' : 'live'
+    }catch{
+      return 'live'
+    }
+  })
+  React.useEffect(()=>{
+    if((!stageFeatureEnabled || !unlocked) && scheduleMode === 'stage'){
+      setScheduleMode('live')
+    }
+  }, [stageFeatureEnabled, unlocked, scheduleMode])
+  React.useEffect(()=>{
+    if(!stageFeatureEnabled) return
+    try{ localStorage.setItem(STAGE_MODE_STORAGE_KEY, scheduleMode) }catch{}
+  }, [scheduleMode, stageFeatureEnabled])
+  const hasStageInfra = stageFeatureEnabled && unlocked
+  const isStageMode = hasStageInfra && scheduleMode === 'stage'
+  const stageDebugActive = hasStageInfra && isStageDebugEnabled()
+  const {
+    loading: stageLoadingRaw,
+    error: stageErrorRaw,
+    stage: stageDocRaw,
+    save: saveStageDocHook,
+    reload: reloadStageDocHook
+  } = useStageHook({ weekStart, tzId: tz.id, enabled: hasStageInfra })
+  const fallbackSaveStageDoc = React.useCallback(async (_doc: StageDoc, _opts?: { ifMatch?: string }): Promise<StageSaveResult>=> ({ ok:false, unsupported:true }), [])
+  const fallbackReloadStageDoc = React.useCallback(async ()=>({ ok:false, unsupported:true }), [])
+  const stageDoc: StageDoc | null = hasStageInfra ? (stageDocRaw ?? null) : null
+  const stageLoading = hasStageInfra ? stageLoadingRaw : false
+  const stageError: string | null = hasStageInfra ? stageErrorRaw : null
+  const saveStageDoc = hasStageInfra ? saveStageDocHook : fallbackSaveStageDoc
+  const reloadStageDoc = hasStageInfra ? reloadStageDocHook : fallbackReloadStageDoc
   const [sortMode, setSortMode] = React.useState<'start'|'name'>('start')
   const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc')
   // Schedule Editor tab: option to include hidden agents (default off, persisted)
@@ -144,16 +205,72 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const stageSaveInFlightRef = React.useRef(false)
   const stageSaveQueuedRef = React.useRef(false)
   const stageInitializedRef = React.useRef(false)
+  const stageAppliedAtRef = React.useRef<number>(Number.isFinite(Date.parse(stageDoc?.updatedAt || '')) ? Date.parse(stageDoc?.updatedAt || '') : 0)
   const localStageStore = React.useMemo(()=> makeLocalStageStore(), [])
+  const stageStateSnapshotRef = React.useRef<{ shifts: number; pto: number; overrides: number; calendarSegs: number }>({ shifts: stageWorkingShifts.length, pto: stageWorkingPto.length, overrides: stageWorkingOverrides.length, calendarSegs: stageWorkingCalendarSegs.length })
   React.useEffect(()=>{
     stageInitializedRef.current = false
+    stageAppliedAtRef.current = 0
   }, [weekStart, tz.id])
   React.useEffect(()=>{
+    if(!stageDebugActive) return
+    stageDebugLog('page:stage_debug:enabled', {
+      weekStart,
+      tzId: tz.id,
+      stageDocPresent: !!stageDoc,
+      stageDirty
+    })
+  }, [stageDebugActive, weekStart, tz.id, stageDoc, stageDirty])
+  React.useEffect(()=>{
+    if(!stageDebugActive) return
+    const counts = {
+      shifts: stageWorkingShifts.length,
+      pto: stageWorkingPto.length,
+      overrides: stageWorkingOverrides.length,
+      calendarSegs: stageWorkingCalendarSegs.length
+    }
+    const prev = stageStateSnapshotRef.current
+    const changed = Object.keys(counts).some(key=> (counts as any)[key] !== (prev as any)[key])
+    if(changed || stageDirty){
+      stageDebugLog('page:stage_state:update', { counts, stageDirty })
+      stageStateSnapshotRef.current = counts
+    }
+  }, [stageDebugActive, stageWorkingShifts, stageWorkingPto, stageWorkingOverrides, stageWorkingCalendarSegs, stageDirty])
+  React.useEffect(()=>{
     let cancelled = false
-    if(stageDirty) return
+    stageDebugLog('page:hydrate:start', {
+      stageDirty,
+      hasStageDoc: !!stageDoc,
+      weekStart,
+      tzId: tz.id
+    })
+    if(stageDirty){
+      stageDebugLog('page:hydrate:bail_dirty', { weekStart, tzId: tz.id })
+      return
+    }
     const hydrateFrom = async ()=>{
       if(stageDoc){
         if(cancelled) return
+        const updatedAt = stageDoc.updatedAt || ''
+        const currentTs = Date.parse(updatedAt)
+        const prevTs = stageAppliedAtRef.current
+        if(Number.isFinite(currentTs) && Number.isFinite(prevTs) && currentTs <= prevTs){
+          console.debug('[stage] hydrate:skip-worker-stale', { when: new Date().toISOString(), updatedAt, previousMs: prevTs })
+          stageDebugLog('page:hydrate:skip_worker_stale', { updatedAt, previousMs: prevTs })
+          return
+        }
+        if(Number.isFinite(currentTs)) stageAppliedAtRef.current = currentTs
+        else stageAppliedAtRef.current = Date.now()
+        console.debug('[stage] hydrate:from-worker', { when: new Date().toISOString(), updatedAt, hasStage: true })
+        stageDebugLog('page:hydrate:from_worker', {
+          updatedAt,
+          counts: {
+            shifts: Array.isArray(stageDoc.shifts) ? stageDoc.shifts.length : 0,
+            pto: Array.isArray(stageDoc.pto) ? stageDoc.pto.length : 0,
+            overrides: Array.isArray(stageDoc.overrides) ? stageDoc.overrides.length : 0,
+            calendarSegs: Array.isArray(stageDoc.calendarSegs) ? stageDoc.calendarSegs.length : 0
+          }
+        })
         setStageWorkingShifts(stageDoc.shifts ?? [])
         setStageWorkingPto(stageDoc.pto ?? [])
         setStageWorkingOverrides(stageDoc.overrides ?? [])
@@ -161,54 +278,112 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         setStageShiftUndoStack([])
         setStageShiftRedoStack([])
         stageInitializedRef.current = true
-        try{ await localStageStore.save(stageDoc) }catch{}
+        try{
+          await localStageStore.save(stageDoc)
+          stageDebugLog('page:hydrate:persist_local', { updatedAt: stageDoc.updatedAt ?? null })
+        }catch(err){
+          stageDebugLog('page:hydrate:persist_local_error', { message: err instanceof Error ? err.message : String(err) }, 'warn')
+        }
         return
       }
-      if(stageInitializedRef.current) return
+      if(stageInitializedRef.current){
+        console.debug('[stage] hydrate:skip-null', { when: new Date().toISOString(), reason: 'stage_already_initialised' })
+        stageDebugLog('page:hydrate:skip_null', { reason: 'stage_already_initialised' })
+        return
+      }
       try{
         const fallback = await localStageStore.get({ weekStart, tzId: tz.id })
         if(cancelled) return
         if(fallback.stage){
+          console.debug('[stage] hydrate:from-local', { when: new Date().toISOString(), updatedAt: fallback.stage.updatedAt })
           setStageWorkingShifts(fallback.stage.shifts ?? [])
           setStageWorkingPto(fallback.stage.pto ?? [])
           setStageWorkingOverrides(fallback.stage.overrides ?? [])
           setStageWorkingCalendarSegs(fallback.stage.calendarSegs ?? [])
           setStageShiftUndoStack([])
           setStageShiftRedoStack([])
+          stageAppliedAtRef.current = Number.isFinite(Date.parse(fallback.stage.updatedAt || '')) ? Date.parse(fallback.stage.updatedAt || '') : 0
           stageInitializedRef.current = true
+          stageDebugLog('page:hydrate:from_local', {
+            updatedAt: fallback.stage.updatedAt ?? null,
+            counts: {
+              shifts: Array.isArray(fallback.stage.shifts) ? fallback.stage.shifts.length : 0,
+              pto: Array.isArray(fallback.stage.pto) ? fallback.stage.pto.length : 0,
+              overrides: Array.isArray(fallback.stage.overrides) ? fallback.stage.overrides.length : 0,
+              calendarSegs: Array.isArray(fallback.stage.calendarSegs) ? fallback.stage.calendarSegs.length : 0
+            }
+          })
           return
         }
-      }catch{}
+      }catch(err){
+        stageDebugLog('page:hydrate:local_error', { message: err instanceof Error ? err.message : String(err) }, 'warn')
+      }
       if(cancelled) return
+      console.debug('[stage] hydrate:from-live', { when: new Date().toISOString() })
+      stageDebugLog('page:hydrate:from_live', {
+        counts: {
+          shifts: Array.isArray(shifts) ? shifts.length : 0,
+          pto: Array.isArray(pto) ? pto.length : 0,
+          overrides: Array.isArray(overrides) ? overrides.length : 0,
+          calendarSegs: Array.isArray(calendarSegs) ? calendarSegs.length : 0
+        }
+      })
       setStageWorkingShifts(shifts)
       setStageWorkingPto(pto)
       setStageWorkingOverrides(overrides)
       setStageWorkingCalendarSegs(calendarSegs)
       setStageShiftUndoStack([])
       setStageShiftRedoStack([])
+      stageAppliedAtRef.current = 0
       stageInitializedRef.current = true
     }
     hydrateFrom()
     return ()=>{ cancelled = true }
   }, [stageDoc, stageDirty, shifts, pto, overrides, calendarSegs, localStageStore, weekStart, tz.id])
   React.useEffect(()=>{
-    if(!useStagingInfra){
-      setShowStageChangesPanel(false)
-      setStagePublishSummary(null)
-      setShowStagePublishConfirm(false)
+    if(isStageMode){
+      return
     }
-  }, [useStagingInfra])
+    setShowStageChangesPanel(false)
+    setStagePublishSummary(null)
+    setShowStagePublishConfirm(false)
+  }, [isStageMode])
   React.useEffect(()=>{
     if(!showStageChangesPanel){
       setStageFilterAgents(null)
     }
   }, [showStageChangesPanel])
+  const handleAdminSignOut = React.useCallback(async ({ reason }: { reason?: 'expired' } = {})=>{
+    try{ await logout() }catch{}
+    try{ localStorage.removeItem('schedule_admin_unlocked') }catch{}
+    setShowStageChangesPanel(false)
+    setUnlocked(false)
+    setPwInput('')
+    setMsg('')
+    showToast(reason==='expired' ? 'Admin session expired. Please sign in again.' : 'Signed out of admin session.', reason==='expired' ? 'error' : 'success')
+  }, [showToast])
+
   const flushStageSave = React.useCallback(async ()=>{
+    stageDebugLog('page:save:flush_request', {
+      dirty: stageDirty,
+      inFlight: stageSaveInFlightRef.current,
+      queued: stageSaveQueuedRef.current
+    })
     if(stageSaveInFlightRef.current){
       stageSaveQueuedRef.current = true
+      stageDebugLog('page:save:queued', { reason: 'in_flight' })
       return null
     }
     stageSaveInFlightRef.current = true
+    stageDebugLog('page:save:begin', {
+      baseUpdatedAt: stageDoc?.updatedAt ?? null,
+      counts: {
+        shifts: stageWorkingShifts.length,
+        pto: stageWorkingPto.length,
+        overrides: stageWorkingOverrides.length,
+        calendarSegs: stageWorkingCalendarSegs.length
+      }
+    })
     let nextSnapshot: StageDoc | null = null
     try{
       const base: StageDoc = stageDoc
@@ -221,35 +396,157 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             pto: [],
             overrides: [],
             calendarSegs: [],
-          }
+      }
       const payload: StageDoc = {
         ...base,
         shifts: stageWorkingShifts,
         pto: stageWorkingPto,
         overrides: stageWorkingOverrides,
         calendarSegs: stageWorkingCalendarSegs,
-        updatedAt: new Date().toISOString()
+        updatedAt: base.updatedAt
+      }
+      const shiftDiff = diffShifts(stageDoc?.shifts ?? [], stageWorkingShifts)
+      stageDebugLog('page:stage_diff:before_save', {
+        changed: shiftDiff.changed.length,
+        added: shiftDiff.added.length,
+        removed: shiftDiff.removed.length,
+        sampleChanged: shiftDiff.changed.slice(0, 3),
+        sampleAdded: shiftDiff.added.slice(0, 3),
+        sampleRemoved: shiftDiff.removed.slice(0, 3)
+      })
+      if(shiftDiff.changed.length || shiftDiff.added.length || shiftDiff.removed.length){
+        console.debug('[stage] diff:before_save', shiftDiff)
+      }else{
+        console.debug('[stage] diff:before_save none')
       }
       const attemptSave = async ()=>{
-        const res = await saveStageDoc(payload)
-        if(res?.ok) return res
-        if(res?.error === 'missing_csrf' || res?.status === 401 || res?.status === 403){
+        console.debug('[stage] save:start', {
+          when: new Date().toISOString(),
+          ifMatch: base.updatedAt,
+          shifts: stageWorkingShifts.length,
+          pto: stageWorkingPto.length,
+          overrides: stageWorkingOverrides.length,
+          calendarSegs: stageWorkingCalendarSegs.length
+        })
+        stageDebugLog('page:save:attempt', {
+          ifMatch: base.updatedAt,
+          counts: {
+            shifts: stageWorkingShifts.length,
+            pto: stageWorkingPto.length,
+            overrides: stageWorkingOverrides.length,
+            calendarSegs: stageWorkingCalendarSegs.length
+          }
+        })
+        let result = await saveStageDoc(payload, { ifMatch: base.updatedAt })
+        if(result?.ok) return result
+        if(result?.error === 'missing_csrf' || result?.status === 401 || result?.status === 403){
+          stageDebugLog('page:save:reauth', { status: result?.status, error: result?.error })
           await ensureSiteSession()
-          return await saveStageDoc(payload)
+          result = await saveStageDoc(payload, { ifMatch: base.updatedAt })
         }
-        return res
+        return result
       }
       const res = await attemptSave()
+      stageDebugLog('page:save:attempt_result', {
+        ok: !!res?.ok,
+        status: res?.status ?? null,
+        conflict: !!res?.conflict,
+        unauthorized: !!res?.unauthorized,
+        updatedAt: res?.updatedAt ?? null
+      })
       if(res?.ok){
+        console.debug('[stage] save:success', {
+          when: new Date().toISOString(),
+          updatedAt: res.updatedAt || payload.updatedAt
+        })
         setStageDirty(false)
-        nextSnapshot = res.stage ?? payload
-        try{ await localStageStore.save(nextSnapshot) }catch{}
+        if(res.stage){
+          const serverShifts = Array.isArray(res.stage.shifts) ? (res.stage.shifts as Shift[]) : []
+          const payloadShifts = Array.isArray(payload.shifts) ? (payload.shifts as Shift[]) : []
+          const previousShifts = Array.isArray(stageDoc?.shifts) ? (stageDoc?.shifts as Shift[]) : []
+          const matchesPayload = eqShifts(serverShifts, payloadShifts)
+          const matchesPrevious = stageDoc ? eqShifts(serverShifts, previousShifts) : false
+          if(matchesPayload || !matchesPrevious){
+            nextSnapshot = res.stage
+          }else{
+            console.warn('[stage] save:server_stale', {
+              when: new Date().toISOString(),
+              updatedAt: res.updatedAt || payload.updatedAt,
+              matchesPayload,
+              matchesPrevious
+            })
+            stageDebugLog('page:save:server_stale', {
+              matchesPayload,
+              matchesPrevious,
+              serverShifts: serverShifts.length,
+              payloadShifts: payloadShifts.length,
+              previousShifts: previousShifts.length
+            }, 'warn')
+            nextSnapshot = payload
+          }
+        }else{
+          nextSnapshot = payload
+        }
+        if(nextSnapshot){
+          const ts = Date.parse(nextSnapshot.updatedAt || '')
+          stageAppliedAtRef.current = Number.isFinite(ts) ? ts : Date.now()
+          setStageWorkingShifts(nextSnapshot.shifts ?? [])
+          setStageWorkingPto(nextSnapshot.pto ?? [])
+          setStageWorkingOverrides(nextSnapshot.overrides ?? [])
+          setStageWorkingCalendarSegs(nextSnapshot.calendarSegs ?? [])
+          try{
+            await localStageStore.save(nextSnapshot)
+            stageDebugLog('page:save:persist_local', {
+              updatedAt: nextSnapshot.updatedAt ?? null,
+              counts: {
+                shifts: nextSnapshot.shifts?.length ?? 0,
+                pto: nextSnapshot.pto?.length ?? 0,
+                overrides: nextSnapshot.overrides?.length ?? 0,
+                calendarSegs: nextSnapshot.calendarSegs?.length ?? 0
+              }
+            })
+          }catch(err){
+            stageDebugLog('page:save:persist_local_error', { message: err instanceof Error ? err.message : String(err) }, 'warn')
+          }
+        }
       }else{
-        console.error('Failed to save staging schedule', res?.error || res)
-        showToast('Unable to save staging changes. Check your session and try again.', 'error')
+        if(res?.conflict || res?.status === 409){
+          console.warn('[stage] save:conflict', {
+            when: new Date().toISOString(),
+            status: res?.status,
+            updatedAt: base.updatedAt
+          })
+          stageDebugLog('page:save:conflict', {
+            status: res?.status ?? null,
+            baseUpdatedAt: base.updatedAt
+          }, 'warn')
+          showToast('Staging snapshot is outdated. Reloading latest data.', 'error')
+          setStageDirty(false)
+          stageSaveQueuedRef.current = false
+          await reloadStageDoc()
+        }else if(res?.status === 401 || res?.status === 403 || res?.unauthorized){
+          console.warn('[stage] save:unauthorized', {
+            when: new Date().toISOString(),
+            status: res?.status,
+            error: res?.error
+          })
+          stageDebugLog('page:save:unauthorized', {
+            status: res?.status ?? null,
+            error: res?.error ?? null
+          }, 'warn')
+          handleAdminSignOut({ reason: 'expired' })
+        }else{
+          console.error('[stage] save:error', res?.error || res)
+          stageDebugLog('page:save:error', {
+            status: res?.status ?? null,
+            error: res?.error ?? null
+          }, 'error')
+          showToast('Unable to save staging changes. Check your session and try again.', 'error')
+        }
       }
     }catch(err){
-      console.error('Failed to save staging schedule', err)
+      console.error('[stage] save:exception', err)
+      stageDebugLog('page:save:exception', { message: err instanceof Error ? err.message : String(err) }, 'error')
       showToast('Unable to save staging changes. Check your connection and try again.', 'error')
     }
     stageSaveInFlightRef.current = false
@@ -257,16 +554,34 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       stageSaveQueuedRef.current = false
       flushStageSave()
     }
+    stageDebugLog('page:save:complete', {
+      queued: stageSaveQueuedRef.current,
+      nextSnapshotApplied: !!nextSnapshot,
+      latestAppliedAt: stageAppliedAtRef.current || null
+    })
     return nextSnapshot
-  }, [saveStageDoc, stageDoc, stageWorkingShifts, stageWorkingPto, stageWorkingOverrides, stageWorkingCalendarSegs, weekStart, tz.id, localStageStore, showToast])
+  }, [saveStageDoc, stageDoc, stageWorkingShifts, stageWorkingPto, stageWorkingOverrides, stageWorkingCalendarSegs, weekStart, tz.id, localStageStore, showToast, ensureSiteSession, reloadStageDoc, handleAdminSignOut, stageDirty])
+
+  React.useEffect(()=>{
+    if(!hasStageInfra) return
+    if(stageError === 'unauthorized' && unlocked){
+      handleAdminSignOut({ reason: 'expired' })
+    }
+  }, [stageError, unlocked, hasStageInfra, handleAdminSignOut])
+
   const markStageDirty = React.useCallback(()=>{
+    stageDebugLog('page:stage_dirty:mark', {
+      hasPendingTimer: stageAutoSaveTimerRef.current!=null
+    })
     setStageDirty(true)
     if(stageAutoSaveTimerRef.current!=null){
       window.clearTimeout(stageAutoSaveTimerRef.current)
       stageAutoSaveTimerRef.current = null
+      stageDebugLog('page:stage_dirty:clear_pending_timer')
     }
     stageAutoSaveTimerRef.current = window.setTimeout(()=>{
       stageAutoSaveTimerRef.current = null
+       stageDebugLog('page:save:auto_trigger', { reason: 'stage_dirty' })
       flushStageSave()
     }, 400)
   }, [flushStageSave])
@@ -274,173 +589,55 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     if(stageAutoSaveTimerRef.current!=null){
       window.clearTimeout(stageAutoSaveTimerRef.current)
       stageAutoSaveTimerRef.current = null
+      stageDebugLog('page:save:auto_cleanup', { reason: 'unmount' })
     }
   }, [])
-  const stageAgents = React.useMemo<AgentRow[]>(()=>{
-    if(stageDoc?.agents && stageDoc.agents.length>0){
-      return stageDoc.agents.map(a=> ({
-        firstName: a.firstName,
-        lastName: a.lastName,
-        tzId: a.tzId,
-        hidden: a.hidden,
-        isSupervisor: a.isSupervisor,
-        supervisorId: a.supervisorId ?? undefined,
-        notes: a.notes,
-        meetingCohort: (a.meetingCohort ?? null) as MeetingCohort | null,
-      }))
-    }
-    return localAgents
-  }, [stageDoc?.agents, localAgents])
-  const stageEffectiveShifts = React.useMemo(()=>{
-    try{ return applyOverrides(stageWorkingShifts, stageWorkingOverrides, weekStart, stageAgents as any) }
-    catch{ return stageWorkingShifts }
-  }, [stageWorkingShifts, stageWorkingOverrides, weekStart, stageAgents])
-  const stageChangedShiftIds = React.useMemo(()=>{
-    const liveMap = new Map(shifts.map(s=> [s.id, s]))
-    const changed = new Set<string>()
-    for(const s of stageWorkingShifts){
-      if(!s || !s.id) continue
-      const live = liveMap.get(s.id)
-      if(!live || !eqShift(live, s)){
-        changed.add(s.id)
-      }
-    }
-    return changed
-  }, [stageWorkingShifts, shifts])
-  const stageChangeEntries = React.useMemo<StageChangeEntry[]>(()=>{
-    const liveMap = new Map(shifts.map(s=> [s.id, s]))
-    const stageMap = new Map(stageWorkingShifts.map(s=> [s.id, s]))
-    const entries: StageChangeEntry[] = []
-    stageWorkingShifts.forEach((s, idx)=>{
-      const key = s.id || `added-${s.person||'unknown'}-${s.day}-${idx}`
-      const live = s.id ? liveMap.get(s.id) : undefined
-      const person = (s.person || live?.person || 'Unassigned').trim() || 'Unassigned'
-      if(!live){
-        entries.push({ id: key, type: 'added', person, stage: s })
-      }else if(!eqShift(live, s)){
-        entries.push({ id: key, type: 'updated', person, stage: s, live })
-      }
-    })
-    shifts.forEach((live, idx)=>{
-      if(!live?.id) return
-      if(!stageMap.has(live.id)){
-        const person = (live.person || 'Unassigned').trim() || 'Unassigned'
-        entries.push({ id: `removed-${live.id}-${idx}`, type: 'removed', person, live })
-      }
-    })
-    entries.sort((a,b)=>{
-      const personCmp = a.person.localeCompare(b.person, undefined, { sensitivity: 'base' })
-      if(personCmp!==0) return personCmp
-      const stageDay = (a.stage || a.live)?.day || ''
-      const otherDay = (b.stage || b.live)?.day || ''
-      if(stageDay!==otherDay) return stageDay.localeCompare(otherDay)
-      const stageStart = (a.stage || a.live)?.start || ''
-      const otherStart = (b.stage || b.live)?.start || ''
-      if(stageStart!==otherStart) return stageStart.localeCompare(otherStart)
-      return a.id.localeCompare(b.id)
-    })
-    return entries
-  }, [stageWorkingShifts, shifts])
-  const stageChangePersons = React.useMemo(()=> {
-    const set = new Set<string>()
-    for(const entry of stageChangeEntries){ set.add(entry.person) }
-    return Array.from(set).sort((a,b)=> a.localeCompare(b, undefined, { sensitivity: 'base' }))
-  }, [stageChangeEntries])
-  const stageFilteredEntries = React.useMemo(()=> {
-    if(!stageFilterAgents || stageFilterAgents.size===0) return stageChangeEntries
-    return stageChangeEntries.filter(entry=> stageFilterAgents.has(entry.person))
-  }, [stageChangeEntries, stageFilterAgents])
-  const summarizeStageEntries = React.useCallback((entries: StageChangeEntry[], emptyMessage?: string)=>{
-    if(entries.length===0) return emptyMessage ? [emptyMessage] : []
-    return entries.map(entry=>{
-      const stageWindow = entry.stage ? describeShiftWindow(entry.stage) : '—'
-      const liveWindow = entry.live ? describeShiftWindow(entry.live) : '—'
-      if(entry.type==='added') return `Added • ${entry.person} • ${stageWindow}`
-      if(entry.type==='removed') return `Removed • ${entry.person} • ${liveWindow}`
-      return `Updated • ${entry.person} • ${liveWindow} → ${stageWindow}`
-    })
-  }, [])
-  const stageChangeSummaryLines = React.useMemo(()=>{
-    return summarizeStageEntries(stageChangeEntries, 'No changes — staging already matches live.')
-  }, [stageChangeEntries, summarizeStageEntries])
-  const stagePanelEmptyMessage = React.useMemo(()=>{
-    if(stageFilteredEntries.length!==0) return ''
-    return stageChangeEntries.length===0 ? 'No changes — staging already matches live.' : 'No matching changes for selected filters.'
-  }, [stageFilteredEntries, stageChangeEntries])
-  const stageChangeCount = stageChangeEntries.length
-  const filteredStageCount = stageFilteredEntries.length
-  const requiresRemovalAck = React.useMemo(()=> stageChangeEntries.some(entry=> entry.type==='removed'), [stageChangeEntries])
-  const hasLargeStageChange = React.useMemo(()=> stageChangeEntries.length > 10, [stageChangeEntries])
-  const removalCount = React.useMemo(()=> stageChangeEntries.filter(entry=> entry.type==='removed').length, [stageChangeEntries])
-  const panelCountText = React.useMemo(()=>{
-    if(stagePanelEmptyMessage){
-      return stagePanelEmptyMessage
-    }
-    if(stageChangeCount===0) return 'No differences between staging and live shifts.'
-    const suffix = `shift${filteredStageCount===1?'':'s'} modified`
-    if(stageFilterAgents && stageFilterAgents.size>0){
-      return `${filteredStageCount} of ${stageChangeCount} ${suffix}`
-    }
-    return `${filteredStageCount} ${suffix}`
-  }, [stagePanelEmptyMessage, stageChangeCount, filteredStageCount, stageFilterAgents])
-  const handleSelectAllStageAgents = React.useCallback(()=> setStageFilterAgents(null), [])
-  const handleClearStageAgents = React.useCallback(()=> setStageFilterAgents(new Set<string>()), [])
-  const handleToggleStageFilter = React.useCallback((person: string)=>{
-    setStageFilterAgents(prev=>{
-      const allSet = new Set(stageChangePersons)
-      if(prev === null){
-        const next = new Set(allSet)
-        next.delete(person)
-        return next.size === allSet.size ? null : next
-      }
-      const next = new Set(prev)
-      if(next.has(person)) next.delete(person); else next.add(person)
-      if(next.size === 0) return new Set<string>()
-      if(next.size === allSet.size) return null
-      return next
-    })
-  }, [stageChangePersons])
-  React.useEffect(()=>{
-    if(stageFilterAgents && stageFilterAgents.size>0){
-      const valid = new Set(stageChangePersons)
-      const next = new Set<string>()
-      stageFilterAgents.forEach(person=>{
-        if(valid.has(person)) next.add(person)
-      })
-      if(next.size !== stageFilterAgents.size){
-        setStageFilterAgents(next.size>0 ? next : null)
-      }
-    }
-  }, [stageFilterAgents, stageChangePersons])
-  const stageBadgeText = React.useMemo(()=>{
-    if(stageLoading) return 'Loading stage…'
-    if(stageError) return 'Stage error'
-    if(stageDirty) return 'Stage draft'
-    return stageDoc ? 'Stage ready' : 'Stage empty'
-  }, [stageLoading, stageError, stageDoc, stageDirty])
-  const stageSubtitleText = React.useMemo(()=>{
-    if(stageLoading) return 'Loading staging data…'
-    if(stageError) return 'Stage unavailable'
-    if(stageDirty) return 'Unsaved staging changes'
-    if(stageDoc){
-      const formatted = formatStageTimestamp(stageDoc.updatedAt)
-      return formatted ? `Updated ${formatted}` : 'Stage snapshot loaded'
-    }
-    return 'No stage snapshot yet'
-  }, [stageLoading, stageError, stageDoc, stageDirty])
+  const {
+    stageAgents,
+    stageEffectiveShifts,
+    stageChangedShiftIds,
+    stageChangeEntries,
+    stageChangePersons,
+    stageFilteredEntries,
+    stageChangeSummaryLines,
+    stageChangeCount,
+    filteredStageCount,
+    requiresRemovalAck,
+    hasLargeStageChange,
+    removalCount,
+    panelCountText,
+    stageBadgeText,
+    stageSubtitleText,
+    handleSelectAllStageAgents,
+    handleClearStageAgents,
+    handleToggleStageFilter,
+  } = useStageChanges({
+    weekStart,
+    stageDoc,
+    stageWorkingShifts,
+    stageWorkingOverrides,
+    localAgents,
+    liveShifts: shifts,
+    stageFilterAgents,
+    setStageFilterAgents,
+    stageDirty,
+    stageLoading,
+    stageError,
+    stageEnabled: hasStageInfra,
+  })
   const handlePublishStageToLive = React.useCallback(async ()=>{
     if(stagePublishBusy) return
     const summaryLines = stageChangeSummaryLines.slice()
     setStagePublishBusy(true)
     try{
       const latestSaved = await flushStageSave()
-      const clone = <T,>(value: T): T =>{
+    const clone = <T,>(value: T): T =>{
         try{ return JSON.parse(JSON.stringify(value)) }catch{ return value }
       }
       const payload: StageDoc = {
         weekStart,
         tzId: tz.id,
-        updatedAt: new Date().toISOString(),
+        updatedAt: latestSaved?.updatedAt || stageDoc?.updatedAt || new Date().toISOString(),
         baseLiveUpdatedAt: latestSaved?.baseLiveUpdatedAt ?? stageDoc?.baseLiveUpdatedAt,
         shifts: clone(stageWorkingShifts),
         pto: clone(stageWorkingPto),
@@ -453,8 +650,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       if(!publishRes?.ok){
         if(publishRes?.status === 409){
           showToast('Staging publish failed: live schedule changed. Refresh staging and try again.', 'error')
-        }else if(publishRes?.status === 401 || publishRes?.status === 403){
-          showToast('Staging publish failed: session expired. Please sign in again.', 'error')
+        }else if(publishRes?.status === 401 || publishRes?.status === 403 || publishRes?.unauthorized){
+          handleAdminSignOut({ reason: 'expired' })
         }else{
           showToast('Staging publish failed. Try again in a moment.', 'error')
         }
@@ -471,7 +668,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     }finally{
       setStagePublishBusy(false)
     }
-  }, [stagePublishBusy, stageChangeSummaryLines, flushStageSave, weekStart, tz.id, stageDoc, stageWorkingShifts, stageWorkingPto, stageWorkingOverrides, stageWorkingCalendarSegs, showToast, reloadStageDoc])
+  }, [stagePublishBusy, stageChangeSummaryLines, flushStageSave, weekStart, tz.id, stageDoc, stageWorkingShifts, stageWorkingPto, stageWorkingOverrides, stageWorkingCalendarSegs, showToast, reloadStageDoc, handleAdminSignOut])
   const handleCopyStageSummary = React.useCallback(async ()=>{
     if(!stagePublishSummary) return
     const text = stagePublishSummary.lines.join('\n')
@@ -486,15 +683,8 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   }, [stagePublishSummary, showToast])
   // Track whether the working session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
-  const autoPublishTimerRef = React.useRef<number | null>(null)
-  const autoPublishInFlightRef = React.useRef(false)
-  const autoPublishQueuedRef = React.useRef(false)
-  const lastAutoPublishErrorRef = React.useRef<number | null>(null)
   const markDirty = React.useCallback(()=>{
     setIsDirty(true)
-    if(autoPublishInFlightRef.current){
-      autoPublishQueuedRef.current = true
-    }
   }, [])
   // Local autosave for unpublished changes (single snapshot per week/tz)
   const UNPUB_KEY = React.useMemo(()=> `schedule2.v2.unpublished.${weekStart}.${tz.id}`,[weekStart,tz.id])
@@ -562,14 +752,14 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   // Schedule Editor tab: multi-select of shifts by id
   const [selectedShiftIds, setSelectedShiftIds] = React.useState<Set<string>>(new Set<string>())
   React.useEffect(()=>{
-    if(useStagingInfra){ setSelectedShiftIds(new Set<string>()) }
-  }, [useStagingInfra])
+    setSelectedShiftIds(new Set<string>())
+  }, [isStageMode])
   // Schedule Editor tab: multi-level undo stack (keep last 10 actions)
   const [shiftUndoStack, setShiftUndoStack] = React.useState<Array<Array<{ id:string; patch: Partial<Shift> }>>>([])
   // Redo stack mirrors undo with forward patches
   const [shiftRedoStack, setShiftRedoStack] = React.useState<Array<Array<{ id:string; patch: Partial<Shift> }>>>([])
-  const canUndoShifts = useStagingInfra ? stageShiftUndoStack.length > 0 : shiftUndoStack.length > 0
-  const canRedoShifts = useStagingInfra ? stageShiftRedoStack.length > 0 : shiftRedoStack.length > 0
+  const canUndoShifts = isStageMode ? stageShiftUndoStack.length > 0 : shiftUndoStack.length > 0
+  const canRedoShifts = isStageMode ? stageShiftRedoStack.length > 0 : shiftRedoStack.length > 0
   const handleCreateShift = React.useCallback((person: string, minutesFromWeekStart: number)=>{
     if(!person || !Number.isFinite(minutesFromWeekStart)) return
     const totalWeekMinutes = 7 * 24 * 60
@@ -613,7 +803,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       ...(endDay ? { endDay } : {})
     }
     setSelectedShiftIds(new Set<string>([newShift.id]))
-    if(useStagingInfra){
+    if(isStageMode){
       setStageWorkingShifts(prev=> prev.concat([newShift]))
       markStageDirty()
     }else{
@@ -621,11 +811,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setModifiedIds(prev=>{ const next = new Set(prev); next.add(newShift.id); return next })
       markDirty()
     }
-  }, [localAgents, useStagingInfra, markStageDirty, markDirty])
+  }, [localAgents, isStageMode, markStageDirty, markDirty])
   const deleteSelectedShifts = React.useCallback(()=>{
     if(selectedShiftIds.size===0) return
     const ids = new Set(selectedShiftIds)
-    if(useStagingInfra){
+    if(isStageMode){
       setStageWorkingShifts(prev=> prev.filter(s=> !ids.has(s.id)))
       markStageDirty()
     }else{
@@ -638,7 +828,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       markDirty()
     }
     setSelectedShiftIds(new Set<string>())
-  }, [selectedShiftIds, useStagingInfra, markStageDirty, markDirty])
+  }, [selectedShiftIds, isStageMode, markStageDirty, markDirty])
   const formatUnixTs = React.useCallback((ts?: number | null)=>{
     if(ts == null || !Number.isFinite(ts)) return '—'
     try{ return new Date(ts * 1000).toLocaleString() }catch{ return '—' }
@@ -714,16 +904,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       }
     }catch{}
   }, [showToast])
-  // Shallow equality for relevant shift fields (ignores segments)
-  function eqShift(a: Shift, b: Shift){
-    return a.id===b.id && a.day===b.day && a.start===b.start && a.end===b.end && (a as any).endDay=== (b as any).endDay
-  }
-  function eqShifts(a: Shift[], b: Shift[]){
-    if(a.length!==b.length) return false
-    const map = new Map(a.map(s=> [s.id, s]))
-    for(const s of b){ const m = map.get(s.id); if(!m || !eqShift(m, s)) return false }
-    return true
-  }
   const pushShiftsUndo = React.useCallback((changes: Array<{ id:string; patch: Partial<Shift> }>)=>{
     if(changes.length===0) return
     // If this is the first change in a clean state and working === live, mark we started from live
@@ -840,20 +1020,25 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     try{ return applyOverrides(workingShifts, workingOverrides, weekStart, localAgents as any) }
     catch{ return workingShifts }
   }, [workingShifts, workingOverrides, weekStart, localAgents])
-  const scheduleShifts = useStagingInfra ? stageEffectiveShifts : effectiveWorkingShifts
-  const schedulePto = useStagingInfra ? stageWorkingPto : pto
-  const scheduleAgents = useStagingInfra ? stageAgents : localAgents
-  const modeSubtitleText = useStagingInfra ? stageSubtitleText : (isDirty ? 'Unpublished local edits' : 'Live data preview')
+  const scheduleShifts = isStageMode ? stageEffectiveShifts : effectiveWorkingShifts
+  const schedulePto = isStageMode ? stageWorkingPto : pto
+  const scheduleAgents = isStageMode ? stageAgents : localAgents
+  const modeSubtitleText = isStageMode ? stageSubtitleText : (isDirty ? 'Unpublished local edits' : 'Live data preview')
   const stagingStatusBadgeClasses = dark ? 'bg-neutral-900 border-violet-500/60 text-violet-300' : 'bg-white border-violet-500/70 text-violet-700'
   const modeSubtitleClassName = [
     'text-[10px]',
-    useStagingInfra && stageError
+    isStageMode && stageError
       ? (dark ? 'text-red-300' : 'text-red-600')
       : 'opacity-60'
   ].join(' ')
   const livePublishDisabled = manualPublishPending || !isDirty
   const stagePublishSummaryLines = stagePublishSummary?.lines ?? []
   const livePublishLabel = manualPublishPending ? 'Saving…' : 'Save changes to live'
+  const stageToggleLabel = React.useMemo(()=>{
+    if(isStageMode) return 'Back to live'
+    if(stageChangeCount>0) return `Preview staging (${stageChangeCount})`
+    return 'Preview staging'
+  }, [isStageMode, stageChangeCount])
   React.useEffect(()=>{
     if(!showStagePublishConfirm){
       setStageRemovalAck(false)
@@ -882,10 +1067,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   }, [scheduleAgents, includeHiddenAgents])
   // When switching into Schedule Editor tab, if there are no local edits pending, refresh from live
   React.useEffect(()=>{
-    if(subtab!== 'Schedule Editor' || useStagingInfra) return
+    if(subtab!== 'Schedule Editor' || isStageMode) return
     const noLocalEdits = shiftUndoStack.length===0 && shiftRedoStack.length===0 && modifiedIds.size===0
     if(noLocalEdits){ setWorkingShifts(shifts) }
-  }, [subtab, shifts, shiftUndoStack, shiftRedoStack, modifiedIds, useStagingInfra])
+  }, [subtab, shifts, shiftUndoStack, shiftRedoStack, modifiedIds, isStageMode])
   // Keyboard shortcuts for Schedule Editor tab (Undo/Redo, Escape)
   React.useEffect(()=>{
     const onKey = (e: KeyboardEvent)=>{
@@ -899,25 +1084,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       const isRedo = ((e.ctrlKey || e.metaKey) && (e.shiftKey && (e.key==='z' || e.key==='Z'))) || ((e.ctrlKey || e.metaKey) && (e.key==='y' || e.key==='Y'))
       if(isUndo){
         e.preventDefault()
-        if(useStagingInfra) undoStageShifts()
-        else undoShifts()
+        if(isStageMode){ undoStageShifts() }else{ undoShifts() }
+        return
       } else if(isRedo){
         e.preventDefault()
-        if(useStagingInfra) redoStageShifts()
-        else redoShifts()
+        if(isStageMode){ redoStageShifts() }else{ redoShifts() }
         return
-      }
-      if(!e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey){
-        if(e.key==='1'){
-          e.preventDefault()
-          setUseStagingInfra(false)
-          return
-        }
-        if(e.key==='2'){
-          e.preventDefault()
-          setUseStagingInfra(true)
-          return
-        }
       }
       const isDeleteKey = e.key === 'Delete' || (e.key === 'Backspace' && (e.ctrlKey || e.metaKey))
       if(isDeleteKey && selectedShiftIds.size>0){
@@ -932,7 +1104,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     }
     window.addEventListener('keydown', onKey)
     return ()=> window.removeEventListener('keydown', onKey)
-  }, [subtab, undoShifts, redoShifts, undoStageShifts, redoStageShifts, useStagingInfra, selectedShiftIds, deleteSelectedShifts])
+  }, [subtab, undoShifts, redoShifts, undoStageShifts, redoStageShifts, isStageMode, selectedShiftIds, deleteSelectedShifts])
 
   // Postures tab form state
   const allPeople = React.useMemo(()=>{
@@ -1159,9 +1331,15 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         // Clear modified markers so shift ribbons no longer show edited tags
         setModifiedIds(new Set())
         try{ localStorage.removeItem(UNPUB_KEY) }catch{}
-        // Update parent state to reflect published PTO/Overrides immediately
-        setPto(()=> workingPto)
-        setOverrides(()=> workingOverrides)
+        // Update parent state to reflect published data immediately so autosync does not roll back
+        const clonedShifts = workingShifts.map(s=> ({ ...s }))
+        const clonedPto = workingPto.map(p=> ({ ...p }))
+        const clonedOverrides = workingOverrides.map(o=> ({ ...o }))
+        const clonedCalendarSegs = calendarSegs.map(seg=> ({ ...seg }))
+        setShifts(()=> clonedShifts)
+        setPto(()=> clonedPto)
+        setOverrides(()=> clonedOverrides)
+        setCalendarSegs(()=> clonedCalendarSegs)
         return true
       }
       if(res.status===404 || res.error==='missing_site_session' || (res.bodyText||'').includes('missing_site_session')){
@@ -1169,8 +1347,10 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         showToast('Publish failed: missing or expired site session. Please sign in to view and then try again.', 'error')
       }else if(res.status===401){
         showToast('Publish failed: not signed in as admin (401).', 'error')
+        handleAdminSignOut()
       }else if(res.status===403){
         showToast('Publish failed: CSRF mismatch (403). Try reloading and signing in again.', 'error')
+        handleAdminSignOut()
       }else if(res.status===409){
         showToast('Publish failed: conflict (409). Refresh to load latest, then retry.', 'error')
       }else{
@@ -1182,26 +1362,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       showToast(message, 'error')
       return false
     }
-  }, [localAgents, workingShifts, workingPto, workingOverrides, calendarSegs, showToast, setPto, setOverrides, ensureSiteSession])
-  const flushAutoPublish = React.useCallback(async ()=>{
-    if(autoPublishInFlightRef.current){
-      autoPublishQueuedRef.current = true
-      return
-    }
-    autoPublishInFlightRef.current = true
-    const ok = await publishWorkingToLive({ silent: true })
-    autoPublishInFlightRef.current = false
-    if(!ok){
-      lastAutoPublishErrorRef.current = Date.now()
-    }else{
-      lastAutoPublishErrorRef.current = null
-    }
-    const hasQueued = autoPublishQueuedRef.current
-    autoPublishQueuedRef.current = false
-    if(hasQueued && ok){
-      flushAutoPublish()
-    }
-  }, [publishWorkingToLive])
+  }, [localAgents, workingShifts, workingPto, workingOverrides, calendarSegs, showToast, setShifts, setCalendarSegs, setPto, setOverrides, ensureSiteSession, handleAdminSignOut])
   const handleManualPublish = React.useCallback(async ()=>{
     if(manualPublishPending) return
     setManualPublishPending(true)
@@ -1211,34 +1372,6 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       setManualPublishPending(false)
     }
   }, [manualPublishPending, publishWorkingToLive])
-  React.useEffect(()=>()=>{
-    if(autoPublishTimerRef.current!=null){
-      window.clearTimeout(autoPublishTimerRef.current)
-      autoPublishTimerRef.current = null
-    }
-  }, [])
-
-  React.useEffect(()=>{
-    if(!unlocked || !isDirty){
-      return
-    }
-    if(lastAutoPublishErrorRef.current && (Date.now() - lastAutoPublishErrorRef.current) < 5000){
-      return
-    }
-    if(autoPublishTimerRef.current!=null){
-      window.clearTimeout(autoPublishTimerRef.current)
-    }
-    autoPublishTimerRef.current = window.setTimeout(()=>{
-      autoPublishTimerRef.current = null
-      flushAutoPublish()
-    }, 600)
-    return ()=>{
-      if(autoPublishTimerRef.current!=null){
-        window.clearTimeout(autoPublishTimerRef.current)
-        autoPublishTimerRef.current = null
-      }
-    }
-  }, [isDirty, unlocked, flushAutoPublish])
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
     onAddAgent?.(a)
     setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
@@ -1349,21 +1482,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
 
 {subtab==='Schedule Editor' && (
         <div className={["flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs rounded-xl px-2 py-2 border", dark?"bg-neutral-950 border-neutral-800 text-neutral-200":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
-          {/* Left: staging toggle & status */}
-          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2 sm:gap-3">
-              <Toggle
-                checked={useStagingInfra}
-                onChange={setUseStagingInfra}
-                size="lg"
-                dark={dark}
-                ariaLabel={useStagingInfra ? 'Disable staging mode' : 'Enable staging mode'}
-                className="shrink-0"
-              />
               <div className="leading-tight">
                 <div className="text-xs font-semibold flex items-center gap-1">
-                  {useStagingInfra ? 'Staging mode' : 'Live mode'}
-                  {useStagingInfra && stageChangeCount>0 && (
+                  {isStageMode ? 'Staging mode' : 'Live mode'}
+                  {isStageMode && stageChangeCount>0 && (
                     <span className={["inline-flex items-center justify-center rounded-full border px-1.5 py-[1px] text-[10px] font-semibold", dark?"bg-violet-900/50 border-violet-500 text-violet-200":"bg-violet-100 border-violet-300 text-violet-700"].join(' ')}>
                       {stageChangeCount}
                     </span>
@@ -1373,8 +1497,33 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                   {modeSubtitleText}
                 </div>
               </div>
+              {hasStageInfra && (
+                <button
+                  type="button"
+                  onClick={()=> setScheduleMode(isStageMode ? 'live' : 'stage')}
+                  className={[
+                    "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
+                    dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100"
+                  ].join(' ')}
+                >
+                  <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {isStageMode ? (
+                      <>
+                        <polyline points="11 7 6 12 11 17"></polyline>
+                        <polyline points="18 7 13 12 18 17"></polyline>
+                      </>
+                    ) : (
+                      <>
+                        <polyline points="13 7 18 12 13 17"></polyline>
+                        <polyline points="6 7 11 12 6 17"></polyline>
+                      </>
+                    )}
+                  </svg>
+                  <span>{stageToggleLabel}</span>
+                </button>
+              )}
             </div>
-            {useStagingInfra ? (
+            {isStageMode ? (
               <span className={["inline-flex items-center px-2 py-1 rounded-xl border font-medium", stagingStatusBadgeClasses].join(' ')}>
                 {stageBadgeText}
               </span>
@@ -1399,7 +1548,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 <span>{livePublishLabel}</span>
               </button>
             )}
-            {useStagingInfra && (
+            {isStageMode && (
               <button
                 type="button"
                 onClick={()=> setShowStageChangesPanel(v=>!v)}
@@ -1412,7 +1561,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 <span>{showStageChangesPanel ? 'Hide staged changes' : `View staged changes${stageChangeEntries.length ? ` (${stageChangeEntries.length})` : ''}`}</span>
               </button>
             )}
-            {useStagingInfra && (
+            {isStageMode && (
               <button
                 type="button"
                 onClick={()=> setShowStagePublishConfirm(true)}
@@ -1561,33 +1710,12 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             </button>
 
-            {!useStagingInfra && (
-              <button
-                type="button"
-                onClick={handleManualPublish}
-                disabled={!isDirty || manualPublishPending || !unlocked}
-                className={[
-                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border font-medium",
-                  (!isDirty || manualPublishPending || !unlocked)
-                    ? (dark ? "bg-neutral-900 border-neutral-800 opacity-50 cursor-not-allowed" : "bg-white border-neutral-200 opacity-60 cursor-not-allowed")
-                    : (dark ? "bg-blue-500/20 border-blue-400 text-blue-200 hover:bg-blue-500/30" : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700")
-                ].join(' ')}
-              >
-                {manualPublishPending ? (
-                  <svg aria-hidden className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
-                ) : (
-                  <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18"/><path d="M8 7h8"/><path d="M5 7v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7"/></svg>
-                )}
-                <span>Save changes to live</span>
-              </button>
-            )}
-
             {/* Edit: Undo/Redo */}
             <div className="inline-flex items-center gap-1" title="Undo / Redo">
               <button
                 type="button"
                 disabled={!canUndoShifts}
-                onClick={useStagingInfra ? undoStageShifts : undoShifts}
+                onClick={isStageMode ? undoStageShifts : undoShifts}
                 className={[
                   "px-2.5 py-1.5 rounded-xl border font-medium",
                   canUndoShifts ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")
@@ -1599,7 +1727,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               <button
                 type="button"
                 disabled={!canRedoShifts}
-                onClick={useStagingInfra ? redoStageShifts : redoShifts}
+                onClick={isStageMode ? redoStageShifts : redoShifts}
                 className={[
                   "px-2.5 py-1.5 rounded-xl border font-medium",
                   canRedoShifts ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 opacity-50":"bg-white border-neutral-200 opacity-50")
@@ -1610,11 +1738,28 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               </button>
             </div>
 
+            {unlocked && (
+              <button
+                type="button"
+                onClick={()=> handleAdminSignOut()}
+                className={[
+                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border font-medium",
+                  dark
+                    ? "bg-red-900/40 border-red-700/60 text-red-200 hover:bg-red-900/60"
+                    : "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
+                ].join(' ')}
+                title="Sign out of admin session"
+              >
+                <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 19V5"/></svg>
+                <span>Sign out admin</span>
+              </button>
+            )}
+
           </div>
         </div>
       )}
 
-      {useStagingInfra && showStagePublishConfirm && (
+      {isStageMode && showStagePublishConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-3">
           <div className="absolute inset-0 bg-black/60" aria-hidden onClick={()=> stagePublishBusy ? null : setShowStagePublishConfirm(false)}></div>
           <div className={[
@@ -1731,7 +1876,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         </div>
       )}
 
-      {useStagingInfra && showStageChangesPanel && (
+      {isStageMode && showStageChangesPanel && (
         <div className={["rounded-xl border px-3 py-3 text-sm", dark?"bg-neutral-950 border-neutral-800 text-neutral-100":"bg-neutral-50 border-neutral-200 text-neutral-800"].join(' ')}>
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -1956,9 +2101,9 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             showAllTimeLabels={showAllTimeLabels}
             sortMode={sortMode}
             sortDir={sortDir}
-            highlightIds={useStagingInfra ? stageChangedShiftIds : modifiedIds}
-            complianceHighlightIds={!useStagingInfra && showCompliance ? complianceHighlightIds : undefined}
-            complianceTipsByShiftId={!useStagingInfra && showCompliance ? (function(){
+            highlightIds={isStageMode ? stageChangedShiftIds : modifiedIds}
+            complianceHighlightIds={!isStageMode && showCompliance ? complianceHighlightIds : undefined}
+            complianceTipsByShiftId={!isStageMode && showCompliance ? (function(){
               const map: Record<string,string[]> = {}
               for(const i of complianceIssues){
                 if(!i.shiftId) continue
@@ -1973,7 +2118,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               return map
             })() : undefined}
             selectedIds={selectedShiftIds}
-            chipTone={useStagingInfra ? 'stage' : 'default'}
+            chipTone={isStageMode ? 'stage' : 'default'}
             onCreateShift={handleCreateShift}
             onToggleSelect={(id)=>{
               setSelectedShiftIds(prev=>{
@@ -1983,11 +2128,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               })
             }}
             onDragAll={(name, delta)=>{
-              const sourceShifts = useStagingInfra ? stageWorkingShifts : workingShifts
+              const sourceShifts = isStageMode ? stageWorkingShifts : workingShifts
               const personsShifts = sourceShifts.filter(s=> s.person===name)
               if(personsShifts.length===0) return
               const prevPatches = personsShifts.map(s=> ({ id: s.id, patch: { day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay } }))
-              if(useStagingInfra) pushStageShiftsUndo(prevPatches)
+              if(isStageMode) pushStageShiftsUndo(prevPatches)
               else pushShiftsUndo(prevPatches)
               const DAYS_ = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as const
               const idxOf = (d:string)=> DAYS_.indexOf(d as any)
@@ -2008,7 +2153,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 return { ...s, day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
               })
               const movedMap = new Map(moved.map(m=> [m.id, m]))
-              if(useStagingInfra){
+              if(isStageMode){
                 setStageWorkingShifts(prev=> prev.map(s=> movedMap.get(s.id) || s))
                 markStageDirty()
               }else{
@@ -2029,11 +2174,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               }
               const moveIds = new Set<string>(selectedShiftIds)
               moveIds.add(id)
-              const sourceShifts = useStagingInfra ? stageWorkingShifts : workingShifts
+              const sourceShifts = isStageMode ? stageWorkingShifts : workingShifts
               const moveShifts = sourceShifts.filter(s=> moveIds.has(s.id))
               if(moveShifts.length === 0) return
               const prevPatches = moveShifts.map(s=> ({ id: s.id, patch: { day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay } }))
-              if(useStagingInfra) pushStageShiftsUndo(prevPatches)
+              if(isStageMode) pushStageShiftsUndo(prevPatches)
               else pushShiftsUndo(prevPatches)
               const updates = moveShifts.map(s=>{
                 const sd = idxOf(s.day); const ed = idxOf((s as any).endDay || s.day)
@@ -2046,7 +2191,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
                 const neMin = ((ne%1440)+1440)%1440
                 return { ...s, day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
               })
-              if(useStagingInfra){
+              if(isStageMode){
                 const updatedMap = new Map(updates.map(u=> [u.id, u]))
                 setStageWorkingShifts(prev=> prev.map(s=> updatedMap.get(s.id) || s))
                 markStageDirty()
@@ -2067,11 +2212,11 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             const addMin = (t:string, dm:number)=>{
               const [h,m]=t.split(':').map(Number); const tot=((h||0)*60+(m||0)+dm+10080)%1440; const hh=Math.floor(tot/60).toString().padStart(2,'0'); const mm=(tot%60).toString().padStart(2,'0'); return `${hh}:${mm}`
             }
-            const sourceShifts = useStagingInfra ? stageWorkingShifts : workingShifts
+            const sourceShifts = isStageMode ? stageWorkingShifts : workingShifts
             const s = sourceShifts.find(s=> s.id===id)
             if(!s) return
             const snapshot = [{ id: s.id, patch: { day: s.day, start: s.start, end: s.end, endDay: (s as any).endDay } }]
-            if(useStagingInfra) pushStageShiftsUndo(snapshot)
+            if(isStageMode) pushStageShiftsUndo(snapshot)
             else pushShiftsUndo(snapshot)
             const sd = idxOf(s.day); const ed = idxOf((s as any).endDay || s.day)
             const sAbs = sd*1440 + toMin(s.start)
@@ -2090,7 +2235,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             const nsMin = ((ns%1440)+1440)%1440
             const neMin = ((ne%1440)+1440)%1440
             const patch = { day: byIndex(nsDay), start: addMin('00:00', nsMin), end: addMin('00:00', neMin), endDay: byIndex(neDay) }
-            if(useStagingInfra){
+            if(isStageMode){
               setStageWorkingShifts(prev=> prev.map(x=> x.id===s.id ? { ...x, ...patch } : x))
               markStageDirty()
             }else{
@@ -3045,8 +3190,26 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
               ))}
             </div>
           </div>
-          </div>
-        ) : null
+        </div>
+      ) : null
+    )}
+
+      {unlocked && (
+        <div className="mt-8 text-center">
+          <button
+            type="button"
+            onClick={()=> handleAdminSignOut()}
+            className={[
+              "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium",
+              dark
+                ? "bg-red-900/40 border-red-700/60 text-red-200 hover:bg-red-900/60"
+                : "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
+            ].join(' ')}
+          >
+            <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 19V5"/></svg>
+            <span>Sign out admin</span>
+          </button>
+        </div>
       )}
 
       {toast && (
@@ -3066,34 +3229,5 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
         </div>
       )}
     </section>
-  )
-}
-
-function MagicLoginPanel({ dark }:{ dark:boolean }){
-  const [email, setEmail] = React.useState('')
-  const [msg, setMsg] = React.useState('')
-  const [link, setLink] = React.useState<string|undefined>(undefined)
-  return (
-    <form onSubmit={(e)=>{ e.preventDefault(); (async()=>{
-      setMsg(''); setLink(undefined)
-      const r = await requestMagicLink(email, 'admin')
-      if(r.ok){
-        if(r.link){ setLink(r.link); setMsg('Dev mode: click the link below to sign in.') }
-        else setMsg('Check your inbox for the sign-in link.')
-      }else{
-        setMsg('Failed to request link. Check email format and try again.')
-      }
-    })() }}>
-      <div className="flex gap-2 items-center">
-        <input type="email" required className={["flex-1 border rounded-xl px-3 py-2", dark && "bg-neutral-900 border-neutral-700"].filter(Boolean).join(' ')} value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@company.com" />
-        <button type="submit" className={["rounded-xl px-3 py-2 text-sm font-medium border", dark ? "bg-neutral-800 border-neutral-700" : "bg-blue-600 text-white border-blue-600"].join(' ')}>Email link</button>
-      </div>
-      {msg && (<div className="text-xs mt-2 opacity-80">{msg}</div>)}
-      {link && (
-        <div className="mt-2 text-xs break-all">
-          <a className="underline" href={link} target="_blank" rel="noreferrer">{link}</a>
-        </div>
-      )}
-    </form>
   )
 }

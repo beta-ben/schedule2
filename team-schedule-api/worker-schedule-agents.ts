@@ -267,9 +267,9 @@ function corsHeaders(req: Request, env: Env){
   const h: Record<string,string> = {
     'Access-Control-Allow-Credentials': 'true',
     // Allow Content-Type for JSON, x-csrf-token for writes, x-admin-sid for header-based session, and Authorization for dev bearer/test tools
-    'Access-Control-Allow-Headers': 'content-type,x-csrf-token,x-admin-sid,authorization',
-    // Include PATCH for v2/agents; keep GET/POST/OPTIONS
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type,x-csrf-token,x-admin-sid,x-if-match,if-match,authorization',
+    // Include PATCH for v2/agents and PUT for staging saves; keep GET/POST/OPTIONS
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,OPTIONS',
   }
   // Safer default: only echo Origin when explicitly allowlisted.
   if (origin && (allowAll || (allowed.length > 0 && allowlist.has(origin)))) {
@@ -781,13 +781,46 @@ function normalizeStageLiveInput(live: any): StageLiveDoc{
   }
 }
 
-async function readStageDoc(env: Env, key: StageKey): Promise<StageDoc | null>{
+function stageSummary(doc: StageDoc | null | undefined){
+  if(!doc) return null
+  return {
+    updatedAt: doc.updatedAt,
+    baseLiveUpdatedAt: doc.baseLiveUpdatedAt,
+    shifts: Array.isArray(doc.shifts) ? doc.shifts.length : 0,
+    pto: Array.isArray(doc.pto) ? doc.pto.length : 0,
+    overrides: Array.isArray(doc.overrides) ? doc.overrides.length : 0,
+    calendarSegs: Array.isArray(doc.calendarSegs) ? doc.calendarSegs.length : 0,
+    agents: Array.isArray(doc.agents) ? doc.agents.length : 0,
+  }
+}
+
+function stageLog(message: string, payload?: Record<string, unknown>){
+  try{
+    console.log(`[stage] ${message}`, payload ?? {})
+  }catch{}
+}
+
+async function readStageDoc(env: Env, key: StageKey, opts?: { fresh?: boolean }): Promise<StageDoc | null>{
   const storageKey = stageStorageKey(key)
+  const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+  const freshOnly = opts?.fresh === true
   if(useD1(env)){
     const doc = await readStageDocD1(env, key)
-    if(doc) return doc
+    if(doc){
+      stageLog('read:d1-hit', { storageKey, summary: stageSummary(doc) })
+      if(kvNs && freshOnly){
+        try{
+          await kvNs.put(storageKey, JSON.stringify(doc, null, 2))
+          stageLog('hydrate:kv-refresh', { storageKey, summary: stageSummary(doc) })
+        }catch{}
+      }
+      return doc
+    }
+    if(freshOnly){
+      stageLog('read:d1-miss', { storageKey })
+      return null
+    }
     try{
-      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
       if(kvNs){
         const raw = await kvNs.get(storageKey)
         if(raw){
@@ -796,6 +829,8 @@ async function readStageDoc(env: Env, key: StageKey): Promise<StageDoc | null>{
             const hydrated = hydrateStageDoc(parsed, key)
             if(hydrated){
               await writeStageDocD1(env, key, hydrated)
+              stageLog('hydrate:d1-backfill', { storageKey, summary: stageSummary(hydrated) })
+              stageLog('read:kv-hit', { storageKey, summary: stageSummary(hydrated) })
               return hydrated
             }
           }catch{}
@@ -805,7 +840,6 @@ async function readStageDoc(env: Env, key: StageKey): Promise<StageDoc | null>{
     return null
   } else {
     try{
-      const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
       if(kvNs){
         const raw = await kvNs.get(storageKey)
         if(raw){
@@ -813,6 +847,11 @@ async function readStageDoc(env: Env, key: StageKey): Promise<StageDoc | null>{
             const hydrated = hydrateStageDoc(JSON.parse(raw), key)
             if(hydrated){
               try{ await writeStageDocD1(env, key, hydrated) }catch{}
+              if(freshOnly){
+                stageLog('hydrate:kv-hit', { storageKey, summary: stageSummary(hydrated) })
+              } else {
+                stageLog('read:kv-hit', { storageKey, summary: stageSummary(hydrated) })
+              }
               return hydrated
             }
           }catch{}
@@ -825,6 +864,7 @@ async function readStageDoc(env: Env, key: StageKey): Promise<StageDoc | null>{
         const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
         if(kvNs) await kvNs.put(storageKey, JSON.stringify(fromD1, null, 2))
       }catch{}
+      stageLog('read:d1-hit-after-kv', { storageKey, summary: stageSummary(fromD1) })
       return fromD1
     }
     return null
@@ -845,6 +885,7 @@ async function writeStageDoc(env: Env, key: StageKey, doc: StageDoc){
     if(kvNs) await kvNs.put(storageKey, json)
     try{ await writeStageDocD1(env, key, doc) }catch{}
   }
+  stageLog('write:stage-doc', { storageKey, summary: stageSummary(doc) })
 }
 
 async function readStageDocD1(env: Env, key: StageKey): Promise<StageDoc | null>{
@@ -998,15 +1039,27 @@ async function getStageV2(req: Request, env: Env, cors: Headers){
   const tzId = sanitizeTzId(tzIdRaw)
   if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
   const key: StageKey = { weekStart, tzId }
+  const storageKey = stageStorageKey(key)
   const liveDoc = await readDoc(env)
   const live = toStageLiveDoc(liveDoc)
-  let stage = await readStageDoc(env, key)
+  let source: 'd1'|'kv'|'hydrate'|'missing' = 'missing'
+  let stage = await readStageDoc(env, key, { fresh: true })
+  if(stage){
+    source = 'd1'
+  }else{
+    stage = await readStageDoc(env, key)
+    if(stage){
+      source = 'kv'
+    }
+  }
   if(!stage && live){
     try{
       stage = buildStageDocFromLive(key, live)
       await writeStageDoc(env, key, stage)
+      source = 'hydrate'
     }catch{}
   }
+  stageLog('get:summary', { storageKey, source, stage: stageSummary(stage), liveUpdatedAt: live?.updatedAt })
   return json({ ok:true, stage: stage ?? null, live }, 200, cors)
 }
 
@@ -1020,9 +1073,13 @@ async function putStageV2(req: Request, env: Env, cors: Headers){
   const tzId = sanitizeTzId(candidate.tzId || '')
   if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
   const key: StageKey = { weekStart, tzId }
-  const existing = await readStageDoc(env, key)
+  let existing = await readStageDoc(env, key, { fresh: true })
+  if(!existing){
+    existing = await readStageDoc(env, key)
+  }
   const ifMatchHeader = req.headers.get('if-match') || req.headers.get('x-if-match') || (typeof candidate.updatedAt === 'string' ? candidate.updatedAt : '')
   if(existing && ifMatchHeader && existing.updatedAt !== ifMatchHeader){
+    stageLog('put:conflict', { key, ifMatch: ifMatchHeader, existing: stageSummary(existing) })
     return json({ error:'conflict', updatedAt: existing.updatedAt }, 409, cors)
   }
   let next: StageDoc
@@ -1031,8 +1088,16 @@ async function putStageV2(req: Request, env: Env, cors: Headers){
   }catch(e:any){
     return json({ error:'invalid_stage', message: e?.message || String(e) }, 400, cors)
   }
+  stageLog('put:write', { key, next: stageSummary(next), existing: stageSummary(existing), ifMatch: ifMatchHeader })
   await writeStageDoc(env, key, next)
-  return json({ ok:true, stage: next, updatedAt: next.updatedAt }, 200, cors)
+  let persisted = await readStageDocD1(env, key)
+  if(!persisted){
+    stageLog('put:read-after-write-miss', { key, expected: stageSummary(next) })
+    persisted = next
+  }else if(next.updatedAt && persisted.updatedAt !== next.updatedAt){
+    stageLog('put:read-after-write-drift', { key, written: stageSummary(next), persisted: stageSummary(persisted) })
+  }
+  return json({ ok:true, stage: persisted, updatedAt: persisted.updatedAt }, 200, cors)
 }
 
 async function resetStageV2(req: Request, env: Env, cors: Headers){
@@ -1065,7 +1130,10 @@ async function publishStageV2(req: Request, env: Env, cors: Headers){
   const tzId = sanitizeTzId(rawStage.tzId || '')
   if(!weekStart || !tzId) return json({ error:'invalid_stage_key' }, 400, cors)
   const key: StageKey = { weekStart, tzId }
-  const existing = await readStageDoc(env, key)
+  let existing = await readStageDoc(env, key, { fresh: true })
+  if(!existing){
+    existing = await readStageDoc(env, key)
+  }
   let stageDoc: StageDoc
   try{
     stageDoc = normalizeStageDoc(rawStage, key, existing)

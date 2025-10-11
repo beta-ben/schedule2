@@ -11,3 +11,7 @@
 - Deploy a staging Worker/API route (e.g., `https://staging-api.teamschedule.cc`).
 - Keep `.env.production.staging` with `VITE_SCHEDULE_API_BASE=https://staging-api.teamschedule.cc`.
 - The staging workflow copies that file to `.env.production` before the build so the site points at the staging Worker.
+
+### Frontend preview toggle
+- Set `VITE_STAGE_FLOW=1` in your local `.env` to enable the staging preview toggle on the Schedule Editor page.
+- The UI remembers the last selected mode in `localStorage`, so switching back to live view is one click.

@@ -43,6 +43,7 @@ database_name = "schedule2"
 database_id = "50d218ac-7a3f-4397-b60a-dab4b131838c"
 
 [env.staging]
+  name = "team-schedule-api-staging" 
   [[env.staging.kv_namespaces]]
   binding = "SCHEDULE_KV"
   id = "a99ca3fba4c04b32bb9f138a64b2c95a"

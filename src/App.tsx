@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { fmtYMD, startOfWeek, formatMinutes, TimeFormat, nowInTZ, parseYMD, addDays } from './lib/utils'
-import { cloudGet, cloudPost, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession } from './lib/api'
+import { cloudGet, cloudPost, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession, logout, logoutSite } from './lib/api'
 import { pushAgentsToCloud, mapAgentsToPayloads } from './lib/agents'
 import { publishDraftBundle } from './lib/drafts'
 import type { PTO, Shift, Task, Override, MeetingCohort } from './types'
@@ -679,6 +679,23 @@ export default function App(){
     }
   }, [loadedFromCloud, shifts, agentsV2])
 
+  const handleSignOut = useCallback(async ()=>{
+    try{ await logout() }catch{}
+    try{ await logoutSite() }catch{}
+    try{
+      localStorage.removeItem('schedule_admin_unlocked')
+      localStorage.removeItem('site_unlocked_hint')
+    }catch{}
+    setShowShortcuts(false)
+    setSiteUnlocked(false)
+    setSitePw('')
+    setSiteMsg('')
+    setView('schedule')
+    if(typeof window !== 'undefined'){
+      try{ window.location.hash = '#schedule' }catch{}
+    }
+  }, [])
+
   if(!siteUnlocked){
     const dark = true
     const showUnlocking = autoUnlock || autoUnlocking
@@ -855,6 +872,7 @@ export default function App(){
               onUpdateShift={(id, patch)=> setShiftsRouted(prev=> prev.map(s=> s.id===id ? { ...s, ...patch } : s))}
               onDeleteShift={(id)=> setShiftsRouted(prev=> prev.filter(s=> s.id!==id))}
               onAddShift={(s)=> setShiftsRouted(prev=> prev.concat([{ ...s, agentId: s.agentId || agentIdByFullName(s.person) }]))}
+              setShifts={setShiftsRouted}
               setTasks={setTasks}
               setCalendarSegs={setCalendarSegsRouted}
               setPto={setPtoRouted}
@@ -880,8 +898,24 @@ export default function App(){
             />
           )}
         </div>
-        <footer className="px-4 pb-6 text-center text-xs opacity-60">
-          © Beta Bionics. Built by Ben Steward.
+        <footer className="px-4 pb-6 text-center text-xs">
+          <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3 opacity-70">
+            <span>© Beta Bionics. Built by Ben Steward.</span>
+            {siteUnlocked && (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className={[
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition",
+                  dark
+                    ? "border-neutral-700 bg-neutral-900/80 text-neutral-200 hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+                    : "border-neutral-300 bg-white/80 text-neutral-700 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                ].join(' ')}
+              >
+                Sign out
+              </button>
+            )}
+          </div>
         </footer>
       </div>
       </ErrorCatcher>

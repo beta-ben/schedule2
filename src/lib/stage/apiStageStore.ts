@@ -16,7 +16,7 @@ export function makeApiStageStore(): StageStore{
         return localFallback.get(key)
       }
       if(!res.ok){
-        return { stage: null, live: null }
+        return { stage: null, live: null, unauthorized: res.unauthorized }
       }
       return { stage: res.stage ?? null, live: res.live ?? null }
     },
@@ -27,7 +27,7 @@ export function makeApiStageStore(): StageStore{
         return localFallback.save(doc, options)
       }
       if(!res.ok){
-        return { ok:false, conflict: !!res.conflict }
+        return { ok:false, conflict: !!res.conflict, status: res.status, unauthorized: res.unauthorized, error: res.error }
       }
       const updatedAt = res.stage?.updatedAt ?? res.updatedAt ?? doc.updatedAt
       const stage = res.stage ? res.stage : { ...doc, updatedAt }
@@ -39,6 +39,9 @@ export function makeApiStageStore(): StageStore{
         return localFallback.reset(key, live)
       }
       if(!res.ok || !res.stage){
+        if(res.unauthorized){
+          return { ok:false, status: res.status, unauthorized: true }
+        }
         // API failed but supported; fall back to local behavior to avoid leaving UI without data.
         return localFallback.reset(key, live)
       }
@@ -50,7 +53,7 @@ export function makeApiStageStore(): StageStore{
         return localFallback.publish ? localFallback.publish(doc, live, opts) : { ok:true }
       }
       if(!res.ok){
-        return { ok:false, conflict: !!res.conflict }
+        return { ok:false, conflict: !!res.conflict, status: res.status, unauthorized: res.unauthorized, error: res.error }
       }
       return { ok:true, conflict:false }
     },
@@ -60,7 +63,7 @@ export function makeApiStageStore(): StageStore{
         return localFallback.snapshot ? localFallback.snapshot(doc, title) : { ok:false }
       }
       if(!res.ok){
-        return { ok:false }
+        return { ok:false, status: res.status, unauthorized: res.unauthorized, error: res.error }
       }
       return { ok:true, id: res.id }
     },
