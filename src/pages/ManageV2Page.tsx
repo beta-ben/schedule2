@@ -397,19 +397,33 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
             overrides: [],
             calendarSegs: [],
       }
+      const clonedShifts = stageWorkingShifts.map(s=> ({ ...s }))
+      const clonedPto = stageWorkingPto.map(p=> ({ ...p }))
+      const clonedOverrides = stageWorkingOverrides.map(o=> ({ ...o }))
+      const clonedCalendarSegs = stageWorkingCalendarSegs.map(seg=> ({ ...seg }))
       const payload: StageDoc = {
         ...base,
-        shifts: stageWorkingShifts,
-        pto: stageWorkingPto,
-        overrides: stageWorkingOverrides,
-        calendarSegs: stageWorkingCalendarSegs,
+        shifts: clonedShifts,
+        pto: clonedPto,
+        overrides: clonedOverrides,
+        calendarSegs: clonedCalendarSegs,
         updatedAt: base.updatedAt
       }
-      const shiftDiff = diffShifts(stageDoc?.shifts ?? [], stageWorkingShifts)
+      const baselineShifts = Array.isArray(stageDoc?.shifts) ? (stageDoc.shifts as Shift[]) : []
+      const sameArrayRef = (stageDoc?.shifts ?? null) === stageWorkingShifts
+      const sameContent = eqShifts(baselineShifts, clonedShifts)
+      const shiftDiff = diffShifts(baselineShifts, clonedShifts)
+      const mismatchSample = clonedShifts.find(s=>{
+        const match = baselineShifts.find(x=> x.id === s.id)
+        return !match || !eqShift(match, s)
+      })
       stageDebugLog('page:stage_diff:before_save', {
         changed: shiftDiff.changed.length,
         added: shiftDiff.added.length,
         removed: shiftDiff.removed.length,
+        sameArrayRef,
+        sameContent,
+        mismatchSample: mismatchSample ? summarizeShift(mismatchSample) : null,
         sampleChanged: shiftDiff.changed.slice(0, 3),
         sampleAdded: shiftDiff.added.slice(0, 3),
         sampleRemoved: shiftDiff.removed.slice(0, 3)
@@ -417,7 +431,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       if(shiftDiff.changed.length || shiftDiff.added.length || shiftDiff.removed.length){
         console.debug('[stage] diff:before_save', shiftDiff)
       }else{
-        console.debug('[stage] diff:before_save none')
+        console.debug('[stage] diff:before_save none', { sameArrayRef, sameContent })
       }
       const attemptSave = async ()=>{
         console.debug('[stage] save:start', {
@@ -2050,6 +2064,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
       )}
       {subtab==='Agents' ? (
         <WeekEditor
+          key={`agents-${tz.id}-${weekStart}-${localAgents.length}`}
           dark={dark}
           agents={localAgents}
           onAddAgent={handleAdd}
