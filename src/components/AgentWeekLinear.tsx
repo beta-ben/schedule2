@@ -602,7 +602,7 @@ export default function AgentWeekLinear({
                 // If the chip piece is extremely narrow (< approx 2 label widths), avoid showing both tags which can jitter
                 // When alwaysShowTimeTags is on, or the user is actively hovering/dragging/has selected the shift,
                 // prefer keeping both even if narrow for clearer feedback.
-                const priorityShowBoth = (isHover || isThisDragging || isAllDragging || isSel)
+                const priorityShowBoth = (isHover || isThisDragging || isAllDragging || isSel || tagByHighlight)
                 if(!alwaysShowTimeTags && !priorityShowBoth && pxW < (LABEL_W * 1.6)){
                   // Prefer the edge-gated tag; when both requested, keep only one to reduce churn
                   if(allowStartTag && allowEndTag){

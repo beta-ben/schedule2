@@ -54,8 +54,21 @@ export function getApiPrefix(){ return API_PREFIX }
 
 // In some deployments, CSRF cookie may be HttpOnly or scoped to a subdomain.
 // We keep a memory copy captured from the login response body (when available).
-let CSRF_TOKEN_MEM: string | null = null
-let ADMIN_SID_MEM: string | null = null
+const ADMIN_CSRF_STORAGE_KEY = 'schedule.admin.csrf'
+const ADMIN_SID_STORAGE_KEY = 'schedule.admin.sid'
+let CSRF_TOKEN_MEM: string | null = null;
+let ADMIN_SID_MEM: string | null = null;
+(() => {
+  if(typeof window === 'undefined') return
+  try{
+    const storage = window.localStorage
+    if(!storage) return
+    const storedCsrf = storage.getItem(ADMIN_CSRF_STORAGE_KEY)
+    const storedSid = storage.getItem(ADMIN_SID_STORAGE_KEY)
+    if(storedCsrf) CSRF_TOKEN_MEM = storedCsrf
+    if(storedSid) ADMIN_SID_MEM = storedSid
+  }catch{}
+})()
 function getCsrfFromCookieOnly(): string | null {
   if(typeof document === 'undefined') return null
   const m = document.cookie.match(/(?:^|; )csrf=([^;]+)/)
@@ -86,8 +99,24 @@ export async function login(password: string){
     if(r.ok){
       try{
         const j = await r.clone().json();
-        if(j && typeof j.csrf === 'string'){ CSRF_TOKEN_MEM = j.csrf }
-        if(j && typeof j.sid === 'string'){ ADMIN_SID_MEM = j.sid }
+        if(j && typeof j.csrf === 'string'){
+          CSRF_TOKEN_MEM = j.csrf
+          try{
+            if(typeof window !== 'undefined'){
+              const storage = window.localStorage
+              if(storage) storage.setItem(ADMIN_CSRF_STORAGE_KEY, j.csrf)
+            }
+          }catch{}
+        }
+        if(j && typeof j.sid === 'string'){
+          ADMIN_SID_MEM = j.sid
+          try{
+            if(typeof window !== 'undefined'){
+              const storage = window.localStorage
+              if(storage) storage.setItem(ADMIN_SID_STORAGE_KEY, j.sid)
+            }
+          }catch{}
+        }
       }catch{}
       try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
     }
@@ -103,7 +132,20 @@ export async function logout(){
     return
   }
   try{ await fetch(`${API_BASE}${API_PREFIX}/logout`,{ method:'POST', credentials:'include' }) }catch{}
-  try{ CSRF_TOKEN_MEM = null; window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } })) }catch{}
+  try{
+    CSRF_TOKEN_MEM = null
+    ADMIN_SID_MEM = null
+    if(typeof window !== 'undefined'){
+      try{
+        const storage = window.localStorage
+        if(storage){
+          storage.removeItem(ADMIN_CSRF_STORAGE_KEY)
+          storage.removeItem(ADMIN_SID_STORAGE_KEY)
+        }
+      }catch{}
+    }
+    window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: false } }))
+  }catch{}
 }
 
 // Magic link login helpers

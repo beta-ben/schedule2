@@ -29,6 +29,20 @@ export default function App(){
   const [autoUnlocking, setAutoUnlocking] = useState<boolean>(autoUnlock)
   const [sitePw, setSitePw] = useState('')
   const [siteMsg, setSiteMsg] = useState('')
+  const buildStamp = useMemo(()=>{
+    const env = (import.meta.env || {}) as Record<string, unknown>
+    const parts = [env.VITE_BUILD_ID, env.VITE_BUILD_SHA, env.VITE_BUILD_TIME]
+      .map(value=> typeof value === 'string' ? value.trim() : '')
+      .filter(Boolean)
+    if(parts.length>0) return parts.join(' · ')
+    const mode = typeof env.MODE === 'string' ? env.MODE : 'dev'
+    return `${mode}-${new Date().toISOString()}`
+  }, [])
+  useEffect(()=>{
+    if(typeof window !== 'undefined'){
+      (window as any).__SCHEDULE_BUILD__ = buildStamp
+    }
+  }, [buildStamp])
   useEffect(()=>{
     if(autoUnlock){
       (async()=>{
@@ -901,6 +915,7 @@ export default function App(){
         <footer className="px-4 pb-6 text-center text-xs">
           <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3 opacity-70">
             <span>© Beta Bionics. Built by Ben Steward.</span>
+            <span className="font-mono text-[11px] sm:text-xs opacity-80">Build {buildStamp}</span>
             {siteUnlocked && (
               <button
                 type="button"
