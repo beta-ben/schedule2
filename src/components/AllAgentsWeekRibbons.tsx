@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect } from 'react'
 import AgentWeekLinear from './AgentWeekLinear'
-import type { PTO, Shift, Task } from '../types'
+import type { PTO, Shift, Task, Day } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import { DAYS } from '../constants'
 import { convertShiftsToTZ, toMin } from '../lib/utils'
@@ -11,6 +11,8 @@ export default function AllAgentsWeekRibbons({
   dark,
   tz,
   weekStart,
+  weekStartIndex = 0,
+  dayOrder,
   agents,
   shifts,
   pto,
@@ -42,6 +44,8 @@ export default function AllAgentsWeekRibbons({
   dark: boolean
   tz: { id:string; label:string; offset:number }
   weekStart: string
+  weekStartIndex?: number
+  dayOrder?: readonly Day[]
   agents: AgentRow[]
   shifts: Shift[]
   pto: PTO[]
@@ -98,6 +102,15 @@ export default function AllAgentsWeekRibbons({
     try{ window.dispatchEvent(new CustomEvent('schedule:namecol', { detail: { px: nameColPx } })) }catch{}
   }, [nameColPx])
   const nameColClass = "shrink-0 text-left pl-1 text-sm truncate"
+  const normalizedWeekStartIdx = ((weekStartIndex ?? 0) % 7 + 7) % 7
+  const effectiveDayOrder = useMemo<readonly Day[]>(()=>{
+    if(dayOrder?.length === 7) return dayOrder
+    if(normalizedWeekStartIdx === 0) return DAYS as readonly Day[]
+    return [...DAYS.slice(normalizedWeekStartIdx), ...DAYS.slice(0, normalizedWeekStartIdx)] as Day[]
+  }, [dayOrder, normalizedWeekStartIdx])
+  const totalWeekMinutes = 7 * 1440
+  const wrapWeekMinutes = (value:number)=> ((value % totalWeekMinutes) + totalWeekMinutes) % totalWeekMinutes
+  const weekOffsetMinutes = normalizedWeekStartIdx * 1440
   const continuationIds = useMemo(()=>{
     const flags = new Map<string, { hasMidnight: boolean; hasNonMidnight: boolean }>()
     for(const s of shifts){
@@ -257,15 +270,17 @@ export default function AllAgentsWeekRibbons({
       const sd = DAYS.indexOf(s.day as any)
       if(sd<0) continue
       const sAbs = sd*1440 + toMin(s.start)
-      let eAbs = (DAYS.indexOf(((s as any).endDay||s.day) as any) < 0 ? sd : DAYS.indexOf(((s as any).endDay||s.day) as any))*1440 + toMin(s.end)
+      const ed = DAYS.indexOf(((s as any).endDay||s.day) as any)
+      let eAbs = (ed < 0 ? sd : ed)*1440 + toMin(s.end)
       if(eAbs <= sAbs) eAbs += 1440
-      const a = ((sAbs % (7*1440)) + 7*1440) % (7*1440)
-      const b = ((eAbs % (7*1440)) + 7*1440) % (7*1440)
+      const a = wrapWeekMinutes(sAbs)
+      const b = wrapWeekMinutes(eAbs)
       // Handle wrap by checking both [a,b) and [a, b+T) windows
-      const T = 7*1440
+      const T = totalWeekMinutes
       const within = (m:number, L:number, R:number)=> m>=L && m<R
-      if(a < b){ if(within(absMin, a, b)) count++ }
-      else { if(within(absMin, a, T) || within(absMin, 0, b)) count++ }
+      const normalized = wrapWeekMinutes(absMin + weekOffsetMinutes)
+      if(a < b){ if(within(normalized, a, b)) count++ }
+      else { if(within(normalized, a, T) || within(normalized, 0, b)) count++ }
     }
     return count
   }
@@ -343,7 +358,7 @@ export default function AllAgentsWeekRibbons({
             )}
             {/* Top day labels aligned to ribbons */}
             <div className="relative h-7">
-                {DAYS.map((d,i)=>{
+                {effectiveDayOrder.map((d,i)=>{
                   const left = (i/7)*100
                   const width = (1/7)*100
                   return (
@@ -361,6 +376,8 @@ export default function AllAgentsWeekRibbons({
                   dark={dark}
                   tz={tz}
                   weekStart={weekStart}
+                  weekStartIndex={normalizedWeekStartIdx}
+                  dayOrder={effectiveDayOrder}
                   agent={name}
                   shifts={shifts}
                   pto={pto}

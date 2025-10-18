@@ -82,12 +82,31 @@ export function hasCsrfToken(){ return !!getCsrfToken() }
 export function getCsrfDiagnostics(){
   return { cookie: !!getCsrfFromCookieOnly(), memory: !!CSRF_TOKEN_MEM, token: !!getCsrfToken() }
 }
+export function hasAdminSid(){ return !!ADMIN_SID_MEM }
+export function hasAdminSession(){ return hasCsrfToken() || hasAdminSid() }
+export function getAdminSidDiagnostics(){
+  return { memory: !!ADMIN_SID_MEM }
+}
 
 // Unified login/logout. In dev (DEV_MODE=1 on Worker) password succeeds immediately and returns CSRF.
 export async function login(password: string){
   if(OFFLINE){
     try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true, offline: true } })) }catch{}
     return { ok: true, status: 200 }
+  }
+  const captureLoginBody = async(res: Response)=>{
+    try{
+      const text = await res.clone().text()
+      if(!text) return null
+      try{ return JSON.parse(text) as any }
+      catch{
+        console.warn('[login] response not JSON', { length: text.length })
+        return null
+      }
+    }catch(err){
+      console.warn('[login] failed to read response body', err)
+      return null
+    }
   }
   try{
     const r = await fetch(`${API_BASE}${API_PREFIX}/login`,{
@@ -97,27 +116,29 @@ export async function login(password: string){
       body: JSON.stringify({ password })
     })
     if(r.ok){
-      try{
-        const j = await r.clone().json();
-        if(j && typeof j.csrf === 'string'){
-          CSRF_TOKEN_MEM = j.csrf
-          try{
-            if(typeof window !== 'undefined'){
-              const storage = window.localStorage
-              if(storage) storage.setItem(ADMIN_CSRF_STORAGE_KEY, j.csrf)
-            }
-          }catch{}
-        }
-        if(j && typeof j.sid === 'string'){
-          ADMIN_SID_MEM = j.sid
-          try{
-            if(typeof window !== 'undefined'){
-              const storage = window.localStorage
-              if(storage) storage.setItem(ADMIN_SID_STORAGE_KEY, j.sid)
-            }
-          }catch{}
-        }
-      }catch{}
+      const payload = await captureLoginBody(r)
+      if(payload && typeof payload.csrf === 'string'){
+        CSRF_TOKEN_MEM = payload.csrf
+        try{
+          if(typeof window !== 'undefined'){
+            const storage = window.localStorage
+            if(storage) storage.setItem(ADMIN_CSRF_STORAGE_KEY, payload.csrf)
+          }
+        }catch{}
+      }
+      if(payload && typeof payload.sid === 'string'){
+        ADMIN_SID_MEM = payload.sid
+        try{
+          if(typeof window !== 'undefined'){
+            const storage = window.localStorage
+            if(storage) storage.setItem(ADMIN_SID_STORAGE_KEY, payload.sid)
+          }
+        }catch{}
+      }else if(!payload){
+        console.warn('[login] missing response payload; unable to store admin session id')
+      }else{
+        console.warn('[login] admin session id missing in response payload', { keys: Object.keys(payload || {}) })
+      }
       try{ window.dispatchEvent(new CustomEvent('schedule:auth', { detail: { loggedIn: true } })) }catch{}
     }
     return { ok: r.ok, status: r.status }

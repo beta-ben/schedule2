@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import { DAYS } from '../constants'
 import { convertShiftsToTZ, nowInTZ, parseYMD, toMin, minToHHMM, fmtYMD, addDays, mergeSegments } from '../lib/utils'
-import type { PTO, Shift, Task } from '../types'
+import type { PTO, Shift, Task, Day } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 
 // Single 168-hour horizontal band across the week for one agent
@@ -9,6 +9,8 @@ export default function AgentWeekLinear({
   dark,
   tz,
   weekStart,
+  weekStartIndex = 0,
+  dayOrder,
   agent,
   shifts,
   pto,
@@ -46,6 +48,8 @@ export default function AgentWeekLinear({
   dark: boolean
   tz: { id:string; label:string; offset:number }
   weekStart: string
+  weekStartIndex?: number
+  dayOrder?: readonly Day[]
   agent: string
   shifts: Shift[]
   pto: PTO[]
@@ -114,6 +118,16 @@ export default function AgentWeekLinear({
   const weekStartDate = parseYMD(weekStart)
   const dayIdx = (d: string)=> DAYS.indexOf(d as any)
   const textSub = dark? 'text-neutral-400' : 'text-neutral-500'
+  const wrapWeekMinutes = (value:number)=> ((value % totalMins) + totalMins) % totalMins
+  const normalizedWeekStartIdx = ((weekStartIndex ?? 0) % 7 + 7) % 7
+  const weekOffsetMinutes = normalizedWeekStartIdx * 1440
+  const toViewMinutes = (value:number)=> wrapWeekMinutes(value - weekOffsetMinutes)
+  const toBaseMinutes = (value:number)=> wrapWeekMinutes(value + weekOffsetMinutes)
+  const dayOrderDisplay = useMemo<readonly Day[]>(()=>{
+    if(dayOrder?.length === 7) return dayOrder
+    if(normalizedWeekStartIdx === 0) return DAYS as readonly Day[]
+    return [...DAYS.slice(normalizedWeekStartIdx), ...DAYS.slice(0, normalizedWeekStartIdx)] as Day[]
+  }, [dayOrder, normalizedWeekStartIdx])
 
   const tzShifts = useMemo(()=> convertShiftsToTZ(shifts, tz.offset).filter(s=> s.person===agent), [shifts, tz.offset, agent])
 
@@ -220,7 +234,8 @@ export default function AgentWeekLinear({
   const bandEnd = addDays(weekStartDate, 7)
   const nowDate = new Date(now.y, (now.mo||1)-1, now.d||1)
   const showNow = nowDate >= bandStart && nowDate < bandEnd
-  const nowOffsetMin = showNow ? (DAYS.indexOf(now.weekdayShort as any)*1440 + now.minutes) : 0
+  const rawNowOffset = showNow ? (DAYS.indexOf(now.weekdayShort as any)*1440 + now.minutes) : 0
+  const nowOffsetMin = showNow ? wrapWeekMinutes(rawNowOffset - weekOffsetMinutes) : 0
   const nowLeft = (nowOffsetMin/totalMins)*100
 
   const BAND_H = typeof bandHeight === 'number' ? bandHeight : 28
@@ -423,7 +438,7 @@ export default function AgentWeekLinear({
       {/* Top labels: days across the band */}
       {showDayLabels && (
         <div className="relative h-6">
-      {DAYS.map((d,i)=>{
+      {dayOrderDisplay.map((d,i)=>{
             const left = (i/7)*100
             const width = (1/7)*100
             return (
@@ -453,7 +468,7 @@ export default function AgentWeekLinear({
         const clampedX = Math.max(0, Math.min(rect.width, x))
         const minutes = (clampedX / rect.width) * totalMins
         if(Number.isFinite(minutes)){
-          onDoubleClickEmpty(minutes)
+          onDoubleClickEmpty(toBaseMinutes(minutes))
         }
       }}
         >
@@ -516,9 +531,8 @@ export default function AgentWeekLinear({
                 }
               }
               const dur = Math.max(0, newEnd - newStart)
-              const modT = (v:number)=> ((v % totalMins) + totalMins) % totalMins
-              const a = modT(newStart)
-              const b = modT(newEnd)
+              const a = toViewMinutes(newStart)
+              const b = toViewMinutes(newEnd)
               const mkPart = (pLeft:number, pRight:number, partKey:string, showStart:boolean, showEnd:boolean, opts?: { forceStartOuter?: boolean; forceEndOuter?: boolean; pieceIndex?: number; pieceCount?: number })=>{
                 const leftPct = (pLeft/totalMins)*100
                 const widthPct = ((pRight - pLeft)/totalMins)*100

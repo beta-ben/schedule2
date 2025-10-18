@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { fmtYMD, startOfWeek, formatMinutes, TimeFormat, nowInTZ, parseYMD, addDays } from './lib/utils'
-import { cloudGet, cloudPost, cloudPostAgents, hasCsrfToken, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession, logout, logoutSite } from './lib/api'
+import { cloudGet, cloudPost, cloudPostAgents, hasAdminSession, cloudPostShiftsBatch, getApiBase, getApiPrefix, requestMagicLink, loginSite, ensureSiteSession, logout, logoutSite } from './lib/api'
 import { pushAgentsToCloud, mapAgentsToPayloads } from './lib/agents'
 import { publishDraftBundle } from './lib/drafts'
 import type { PTO, Shift, Task, Override, MeetingCohort } from './types'
@@ -455,15 +455,15 @@ export default function App(){
   }
 
   useEffect(()=>{ (async()=>{
-    // Editing is allowed only when an authenticated session exists (cookie+CSRF).
-    setCanEdit(hasCsrfToken())
+    // Editing is allowed only when an authenticated admin session exists.
+    setCanEdit(hasAdminSession())
   })() }, [view])
 
   // React to auth changes from Manage login/logout so autosave can kick in immediately
   useEffect(()=>{
     const onAuth = (e: Event)=>{
       const any = e as CustomEvent
-      const ok = !!hasCsrfToken()
+      const ok = !!hasAdminSession()
       setCanEdit(ok)
       if(ok){
         // Push current agents metadata so other users see changes

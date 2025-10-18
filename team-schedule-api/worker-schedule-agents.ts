@@ -453,7 +453,12 @@ async function putSession(env: Env, kind: 'admin'|'site', sid: string, data: any
   if(useD1(env)) return putSessionD1(env, kind, sid, data)
   const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
   if(!kvNs) throw new Error('kv_unavailable')
-  await kvNs.put(`${kind}:${sid}`, JSON.stringify({ ...data, exp: Date.now()+TTL_MS }), { expirationTtl: Math.ceil(TTL_MS/1000) })
+  const ttlSec = Math.ceil(TTL_MS/1000)
+  const payload = { ...data, exp: Date.now()+TTL_MS }
+  await kvNs.put(`${kind}:${sid}`, JSON.stringify(payload), { expirationTtl: ttlSec })
+  if(kind === 'admin' && typeof data?.csrf === 'string' && data.csrf){
+    await kvNs.put(`admin_csrf:${data.csrf}`, sid, { expirationTtl: ttlSec })
+  }
 }
 async function getSession(env: Env, kind: 'admin'|'site', sid: string){
   if(useD1(env)) return getSessionD1(env, kind, sid)
@@ -467,6 +472,16 @@ async function delSession(env: Env, kind: 'admin'|'site', sid: string){
   if(useD1(env)) return delSessionD1(env, kind, sid)
   const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
   if(!kvNs) return
+  if(kind === 'admin'){
+    const raw = await kvNs.get(`${kind}:${sid}`)
+    if(raw){
+      try{
+        const parsed = JSON.parse(raw) as any
+        const csrf = typeof parsed?.csrf === 'string' ? parsed.csrf : null
+        if(csrf) await kvNs.delete(`admin_csrf:${csrf}`)
+      }catch{}
+    }
+  }
   await kvNs.delete(`${kind}:${sid}`)
 }
 
@@ -499,6 +514,38 @@ async function delSessionD1(env: Env, kind: 'admin'|'site', sid: string){
   await env.DB.prepare('DELETE FROM sessions WHERE id=?1').bind(sid).run()
 }
 
+async function findAdminSidByCsrf(env: Env, csrf: string | null | undefined){
+  if(!csrf) return null
+  if(useD1(env)) return findAdminSidByCsrfD1(env, csrf)
+  return findAdminSidByCsrfKV(env, csrf)
+}
+async function findAdminSidByCsrfKV(env: Env, csrf: string){
+  const kvNs = (env as any).SCHEDULE_KV as KVNamespace | undefined
+  if(!kvNs) return null
+  try{
+    const sid = await kvNs.get(`admin_csrf:${csrf}`)
+    return sid || null
+  }catch{
+    return null
+  }
+}
+async function findAdminSidByCsrfD1(env: Env, csrf: string){
+  if(!env.DB) return null
+  try{
+    await ensureD1Schema(env)
+    const row = await env.DB.prepare('SELECT id, exp_ts FROM sessions WHERE kind=?1 AND csrf=?2').bind('admin', csrf).first<{ id?: string; exp_ts?: number }>()
+    if(!row?.id) return null
+    const now = Math.floor(Date.now()/1000)
+    if(typeof row.exp_ts === 'number' && row.exp_ts < now){
+      await env.DB.prepare('DELETE FROM sessions WHERE id=?1').bind(row.id).run()
+      return null
+    }
+    return row.id || null
+  }catch{
+    return null
+  }
+}
+
 // Data storage in KV or D1 (settings)
 function dataKey(env: Env){ return env.DATA_KEY || 'schedule.json' }
 function useD1(env: Env){
@@ -515,6 +562,7 @@ async function ensureD1Schema(env: Env){
   try{
     await env.DB.prepare('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, kind TEXT NOT NULL, csrf TEXT, exp_ts INTEGER NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()), updated_at INTEGER NOT NULL DEFAULT (unixepoch()))').run()
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_kind_exp ON sessions(kind, exp_ts)').run()
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_kind_csrf ON sessions(kind, csrf)').run()
   }catch{}
   // Core tables used by v2 endpoints (create on demand in dev)
   try{
@@ -934,7 +982,13 @@ async function loginAdmin(req: Request, env: Env, cors: Headers){
 async function logoutAdmin(req: Request, env: Env, cors: Headers){
   const base = cookieBase(env)
   const cookies = getCookieMap(req)
-  const sid = cookies.get('sid')
+  let sid = cookies.get('sid') || null
+  if(!sid){
+    const csrf = cookies.get('csrf') || null
+    if(csrf){
+      sid = await findAdminSidByCsrf(env, csrf)
+    }
+  }
   if(sid) await delSession(env,'admin',sid)
   const headers = new Headers(cors)
   headers.append('Set-Cookie', clearCookie('sid', base))
@@ -977,12 +1031,33 @@ async function requireAdmin(req: Request, env: Env){
   if(authDevBearerOk(req, env)) return { ok:true }
   const cookies = getCookieMap(req)
   const sidHeader = req.headers.get('x-admin-sid') || ''
-  const sid = cookies.get('sid') || sidHeader
+  let sid = cookies.get('sid') || sidHeader
   const csrfHeader = req.headers.get('x-csrf-token') || ''
+  let sidSource: 'cookie'|'header'|'csrf'|null = null
+  if(sid){
+    sidSource = cookies.get('sid') ? 'cookie' : 'header'
+  }
+  if(!sid && csrfHeader){
+    const viaCsrf = await findAdminSidByCsrf(env, csrfHeader)
+    if(viaCsrf){
+      sid = viaCsrf
+      sidSource = 'csrf'
+    }
+  }
   if(!sid || !csrfHeader) return { ok:false, status:401, body:{ error:'missing_auth', need: ['sid','x-csrf-token header'] } }
   const sess = await getSession(env,'admin',sid)
-  if(!sess) return { ok:false, status:401, body:{ error:'expired_admin_session' } }
-  if(sess.csrf !== csrfHeader) return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
+  if(!sess){
+    if(sidSource === 'csrf'){
+      try{ await delSession(env,'admin',sid) }catch{}
+    }
+    return { ok:false, status:401, body:{ error:'expired_admin_session' } }
+  }
+  if(sess.csrf !== csrfHeader){
+    if(sidSource === 'csrf'){
+      try{ await delSession(env,'admin',sid) }catch{}
+    }
+    return { ok:false, status:403, body:{ error:'csrf_mismatch' } }
+  }
   return { ok:true }
 }
 

@@ -1,7 +1,7 @@
 import React from 'react'
 import Toggle from '../components/Toggle'
 // Legacy local password gate removed. Admin auth now uses dev proxy cookie+CSRF only.
-import { cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasCsrfToken, getCsrfDiagnostics, cloudPostAgents, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection, stagePublish } from '../lib/api'
+import { cloudPostDetailed, ensureSiteSession, login, logout, getApiBase, getApiPrefix, isUsingDevProxy, hasAdminSession, getCsrfDiagnostics, getAdminSidDiagnostics, cloudPostAgents, getZoomAuthorizeUrl, getZoomConnections, deleteZoomConnection, stagePublish } from '../lib/api'
 import type { ZoomConnectionSummary, StageSaveResult } from '../lib/api'
 import WeekEditor from '../components/v2/WeekEditor'
 import ComboBox from '../components/ComboBox'
@@ -147,7 +147,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
     toastTimerRef.current = window.setTimeout(()=> setToast(null), 3000)
   }, [])
   React.useEffect(()=>{
-    if(hasCsrfToken()){ setUnlocked(true); setMsg('') }
+    if(hasAdminSession()){ setUnlocked(true); setMsg('') }
   },[])
   const apiBase = React.useMemo(()=> getApiBase(), [])
   const apiPrefix = React.useMemo(()=> getApiPrefix(), [])
@@ -238,6 +238,11 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
       }
     }catch{}
   }, [weekStart, weekStartMode])
+  const weekStartIndex = weekStartMode === 'mon' ? 1 : 0
+  const scheduleDayOrder = React.useMemo<readonly (typeof DAYS[number])[]>(()=>{
+    if(weekStartIndex === 0) return DAYS as readonly (typeof DAYS[number])[]
+    return [...DAYS.slice(weekStartIndex), ...DAYS.slice(0, weekStartIndex)] as readonly (typeof DAYS[number])[]
+  }, [weekStartIndex])
   // Schedule Editor tab: number of visible days (1-7)
   const DAYS_VISIBLE_KEY = React.useMemo(()=> `schedule2.v2.shifts.daysVisible.${weekStart}.${tz.id}`, [weekStart, tz.id])
   const [visibleDays, setVisibleDays] = React.useState<number>(()=>{
@@ -931,6 +936,35 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   React.useEffect(()=>{
     setSelectedShiftIds(new Set<string>())
   }, [isStageMode])
+  const scheduleSettingsRef = React.useRef<HTMLDivElement|null>(null)
+  const scheduleSettingsButtonRef = React.useRef<HTMLButtonElement|null>(null)
+  const [showScheduleSettings, setShowScheduleSettings] = React.useState(false)
+  React.useEffect(()=>{
+    if(!showScheduleSettings) return
+    const onKey = (e: KeyboardEvent)=>{
+      if(e.key === 'Escape'){
+        setShowScheduleSettings(false)
+      }
+    }
+    const onClick = (e: MouseEvent)=>{
+      const node = e.target as Node | null
+      if(!node) return
+      if(scheduleSettingsRef.current?.contains(node)) return
+      if(scheduleSettingsButtonRef.current?.contains(node)) return
+      setShowScheduleSettings(false)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onClick)
+    return ()=>{
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onClick)
+    }
+  }, [showScheduleSettings])
+  React.useEffect(()=>{
+    if(subtab !== 'Schedule Editor'){
+      setShowScheduleSettings(false)
+    }
+  }, [subtab])
   // Schedule Editor tab: multi-level undo stack (keep last 10 actions)
   const [shiftUndoStack, setShiftUndoStack] = React.useState<Array<Array<{ id:string; patch: Partial<Shift> }>>>([])
   // Redo stack mirrors undo with forward patches
@@ -1718,13 +1752,19 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
       const res = await login(pwInput)
             if(res.ok){
               try{ await ensureSiteSession(pwInput) }catch{}
-              const diag = getCsrfDiagnostics()
-              if(hasCsrfToken()){
+              const csrfDiag = getCsrfDiagnostics()
+              const sidDiag = getAdminSidDiagnostics()
+              if(hasAdminSession()){
                 setUnlocked(true); setMsg(''); try{ localStorage.setItem('schedule_admin_unlocked','1') }catch{}
         // Proactively push agents metadata so Hidden flags propagate immediately post-login
         try{ cloudPostAgents(mapAgentsToPayloads(agents)) }catch{}
               } else {
-                setUnlocked(false); setMsg('Signed in, but CSRF missing. Check cookie Domain/Path and SameSite; reload and try again.')
+                setUnlocked(false)
+                const missing: string[] = []
+                if(!csrfDiag.token) missing.push('CSRF token')
+                if(!sidDiag.memory) missing.push('admin session id')
+                const detail = missing.length>0 ? `${missing.join(' and ')} missing` : 'session validation failed'
+                setMsg(`Signed in, but ${detail}. Check cookie Domain/Path and SameSite; reload and try again.`)
               }
             } else { setMsg(res.status===401?'Incorrect password':'Login failed') }
           })() }}>
@@ -1743,10 +1783,11 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
             <div>API base: <code>{apiBase}</code></div>
             <div>API path: <code>{apiPrefix}</code></div>
             <div>Dev proxy: {usingDevProxy? 'on (local only)':'off'}</div>
-            {(()=>{ const d = getCsrfDiagnostics(); return (
+            {(()=>{ const csrf = getCsrfDiagnostics(); const sid = getAdminSidDiagnostics(); return (
               <div>
-                <div>CSRF token available: {d.token? 'yes':'no'}</div>
-                <div className="opacity-75">• cookie readable: {d.cookie? 'yes':'no'}; • memory: {d.memory? 'yes':'no'}</div>
+                <div>CSRF token available: {csrf.token? 'yes':'no'}</div>
+                <div className="opacity-75">• cookie readable: {csrf.cookie? 'yes':'no'}; • memory: {csrf.memory? 'yes':'no'}</div>
+                <div>Admin session id stored: {sid.memory? 'yes':'no (using CSRF fallback)'}</div>
               </div>
             ) })()}
           </div>
@@ -1909,178 +1950,231 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
 
           {/* Right: all controls */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* View: Sort select (iconified) */}
-            <button
-              type="button"
-              onClick={()=> setSortMode(prev=> prev==='start' ? 'name' : 'start')}
-              className={[
-                "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
-                dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100"
-              ].join(' ')}
-              title="Toggle agent sort"
-            >
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h14"/><path d="M7 12h10"/><path d="M11 18h6"/>
-              </svg>
-              <span>
-                Sort: {sortMode === 'start' ? 'Earliest start' : 'Name (A–Z)'}
-              </span>
-            </button>
-            {/* Toggle: include hidden/off-duty agents (icon button) */}
-            <button
-              type="button"
-              onClick={()=> setIncludeHiddenAgents(v=>!v)}
-              aria-pressed={includeHiddenAgents}
-              title={includeHiddenAgents?"Hide off-duty agents":"Show off-duty agents"}
-              className={[
-                "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
-                includeHiddenAgents ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
-              ].join(' ')}
-            >
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {includeHiddenAgents ? (
-                  <>
-                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </>
-                ) : (
-                  <>
-                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/>
-                    <path d="M1 1l22 22"/>
-                    <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/>
-                  </>
-                )}
-              </svg>
-            </button>
-            {/* Visible days select (1-7) */}
-            <div className="inline-flex items-center gap-1" title="Visible days">
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              <div className="relative">
-                <select
-                  className={["border rounded-xl pl-2 pr-7 py-1 w-[6rem] appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                  value={visibleDays}
-                  onChange={(e)=> setVisibleDays(Math.max(1, Math.min(7, parseInt(e.target.value,10) || 7)))}
-                  aria-label="Visible days"
+            <div className="relative">
+              <button
+                type="button"
+                ref={scheduleSettingsButtonRef}
+                onClick={()=> setShowScheduleSettings(v=>!v)}
+                aria-haspopup="dialog"
+                aria-expanded={showScheduleSettings}
+                aria-controls="schedule-view-settings"
+                className={[
+                  "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
+                  showScheduleSettings
+                    ? (dark?"bg-neutral-900 border-neutral-700":"bg-white border-neutral-300")
+                    : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
+                ].join(' ')}
+                title="Schedule view settings"
+              >
+                <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                <span>View settings</span>
+              </button>
+              {showScheduleSettings && (
+                <div
+                  ref={scheduleSettingsRef}
+                  id="schedule-view-settings"
+                  role="dialog"
+                  aria-modal="false"
+                  className={[
+                    "absolute right-0 mt-2 w-[20rem] max-w-[calc(100vw-2rem)] z-30 rounded-2xl border shadow-xl",
+                    dark ? "bg-neutral-950 border-neutral-800 text-neutral-100 shadow-black/40" : "bg-white border-neutral-200 text-neutral-800 shadow-black/10"
+                  ].join(' ')}
                 >
-                  {Array.from({length:7},(_,i)=>i+1).map(n=> (
-                    <option key={n} value={n}>{n} day{n===1?'':'s'}</option>
-                  ))}
-                </select>
-                <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              </div>
-              {/* Chunk arrows shown only when fewer than 7 days visible */}
-              {visibleDays < 7 && (
-                <div className="inline-flex items-center gap-1 ml-1" role="group" aria-label="Scroll days">
-                  <button
-                    type="button"
-                    onClick={()=> setDayChunkIdx(i=> Math.max(0, i-1))}
-                    className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
-                    title="Earlier days"
-                    aria-label="Earlier days"
-                    disabled={dayChunkIdx<=0}
-                  >
-                    <svg aria-hidden className={dayChunkIdx<=0 ? (dark?"text-neutral-600":"text-neutral-400") : (dark?"text-neutral-300":"text-neutral-700")} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={()=> setDayChunkIdx(i=> Math.min(Math.max(1, Math.ceil(7/visibleDays))-1, i+1))}
-                    className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
-                    title="Later days"
-                    aria-label="Later days"
-                    disabled={dayChunkIdx>=Math.max(1, Math.ceil(7/visibleDays))-1}
-                  >
-                    <svg aria-hidden className={dayChunkIdx>=Math.max(1, Math.ceil(7/visibleDays))-1 ? (dark?"text-neutral-600":"text-neutral-400") : (dark?"text-neutral-300":"text-neutral-700")} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                  </button>
+                  <div className={["flex items-center justify-between gap-2 px-4 py-3 border-b", dark?"border-neutral-800/60":"border-neutral-200"].join(' ')}>
+                    <div className="text-sm font-semibold">Schedule view</div>
+                    <button
+                      type="button"
+                      onClick={()=> setShowScheduleSettings(false)}
+                      className={["p-1 rounded-lg border text-xs font-medium", dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
+                      aria-label="Close view settings"
+                    >
+                      <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-600"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div className="px-4 py-4 space-y-4 text-sm">
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide opacity-60">Ordering</div>
+                      <button
+                        type="button"
+                        onClick={()=> setSortMode(prev=> prev==='start' ? 'name' : 'start')}
+                        className={[
+                          "w-full inline-flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs font-medium",
+                          dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100"
+                        ].join(' ')}
+                      >
+                        <span className="flex items-center gap-2">
+                          <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h14"/><path d="M7 12h10"/><path d="M11 18h6"/>
+                          </svg>
+                          <span>Sort order</span>
+                        </span>
+                        <span className="text-[11px] uppercase tracking-wide opacity-80">
+                          {sortMode === 'start' ? 'Earliest start' : 'Name (A–Z)'}
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide opacity-60">Agents</div>
+                      <button
+                        type="button"
+                        onClick={()=> setIncludeHiddenAgents(v=>!v)}
+                        aria-pressed={includeHiddenAgents}
+                        className={[
+                          "w-full inline-flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs font-medium",
+                          includeHiddenAgents ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
+                        ].join(' ')}
+                      >
+                        <span className="flex items-center gap-2">
+                          <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            {includeHiddenAgents ? (
+                              <>
+                                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                              </>
+                            ) : (
+                              <>
+                                <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94"/>
+                                <path d="M1 1l22 22"/>
+                                <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-5.12"/>
+                              </>
+                            )}
+                          </svg>
+                          <span>Off-duty agents</span>
+                        </span>
+                        <span className="text-[11px] uppercase tracking-wide opacity-80">{includeHiddenAgents ? 'Shown' : 'Hidden'}</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide opacity-60">Visible days</div>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <select
+                            className={["w-full border rounded-xl pl-3 pr-8 py-2 text-sm appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                            value={visibleDays}
+                            onChange={(e)=> setVisibleDays(Math.max(1, Math.min(7, parseInt(e.target.value,10) || 7)))}
+                            aria-label="Visible days"
+                          >
+                            {Array.from({length:7},(_,i)=>i+1).map(n=> (
+                              <option key={n} value={n}>{n} day{n===1?'':'s'}</option>
+                            ))}
+                          </select>
+                          <svg aria-hidden className={"pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 "+(dark?"text-neutral-400":"text-neutral-500")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        {visibleDays < 7 && (
+                          <div className="inline-flex items-center gap-1" role="group" aria-label="Scroll visible days">
+                            <button
+                              type="button"
+                              onClick={()=> setDayChunkIdx(i=> Math.max(0, i-1))}
+                              className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
+                              aria-label="Earlier days"
+                              disabled={dayChunkIdx<=0}
+                            >
+                              <svg aria-hidden className={dayChunkIdx<=0 ? (dark?"text-neutral-600":"text-neutral-400") : (dark?"text-neutral-300":"text-neutral-700")} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={()=> setDayChunkIdx(i=> Math.min(Math.max(1, Math.ceil(7/visibleDays))-1, i+1))}
+                              className={["px-2.5 py-1.5 rounded-xl border font-medium", dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100"].join(' ')}
+                              aria-label="Later days"
+                              disabled={dayChunkIdx>=Math.max(1, Math.ceil(7/visibleDays))-1}
+                            >
+                              <svg aria-hidden className={dayChunkIdx>=Math.max(1, Math.ceil(7/visibleDays))-1 ? (dark?"text-neutral-600":"text-neutral-400") : (dark?"text-neutral-300":"text-neutral-700")} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide opacity-60">Display</div>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={()=> setShowAllTimeLabels(v=>!v)}
+                          aria-pressed={showAllTimeLabels}
+                          className={[
+                            "w-full inline-flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs font-medium",
+                            showAllTimeLabels ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
+                          ].join(' ')}
+                        >
+                          <span className="flex items-center gap-2">
+                            <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <span>Time labels</span>
+                          </span>
+                          <span className="text-[11px] uppercase tracking-wide opacity-80">{showAllTimeLabels ? 'Always on' : 'Auto'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={()=> setShowScheduleAdjustments(v=>!v)}
+                          aria-pressed={showScheduleAdjustments}
+                          className={[
+                            "w-full inline-flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs font-medium",
+                            showScheduleAdjustments
+                              ? (dark?"bg-emerald-900/40 border-emerald-600 text-emerald-200 hover:bg-emerald-900/60":"bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100")
+                              : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
+                          ].join(' ')}
+                        >
+                          <span>Overrides</span>
+                          <span className="text-[11px] uppercase tracking-wide opacity-80">{showScheduleAdjustments ? 'Shown' : 'Hidden'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide opacity-60">Week starts</div>
+                      <div className={["inline-flex rounded-lg overflow-hidden border w-full", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>
+                        <button
+                          type="button"
+                          onClick={()=> handleWeekStartModeChange('sun')}
+                          className={[
+                            "flex-1 px-2 py-1.5 text-xs font-medium transition",
+                            weekStartMode==='sun'
+                              ? (dark?"bg-neutral-900 text-neutral-50":"bg-neutral-200 text-neutral-800")
+                              : (dark?"bg-neutral-900/20 text-neutral-300 hover:bg-neutral-800/60":"bg-white text-neutral-600 hover:bg-neutral-100")
+                          ].join(' ')}
+                        >
+                          Sunday
+                        </button>
+                        <button
+                          type="button"
+                          onClick={()=> handleWeekStartModeChange('mon')}
+                          className={[
+                            "flex-1 px-2 py-1.5 text-xs font-medium transition border-l",
+                            dark?"border-neutral-700":"border-neutral-300",
+                            weekStartMode==='mon'
+                              ? (dark?"bg-neutral-900 text-neutral-50":"bg-neutral-200 text-neutral-800")
+                              : (dark?"bg-neutral-900/20 text-neutral-300 hover:bg-neutral-800/60":"bg-white text-neutral-600 hover:bg-neutral-100")
+                          ].join(' ')}
+                        >
+                          Monday
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide opacity-60">Compliance</div>
+                      <button
+                        type="button"
+                        onClick={()=> setShowCompliance(v=>!v)}
+                        aria-pressed={showCompliance}
+                        className={["w-full inline-flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs font-medium", showCompliance ? (dark?"bg-red-950 border-red-700 text-red-200 hover:bg-red-900":"bg-red-50 border-red-300 text-red-700 hover:bg-red-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}
+                      >
+                        <span className="flex items-center gap-2">
+                          <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          <span>Warnings</span>
+                        </span>
+                        <span className="text-[11px] uppercase tracking-wide opacity-80">{showCompliance ? 'Visible' : 'Hidden'}</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-            {/* Toggle: show all time labels (icon button) */}
-            <button
-              type="button"
-              onClick={()=> setShowAllTimeLabels(v=>!v)}
-              aria-pressed={showAllTimeLabels}
-              title="Toggle time labels"
-              className={[
-                "px-2.5 py-1.5 rounded-xl border font-medium",
-                showAllTimeLabels ? (dark?"bg-neutral-900 border-neutral-700 hover:bg-neutral-800":"bg-white border-neutral-300 hover:bg-neutral-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
-              ].join(' ')}
-            >
-              <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            </button>
-            {/* Toggle: show overrides/PTO adjustments */}
-            <button
-              type="button"
-              onClick={()=> setShowScheduleAdjustments(v=>!v)}
-              aria-pressed={showScheduleAdjustments}
-              title="Toggle overrides/PTO adjustments"
-              className={[
-                "px-2.5 py-1.5 rounded-xl border font-medium",
-                showScheduleAdjustments
-                  ? (dark?"bg-emerald-900/40 border-emerald-600 text-emerald-200 hover:bg-emerald-900/60":"bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100")
-                  : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")
-              ].join(' ')}
-            >
-              <svg
-                aria-hidden
-                className={showScheduleAdjustments ? 'text-current' : (dark?"text-neutral-300":"text-neutral-700")}
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="18" x2="20" y2="18" />
-                <circle cx="8" cy="6" r="1.5" />
-                <circle cx="16" cy="12" r="1.5" />
-                <circle cx="10" cy="18" r="1.5" />
-              </svg>
-              <span className="ml-1 whitespace-nowrap">Overrides {showScheduleAdjustments ? 'On' : 'Off'}</span>
-            </button>
-            <div className="inline-flex items-center gap-1 text-[11px]">
-              <span className="opacity-60 hidden xl:inline">Week starts</span>
-              <div className={["inline-flex rounded-lg overflow-hidden border", dark?"border-neutral-700":"border-neutral-300"].join(' ')}>
-                <button
-                  type="button"
-                  onClick={()=> handleWeekStartModeChange('sun')}
-                  className={[
-                    "px-2 py-1 text-xs font-medium transition",
-                    weekStartMode==='sun'
-                      ? (dark?"bg-neutral-900 text-neutral-50":"bg-neutral-200 text-neutral-800")
-                      : (dark?"bg-neutral-900/20 text-neutral-300 hover:bg-neutral-800/60":"bg-white text-neutral-600 hover:bg-neutral-100")
-                  ].join(' ')}
-                >
-                  Sun
-                </button>
-                <button
-                  type="button"
-                  onClick={()=> handleWeekStartModeChange('mon')}
-                  className={[
-                    "px-2 py-1 text-xs font-medium transition border-l",
-                    dark?"border-neutral-700":"border-neutral-300",
-                    weekStartMode==='mon'
-                      ? (dark?"bg-neutral-900 text-neutral-50":"bg-neutral-200 text-neutral-800")
-                      : (dark?"bg-neutral-900/20 text-neutral-300 hover:bg-neutral-800/60":"bg-white text-neutral-600 hover:bg-neutral-100")
-                  ].join(' ')}
-                >
-                  Mon
-                </button>
-              </div>
-            </div>
-            {/* Compliance warnings toggle */}
-            <button
-              type="button"
-              onClick={()=> setShowCompliance(v=>!v)}
-              aria-pressed={showCompliance}
-              title="Toggle compliance warnings"
-              className={["px-2.5 py-1.5 rounded-xl border font-medium", showCompliance ? (dark?"bg-red-950 border-red-700 text-red-200 hover:bg-red-900":"bg-red-50 border-red-300 text-red-700 hover:bg-red-100") : (dark?"bg-neutral-900 border-neutral-800 hover:bg-neutral-800":"bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}
-            >
-              <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            </button>
 
             {/* Edit: Undo/Redo */}
             <div className="inline-flex items-center gap-1" title="Undo / Redo">
@@ -2447,6 +2541,8 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
             dark={dark}
             tz={tz}
             weekStart={weekStart}
+            weekStartIndex={weekStartIndex}
+            dayOrder={scheduleDayOrder}
             agents={visibleScheduleAgents}
             shifts={scheduleShifts}
             pto={schedulePto}
