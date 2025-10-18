@@ -877,6 +877,7 @@ export default function App(){
                 return filtered.map(a=> a.supervisorId===targetId ? { ...a, supervisorId: null } : a)
               })}
               weekStart={weekStart}
+              setWeekStart={setWeekStart}
               tz={tz}
               shifts={draftActive ? (draft!.data.shifts) : shifts}
               pto={draftActive ? (draft!.data.pto) : pto}
