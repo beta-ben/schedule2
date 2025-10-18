@@ -52,6 +52,8 @@ jobs:
           fi
           # Explicitly avoid forcing env base on staging unless we intentionally set VITE_FORCE_API_BASE=yes
           echo "VITE_FORCE_API_BASE=no" >> .env.production
+          # Keep stage flow toggle available in staging bundles
+          echo "VITE_STAGE_FLOW=1" >> .env.production
 
       - name: Validate Cloudflare env
         run: |

@@ -51,6 +51,8 @@ jobs:
           fi
           # Avoid forcing base outside of prod builds unless explicitly desired
           echo "VITE_FORCE_API_BASE=no" >> .env.production
+          # Enable stage flow toggle in live builds
+          echo "VITE_STAGE_FLOW=1" >> .env.production
 
       - name: Validate env (diagnostic)
         run: |
