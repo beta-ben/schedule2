@@ -8,13 +8,17 @@ import type { CalendarSegment } from './lib/utils'
 import TopBar from './components/TopBar'
 import ShortcutsOverlay from './components/ShortcutsOverlay'
 import SchedulePage from './pages/SchedulePage'
+import StagingPreviewPage from './pages/StagingPreviewPage'
 // Legacy ManagePage phased out; use ManageV2Page only
 import ManageV2Page from './pages/ManageV2Page'
 import TeamsPage from './pages/TeamsPage'
+import ImmersiveSchedulePage from './pages/ImmersiveSchedulePage'
 import { generateSample } from './sample'
 // sha256Hex removed from App; keep local hashing only in components that need it
 import { TZ_OPTS, MEETING_COHORTS, DAYS } from './constants'
 import { TimeFormatProvider } from './context/TimeFormatContext'
+
+type View = 'schedule' | 'teams' | 'manageV2' | 'stagingPreview' | 'immersive'
 
 const SAMPLE = generateSample()
 const USE_SAMPLE = (import.meta.env.VITE_USE_SAMPLE || 'no').toLowerCase() === 'yes'
@@ -68,14 +72,25 @@ export default function App(){
       }catch{ setSiteUnlocked(false) }
     })()
   }, [autoUnlock, devSitePassword])
-  const hashToView = (hash:string): 'schedule'|'teams'|'manageV2' => {
+  const previewEnabled = useMemo(()=>{
+    if(typeof window === 'undefined') return false
+    const host = window.location.hostname.toLowerCase()
+    const envOverride = (import.meta.env.VITE_ENABLE_FLOW_PREVIEW || '').toLowerCase()
+    if(envOverride === 'yes' || envOverride === 'true' || envOverride === '1') return true
+    return host.includes('staging')
+  }, [])
+
+  const hashToView = useCallback((hash:string): View => {
     const h = (hash||'').toLowerCase()
+    if(previewEnabled && (h.includes('flow') || h.includes('preview') || h.includes('staging-preview'))) return 'stagingPreview'
+    if(previewEnabled && h.includes('immersive')) return 'immersive'
     if(h.includes('teams')) return 'teams'
     if(h.includes('manage2')) return 'manageV2'
     if(h.includes('manage')) return 'manageV2'
     return 'schedule'
-  }
-  const [view,setView] = useState<'schedule'|'teams'|'manageV2'>(()=> hashToView(window.location.hash))
+  }, [previewEnabled])
+  const [view,setView] = useState<View>(()=> hashToView(window.location.hash))
+  const setTopBarView = useCallback((next: View)=> setView(next), [setView])
   const [weekStart,setWeekStart] = useState(()=>fmtYMD(startOfWeek(new Date())))
   const [dayIndex,setDayIndex] = useState(() => new Date().getDay());
   type ThemeBase = 'system'|'default'|'night'|'noir'|'prism'
@@ -158,11 +173,12 @@ export default function App(){
       // Show overlay: '?' or Cmd/Ctrl+K
       if(e.key==='?'){ e.preventDefault(); setShowShortcuts(true); return }
       if((e.ctrlKey||e.metaKey) && (e.key==='k' || e.key==='K')){ e.preventDefault(); setShowShortcuts(true); return }
-      // Switch view: Alt+1/2/3
+      // Switch view: Alt+1/2/3/4
       if(e.altKey && !e.metaKey && !e.ctrlKey){
         if(e.key==='1'){ e.preventDefault(); setView('schedule'); return }
         if(e.key==='2'){ e.preventDefault(); setView('teams'); return }
         if(e.key==='3'){ e.preventDefault(); setView('manageV2'); return }
+        if(previewEnabled && e.key==='4'){ e.preventDefault(); setView('stagingPreview'); return }
       }
       // Week navigation: Cmd/Ctrl + ArrowLeft/Right
       if((e.ctrlKey||e.metaKey) && (e.key==='ArrowLeft' || e.key==='ArrowRight')){
@@ -178,7 +194,7 @@ export default function App(){
     }
     window.addEventListener('keydown', onKey)
     return ()=> window.removeEventListener('keydown', onKey)
-  }, [showShortcuts, weekStart])
+  }, [showShortcuts, weekStart, previewEnabled])
 
   useEffect(()=>{
     const handler = (e: Event)=>{
@@ -498,7 +514,7 @@ export default function App(){
     const handler = ()=> setView(hashToView(window.location.hash))
     window.addEventListener('hashchange', handler)
     return ()=> window.removeEventListener('hashchange', handler)
-  },[])
+  },[hashToView])
   useEffect(()=>{
     if(view==='manageV2'){
       // Keep any sub-hash like #manage2/shifts; only ensure it starts with #manage2
@@ -512,6 +528,18 @@ export default function App(){
       const low = h.toLowerCase()
       if(!low.startsWith('#teams')){
         window.location.hash = '#teams'
+      }
+    } else if(view==='stagingPreview') {
+      const h = window.location.hash || ''
+      const low = h.toLowerCase()
+      if(!low.startsWith('#flow')){
+        window.location.hash = '#flow'
+      }
+    } else if(view==='immersive') {
+      const h = window.location.hash || ''
+      const low = h.toLowerCase()
+      if(!low.startsWith('#immersive')){
+        window.location.hash = '#immersive'
       }
     } else {
       // schedule: remove hash for clean URL
@@ -601,7 +629,7 @@ export default function App(){
   // Use refs to avoid creating a render loop when setting state inside this effect.
   const lastJsonRef = React.useRef<{ shifts: string; pto: string; overrides: string; cal: string; agents: string }>({ shifts: '', pto: '', overrides: '', cal: '', agents: '' })
   useEffect(()=>{
-    if(view!== 'schedule') return
+    if(view!=='schedule' && view!=='stagingPreview' && view!=='immersive') return
     if(!siteUnlocked) return
     let stopped = false
     const pull = async ()=>{
@@ -774,13 +802,15 @@ export default function App(){
         <div className="max-w-full mx-auto p-2 md:p-4 space-y-4">
           <TopBar
           dark={dark} setDark={setDark}
-          view={view} setView={setView}
+          view={view} setView={setTopBarView}
           weekStart={weekStart} setWeekStart={setWeekStart}
           tz={tz} setTz={setTz}
           canEdit={canEdit}
           editMode={editMode}
           setEditMode={setEditMode}
-          />
+          showFlow={previewEnabled}
+          showImmersive={previewEnabled}
+        />
 
           {view==='schedule' ? (
             <SchedulePage
@@ -799,6 +829,26 @@ export default function App(){
               onRemoveShift={(id)=> setShifts(prev=>prev.filter(s=>s.id!==id))}
               agents={agentsV2}
               slimline={slimline}
+            />
+          ) : view==='stagingPreview' ? (
+            <StagingPreviewPage
+              dark={dark}
+              weekStart={weekStart}
+              shifts={shifts}
+              pto={pto}
+              overrides={overrides}
+              tz={tz}
+              agents={agentsV2}
+            />
+          ) : view==='immersive' ? (
+            <ImmersiveSchedulePage
+              dark={dark}
+              weekStart={weekStart}
+              shifts={shifts}
+              pto={pto}
+              overrides={overrides}
+              tz={tz}
+              agents={agentsV2}
             />
           ) : view==='teams' ? (
             <TeamsPage
@@ -910,6 +960,8 @@ export default function App(){
               dark={dark}
               view={view}
               onClose={()=> setShowShortcuts(false)}
+              previewEnabled={previewEnabled}
+              immersiveEnabled={previewEnabled}
             />
           )}
         </div>

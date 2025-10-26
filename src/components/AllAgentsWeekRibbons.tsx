@@ -3,7 +3,7 @@ import AgentWeekLinear from './AgentWeekLinear'
 import type { PTO, Shift, Task, Day } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import { DAYS } from '../constants'
-import { convertShiftsToTZ, toMin } from '../lib/utils'
+import { convertShiftsToTZ, toMin, parseYMD, addDays } from '../lib/utils'
 
 type AgentRow = { firstName: string; lastName: string; tzId?: string }
 
@@ -103,6 +103,8 @@ export default function AllAgentsWeekRibbons({
   }, [nameColPx])
   const nameColClass = "shrink-0 text-left pl-1 text-sm truncate"
   const normalizedWeekStartIdx = ((weekStartIndex ?? 0) % 7 + 7) % 7
+  const weekStartDate = React.useMemo(()=> parseYMD(weekStart), [weekStart])
+  const dayDateFormatter = React.useMemo(()=> new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }), [])
   const effectiveDayOrder = useMemo<readonly Day[]>(()=>{
     if(dayOrder?.length === 7) return dayOrder
     if(normalizedWeekStartIdx === 0) return DAYS as readonly Day[]
@@ -357,13 +359,21 @@ export default function AllAgentsWeekRibbons({
               </>
             )}
             {/* Top day labels aligned to ribbons */}
-            <div className="relative h-7">
+            <div className="relative h-10">
                 {effectiveDayOrder.map((d,i)=>{
                   const left = (i/7)*100
                   const width = (1/7)*100
+                  const date = addDays(weekStartDate, i)
+                  const dateLabel = dayDateFormatter.format(date)
                   return (
-                    <div key={d} data-day-col={i} className={["absolute text-center", dark?"text-neutral-300":"text-neutral-600"].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: 13, lineHeight: 1.5 }}>
-                      {d}
+                    <div
+                      key={d}
+                      data-day-col={i}
+                      className={["absolute text-center flex flex-col items-center justify-center gap-0.5", dark?"text-neutral-300":"text-neutral-600"].join(' ')}
+                      style={{ left: `${left}%`, width: `${width}%`, lineHeight: 1.2 }}
+                    >
+                      <span className="text-sm font-medium leading-none">{d}</span>
+                      <span className="text-[11px] leading-none opacity-80">{dateLabel}</span>
                     </div>
                   )
                 })}

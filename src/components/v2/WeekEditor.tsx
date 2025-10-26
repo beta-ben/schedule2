@@ -35,6 +35,8 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const [eNotes, setENotes] = React.useState<string>('')
 	const [eHidden, setEHidden] = React.useState<boolean>(false)
 	const [eMeeting, setEMeeting] = React.useState<MeetingCohort | ''>('')
+	const [agentSearch, setAgentSearch] = React.useState('')
+const [agentSort, setAgentSort] = React.useState<'name-asc'|'name-desc'|'tz'|'visibility'|'reports'>('name-asc')
 
 	// Selected agent for right panel (controlled if provided)
 	const [selectedIdxLocal, setSelectedIdxLocal] = React.useState<number|null>(null)
@@ -88,25 +90,82 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 	const [lastAddedAgentName, setLastAddedAgentName] = React.useState<string | null>(null)
 	const agentsListRef = React.useRef<HTMLUListElement | null>(null)
 	// Presentational: sort agents by first name, then last name (case-insensitive), but keep original index for actions
-	const sortedAgents = React.useMemo(() => (
-		agents
+	const sortedAgents = React.useMemo(() => {
+		const query = agentSearch.trim().toLowerCase()
+		const tokens = query ? query.split(/\s+/).filter(Boolean) : []
+		const items = agents
 			.map((a, i) => ({ a, i }))
-			.sort((x, y) => {
-				const af = (x.a.firstName || '').toLowerCase()
-				const bf = (y.a.firstName || '').toLowerCase()
-				if (af !== bf) return af.localeCompare(bf)
-				const al = (x.a.lastName || '').toLowerCase()
-				const bl = (y.a.lastName || '').toLowerCase()
-				return al.localeCompare(bl)
+			.filter(({ a }) => {
+				if(tokens.length===0) return true
+				const full = `${a.firstName||''} ${a.lastName||''}`.trim().toLowerCase()
+				const notes = (a.notes || '').toLowerCase()
+				const tzLabel = tzFullName(a.tzId).toLowerCase()
+				const tzShort = tzAbbrev(a.tzId || tz.id).toLowerCase()
+				const cohort = ((a as any).meetingCohort || '').toString().toLowerCase()
+				const visibility = a.hidden ? 'hidden' : 'visible'
+				return tokens.every(token =>
+					full.includes(token)
+					|| notes.includes(token)
+					|| tzLabel.includes(token)
+					|| tzShort.includes(token)
+					|| cohort.includes(token)
+					|| visibility.includes(token)
+				)
 			})
-	), [agents])
+		const compareName = (lhs:{a:AgentRow;i:number}, rhs:{a:AgentRow;i:number})=>{
+			const af = (lhs.a.firstName || '').toLowerCase()
+			const bf = (rhs.a.firstName || '').toLowerCase()
+			if (af !== bf) return af.localeCompare(bf)
+			const al = (lhs.a.lastName || '').toLowerCase()
+			const bl = (rhs.a.lastName || '').toLowerCase()
+			return al.localeCompare(bl)
+		}
+		items.sort((x,y)=>{
+			switch(agentSort){
+				case 'name-asc':
+					return compareName(x,y)
+				case 'name-desc':
+					return compareName(y,x)
+				case 'tz': {
+					const tzA = tzFullName(x.a.tzId).toLowerCase()
+					const tzB = tzFullName(y.a.tzId).toLowerCase()
+					const cmp = tzA.localeCompare(tzB)
+					if(cmp!==0) return cmp
+					return compareName(x,y)
+				}
+				case 'visibility': {
+					const hx = x.a.hidden ? 1 : 0
+					const hy = y.a.hidden ? 1 : 0
+					if(hx !== hy) return hx - hy
+					return compareName(x,y)
+				}
+				case 'reports': {
+					const supA = ((x.a as any).supervisorId || '').toLowerCase()
+					const supB = ((y.a as any).supervisorId || '').toLowerCase()
+					const cmp = supA.localeCompare(supB)
+					if(cmp!==0) return cmp
+					return compareName(x,y)
+				}
+				default:
+					return compareName(x,y)
+			}
+		})
+		return items
+	}, [agents, agentSearch, agentSort, tz.id])
+	const filteredAgentCount = sortedAgents.length
+	const totalAgentCount = agents.length
+	const searchActive = agentSearch.trim().length>0
+	const agentsCountLabel = searchActive ? `${filteredAgentCount}/${totalAgentCount}` : `${totalAgentCount}`
 	React.useEffect(()=>{
 		if(!lastAddedAgentName) return
-		// Find the display index within the sorted list
 		const sIdx = sortedAgents.findIndex(({a})=> `${a.firstName} ${a.lastName}`.trim() === lastAddedAgentName)
-		if(sIdx>=0 && agentsListRef.current){
-			const li = agentsListRef.current.children[sIdx] as HTMLElement | undefined
-			li?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+		if(sIdx>=0){
+			const target = sortedAgents[sIdx]
+			setSelectedIdx(target.i)
+			if(agentsListRef.current){
+				const li = agentsListRef.current.children[sIdx] as HTMLElement | undefined
+				li?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+			}
 		}
 		setLastAddedAgentName(null)
 	}, [sortedAgents, lastAddedAgentName])
@@ -335,9 +394,7 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		const fullCreated = `${fn} ${ln}`.trim()
 		setLastAddedAgentName(fullCreated)
 		onAddAgent?.({ firstName: fn, lastName: ln, tzId })
-		const normalizedCreated = fullCreated.toLowerCase()
-		const match = sortedAgents.find(({ a })=> `${a.firstName||''} ${a.lastName||''}`.trim().toLowerCase() === normalizedCreated)
-		if(match){ setSelectedIdx(match.i) }
+		setAgentSearch('')
 		setFirstName('')
 		setLastName('')
 	}
@@ -398,24 +455,67 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
 		<div className={["rounded-xl p-4 border", dark?"bg-neutral-900 border-neutral-800":"bg-white border-neutral-200"].join(' ')}>
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
 				{/* Left: compact, scrollable Agents panel (half width on desktop) */}
-				<section className={["rounded-lg p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
-					<div className="flex items-center justify-between mb-2">
-						<div className="text-sm font-medium">Agents ({agents.length})</div>
+		<section className={["rounded-lg p-3 border", dark?"bg-neutral-950 border-neutral-800":"bg-neutral-50 border-neutral-200"].join(' ')}>
+			<div className="flex flex-col gap-2 mb-2">
+				<div className="flex items-center justify-between gap-2">
+					<div className="text-sm font-medium">Agents ({agentsCountLabel})</div>
+					{searchActive && (
+						<button
+							type="button"
+							onClick={()=> setAgentSearch('')}
+							className={["text-xs px-2 py-1 rounded border", dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-900":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"].join(' ')}
+						>
+							Clear
+						</button>
+					)}
+				</div>
+				<div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
+					<label className="flex flex-col gap-1">
+						<span className="text-xs uppercase tracking-wide opacity-70">Search</span>
+						<input
+							type="search"
+							value={agentSearch}
+							onChange={e=> setAgentSearch(e.target.value)}
+							placeholder="Search name, notes, timezone"
+							className={["w-full rounded border px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100 placeholder:text-neutral-400":"bg-white border-neutral-300 text-neutral-800 placeholder:text-neutral-400"].join(' ')}
+						/>
+					</label>
+					<label className="flex flex-col gap-1">
+						<span className="text-xs uppercase tracking-wide opacity-70">Sort</span>
+					<select
+						value={agentSort}
+						onChange={e=> setAgentSort(e.target.value as 'name-asc'|'name-desc'|'tz'|'visibility'|'reports')}
+							className={["w-full rounded border px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+						>
+							<option value="name-asc">Name (A–Z)</option>
+							<option value="name-desc">Name (Z–A)</option>
+							<option value="tz">Timezone</option>
+							<option value="visibility">Visibility (active first)</option>
+							<option value="reports">Reports to</option>
+						</select>
+					</label>
+				</div>
+			</div>
+			{agents.length === 0 ? (
+		<div className={["rounded-md p-2 text-xs", dark?"bg-neutral-900 text-neutral-300":"bg-white text-neutral-600"].join(' ')}>
+			No agents found.
+		</div>
+	) : (
+		<div className={["rounded-md", dark?"":""].join(' ')}>
+			{sortedAgents.length === 0 ? (
+				<div className={["rounded-md p-2 text-xs", dark?"bg-neutral-900 text-neutral-300":"bg-white text-neutral-600"].join(' ')}>
+					No agents match your search.
+				</div>
+			) : (
+				<>
+					<div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid gap-2" style={{ gridTemplateColumns: '200px 1fr 200px 64px' }}>
+						<div className="whitespace-nowrap">Name</div>
+						<div className="whitespace-nowrap">Notes</div>
+						<div className="text-right whitespace-nowrap">Reports to</div>
+						<div className="whitespace-nowrap">TZ</div>
 					</div>
-					{agents.length === 0 ? (
-						<div className={["rounded-md p-2 text-xs", dark?"bg-neutral-900 text-neutral-300":"bg-white text-neutral-600"].join(' ')}>
-							No agents found.
-						</div>
-					) : (
-						<div className={["rounded-md", dark?"":""].join(' ')}>
-            <div className="px-2 py-1.5 text-xs uppercase tracking-wide opacity-70 grid gap-2" style={{ gridTemplateColumns: '200px 1fr 200px 64px' }}>
-              <div className="whitespace-nowrap">Name</div>
-              <div className="whitespace-nowrap">Notes</div>
-              <div className="text-right whitespace-nowrap">Reports to</div>
-              <div className="whitespace-nowrap">TZ</div>
-            </div>
-										    <ul ref={agentsListRef} className={["max-h-[48vh] overflow-y-auto"].join(' ')}>
-															    {sortedAgents.map(({ a, i }, sIdx)=> {
+					<ul ref={agentsListRef} className={["max-h-[48vh] overflow-y-auto"].join(' ')}>
+						{sortedAgents.map(({ a, i }, sIdx)=> {
                   const supId = (a as any).supervisorId as string | undefined | null
                   const supAgent = supId ? (agents.find(x=> ((x as any).id && (x as any).id===supId) || (`${x.firstName||''} ${x.lastName||''}`.trim()===supId)) || null) : null
                   const supName = supAgent ? `${supAgent.firstName||''} ${supAgent.lastName||''}`.trim() : (supId || '')
@@ -451,52 +551,53 @@ export default function WeekEditor({ dark, agents, onAddAgent, onUpdateAgent, on
                     </li>
                   )
                 })}
-											</ul>
-							</div>
-						)}
-					{/* Add Agent form (part of the same unit) */}
-					<div className="mt-2">
-									<form onSubmit={submitAdd} className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
-										<label className="col-span-1 flex flex-col gap-1">
-								<span className="text-xs opacity-80">First</span>
-								<input
-									className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-									value={firstName}
-									onChange={e=>setFirstName(e.target.value)}
-									placeholder="First name"
-								/>
-							</label>
-										<label className="col-span-1 flex flex-col gap-1">
-								<span className="text-xs opacity-80">Last</span>
-								<input
-									className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-									value={lastName}
-									onChange={e=>setLastName(e.target.value)}
-									placeholder="Last name"
-								/>
-							</label>
-										<label className="col-span-1 flex flex-col gap-1">
-								<span className="text-xs opacity-80">Timezone</span>
-								<select
-									className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-									value={tzId}
-									onChange={e=>setTzId(e.target.value)}
-								>
-												{TZ_OPTS.map(o=> (
-													<option key={o.id} value={o.id}>{tzFullName(o.id)}</option>
-												))}
-								</select>
-							</label>
-										<div className="col-span-1 flex md:justify-end">
-								<button
-									type="submit"
-									disabled={!firstName.trim() || !lastName.trim()}
-									className={["px-3 py-1.5 rounded-md text-sm font-medium border", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}
-								>Add Agent</button>
-							</div>
-						</form>
+					</ul>
+				</>
+			)}
+			<div className="mt-2">
+				<form onSubmit={submitAdd} className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+					<label className="col-span-1 flex flex-col gap-1">
+						<span className="text-xs opacity-80">First</span>
+						<input
+							className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+							value={firstName}
+							onChange={e=>setFirstName(e.target.value)}
+							placeholder="First name"
+						/>
+					</label>
+					<label className="col-span-1 flex flex-col gap-1">
+						<span className="text-xs opacity-80">Last</span>
+						<input
+							className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+							value={lastName}
+							onChange={e=>setLastName(e.target.value)}
+							placeholder="Last name"
+						/>
+					</label>
+					<label className="col-span-1 flex flex-col gap-1">
+						<span className="text-xs opacity-80">Timezone</span>
+						<select
+							className={["border rounded-md px-2 py-1 text-sm", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+							value={tzId}
+							onChange={e=>setTzId(e.target.value)}
+						>
+							{TZ_OPTS.map(o=> (
+								<option key={o.id} value={o.id}>{tzFullName(o.id)}</option>
+							))}
+						</select>
+					</label>
+					<div className="col-span-1 flex md:justify-end">
+						<button
+							type="submit"
+							disabled={!firstName.trim() || !lastName.trim()}
+							className={["px-3 py-1.5 rounded-md text-sm font-medium border", dark?"bg-neutral-900 border-neutral-700 text-neutral-100":"bg-blue-600 border-blue-600 text-white"].join(' ')}
+						>Add Agent</button>
 					</div>
-				</section>
+				</form>
+			</div>
+		</div>
+	)}
+	</section>
 
 						{/* Delete confirmation modal */}
 						{deleteIdx!=null && (

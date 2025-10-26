@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DAYS } from '../constants'
 import DayGrid from '../components/DayGrid'
-import { addDays, fmtNice, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev, applyOverrides, expandCalendarSegments, CalendarSegmentSlice } from '../lib/utils'
+import { addDays, fmtNice, fmtYMD, parseYMD, toMin, nowInTZ, shiftsForDayInTZ, mergeSegments, tzAbbrev, applyOverrides, expandCalendarSegments, CalendarSegmentSlice } from '../lib/utils'
 import type { PTO, Shift, Task, Override } from '../types'
 import type { CalendarSegment } from '../lib/utils'
 import OnDeck from '../components/OnDeck'
 import UpNext from '../components/UpNext'
 import PostureToday from '../components/PostureToday'
 import AgentWeekGrid from '../components/AgentWeekGrid'
+import { computeSlimlineShifts, orderPeopleByFirstStart } from '../lib/scheduleView'
 // Legend removed from Schedule page
 
 export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, shifts, pto, overrides, tasks, calendarSegs, tz, canEdit, editMode, onRemoveShift, agents, slimline }:{ 
@@ -30,7 +31,6 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
 }){
   // Apply overrides for the visible week so the schedule reflects them
   const effectiveShifts = React.useMemo(()=> applyOverrides(shifts, overrides||[], weekStart, agents||[]), [shifts, overrides, weekStart, agents])
-  const today = new Date()
   const weekStartDate = useMemo(()=> parseYMD(weekStart), [weekStart])
   const selectedDate = useMemo(()=> addDays(weekStartDate, dayIndex), [weekStartDate, dayIndex])
   const dateLabel = useMemo(()=>{
@@ -38,6 +38,9 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
     return `${month} ${dayNumber(selectedDate)}`
   }, [selectedDate])
   const dayKey = DAYS[dayIndex]
+  const nowTz = nowInTZ(tz.id)
+  const selectedYmd = fmtYMD(selectedDate)
+  const isViewingToday = selectedYmd === nowTz.ymd
   const hiddenNames = useMemo(()=>{
     const set = new Set<string>()
     for(const a of (agents||[])){
@@ -73,7 +76,7 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
       return segments && segments.length>0 ? { ...s, segments } : s
     })
   },[effectiveShifts,dayKey,tz.offset,calendarSegmentsByDay, hiddenNames])
-  const people = useMemo(()=>Array.from(new Set(dayShifts.map(s=>s.person))),[dayShifts])
+  const people = useMemo(()=> orderPeopleByFirstStart(dayShifts),[dayShifts])
   const allPeople = useMemo(()=>{
     const names = Array.from(new Set(effectiveShifts.map(s=>s.person))).sort()
     return names.filter(n=> !hiddenNames.has(n))
@@ -124,7 +127,6 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   }, [setDayIndex, slimline, dayIndex])
 
   // Panels tied to "now": always use today's shifts regardless of selected tab
-  const nowTz = nowInTZ(tz.id)
   const todayKey = nowTz.weekdayShort as (typeof DAYS)[number]
   const todayShifts = useMemo(()=>{
     const baseAll = shiftsForDayInTZ(effectiveShifts, todayKey as any, tz.offset).sort((a,b)=>toMin(a.start)-toMin(b.start))
@@ -311,29 +313,16 @@ export default function SchedulePage({ dark, weekStart, dayIndex, setDayIndex, s
   <div className="pl-1">
   {(()=>{
     // Prepare filtered inputs for DayGrid depending on slimline
-    const forToday = fmtNice(selectedDate) === fmtNice(parseYMD(nowInTZ(tz.id).ymd))
-  const filteredShifts = (!slimline || !forToday) ? dayShifts : (()=>{
-      const now = nowInTZ(tz.id)
-      const nowAbs = (DAYS.indexOf(dayKey as any))*1440 + now.minutes
-      const ymdNow = now.ymd
-      return dayShifts.filter(s=>{
-        // Hide PTO entirely for today using TZ-based YMD (matches OnDeck logic)
-        const hasPto = pto.some(p=> p.person===s.person && p.startDate <= ymdNow && ymdNow <= p.endDate)
-        if(hasPto) return false
-        // Keep only active and on-deck (within next 2 hours), and hide chips >30m past end
-        const sd = DAYS.indexOf(s.day as any)
-        const ed = DAYS.indexOf(((s as any).endDay || s.day) as any)
-        const sAbs = (sd<0?0:sd)*1440 + toMin(s.start)
-        let eAbs = (ed<0?sd:ed)*1440 + (s.end==='24:00'?1440:toMin(s.end))
-        if(eAbs <= sAbs) eAbs += 1440
-        const isActive = nowAbs >= sAbs && nowAbs < eAbs
-        const isOnDeck = sAbs > nowAbs && sAbs <= (nowAbs + 120)
-        if(!(isActive || isOnDeck)) return false
-        // Also, if already ended more than 30 minutes ago, hide
-        return nowAbs <= (eAbs + 30)
-      })
-    })()
-  const filteredPeople = Array.from(new Set(filteredShifts.map(s=> s.person)))
+    const forToday = isViewingToday
+    const slimlineState = (!slimline || !forToday) ? null : computeSlimlineShifts({
+      shifts: dayShifts,
+      dayKey: dayKey as (typeof DAYS)[number],
+      tzId: tz.id,
+      pto,
+      now: nowTz
+    })
+  const filteredShifts = (!slimline || !forToday) ? dayShifts : slimlineState!.shifts
+  const filteredPeople = (!slimline || !forToday) ? people : slimlineState!.people
     return (
       <DayGrid
         date={selectedDate}

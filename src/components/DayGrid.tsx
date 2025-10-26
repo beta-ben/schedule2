@@ -4,6 +4,7 @@ import { fmtYMD, minToHHMM, parseYMD, toMin, nowInTZ, tzAbbrev } from '../lib/ut
 import { shiftsOverlap } from '../lib/overlap'
 import type { PTO, Shift, Task } from '../types'
 import { useThemeBase } from '../hooks/useThemeBase'
+import { orderPeopleByFirstStart } from '../lib/scheduleView'
 
 export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, canEdit, editMode, onRemove, showHeaderTitle = true, tasks, compact, agents }:{
   date: Date
@@ -83,9 +84,17 @@ export default function DayGrid({ date, dayKey, people, shifts, pto, dark, tz, c
   const unitPct = (hourEvery===1) ? (100/(COLS*2)) : (100/COLS) // width of one column in % of total width
 
   const orderedPeople = useMemo(()=>{
-    const firstStart=new Map<string,number>()
-    people.forEach(p=>{ const starts=shifts.filter(s=>s.person===p).map(s=>toMin(s.start)); if(starts.length) firstStart.set(p, Math.min(...starts)) })
-    return Array.from(firstStart.entries()).sort((a,b)=>a[1]-b[1]||a[0].localeCompare(b[0])).map(([p])=>p)
+    if(Array.isArray(people) && people.length){
+      const withShift = new Set(shifts.map(s=>s.person))
+      const seen = new Set<string>()
+      const explicit = people.filter(person=>{
+        if(seen.has(person)) return false
+        seen.add(person)
+        return withShift.has(person)
+      })
+      if(explicit.length) return explicit
+    }
+    return orderPeopleByFirstStart(shifts)
   },[people,shifts])
 
   const colorMap = useMemo(()=>{
