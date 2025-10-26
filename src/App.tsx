@@ -24,6 +24,52 @@ const SAMPLE = generateSample()
 const USE_SAMPLE = (import.meta.env.VITE_USE_SAMPLE || 'no').toLowerCase() === 'yes'
 const ALLOW_DOC_FALLBACK = (import.meta.env.VITE_ALLOW_DOC_FALLBACK || 'no').toLowerCase() === 'yes'
 
+function formatDateToPacific(date: Date): string {
+  try {
+    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+    const tzFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      timeZoneName: 'short',
+      hour: '2-digit',
+    })
+    const parts = dateFormatter.formatToParts(date)
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value ?? ''
+    const tzName =
+      tzFormatter.formatToParts(date).find((part) => part.type === 'timeZoneName')?.value ?? 'PT'
+    const year = get('year')
+    const month = get('month')
+    const day = get('day')
+    const hour = get('hour')
+    const minute = get('minute')
+    const second = get('second')
+    if (!year || !month || !day || !hour || !minute || !second) {
+      return date.toISOString()
+    }
+    return `${year}-${month}-${day} ${hour}:${minute}:${second} ${tzName}`
+  } catch {
+    return date.toISOString()
+  }
+}
+
+function formatBuildTimePacific(raw: string | undefined): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const date = new Date(trimmed)
+  if (Number.isNaN(date.getTime())) return null
+  return formatDateToPacific(date)
+}
+
 export default function App(){
   const autoUnlock = Boolean(import.meta.env?.DEV && import.meta.env.VITE_REQUIRE_SITE_PASSWORD !== '1')
   const devSitePassword = autoUnlock ? (import.meta.env.VITE_DEV_SITE_PASSWORD || import.meta.env.VITE_SITE_PASSWORD || '').trim() : ''
@@ -35,12 +81,14 @@ export default function App(){
   const [siteMsg, setSiteMsg] = useState('')
   const buildStamp = useMemo(()=>{
     const env = (import.meta.env || {}) as Record<string, unknown>
-    const parts = [env.VITE_BUILD_ID, env.VITE_BUILD_SHA, env.VITE_BUILD_TIME]
-      .map(value=> typeof value === 'string' ? value.trim() : '')
-      .filter(Boolean)
+    const buildId = typeof env.VITE_BUILD_ID === 'string' ? env.VITE_BUILD_ID.trim() : ''
+    const buildSha = typeof env.VITE_BUILD_SHA === 'string' ? env.VITE_BUILD_SHA.trim() : ''
+    const buildTimeRaw = typeof env.VITE_BUILD_TIME === 'string' ? env.VITE_BUILD_TIME : ''
+    const pacificTime = formatBuildTimePacific(buildTimeRaw)
+    const parts = [buildId, buildSha, pacificTime ?? buildTimeRaw.trim()].filter(Boolean)
     if(parts.length>0) return parts.join(' · ')
     const mode = typeof env.MODE === 'string' ? env.MODE : 'dev'
-    return `${mode}-${new Date().toISOString()}`
+    return `${mode}-${formatDateToPacific(new Date())}`
   }, [])
   useEffect(()=>{
     if(typeof window !== 'undefined'){
