@@ -7,6 +7,8 @@ import WeekEditor from '../components/v2/WeekEditor'
 import ComboBox from '../components/ComboBox'
 import WeeklyPosturesCalendar from '../components/WeeklyPosturesCalendar'
 import AllAgentsWeekRibbons from '../components/AllAgentsWeekRibbons'
+import PtoNotificationParser from '../components/PtoNotificationParser'
+import OverrideNotificationParser from '../components/OverrideNotificationParser'
 import CoverageHeatmap from '../components/CoverageHeatmap'
 import type { PTO, Shift, Task, Override } from '../types'
 import type { StageDoc } from '../domain/stage'
@@ -157,7 +159,7 @@ export default function ManageV2Page({ dark, agents, onAddAgent, onUpdateAgent, 
   const tabs = ['Schedule Editor','Agents','Postures','PTO & Overrides','Integrations','Clock & Breaks'] as const
   type Subtab = typeof tabs[number]
   const wipTabs: ReadonlyArray<Subtab> = ['Integrations', 'Clock & Breaks']
-  const [subtab, setSubtab] = React.useState<Subtab>('Agents')
+  const [subtab, setSubtab] = React.useState<Subtab>('Schedule Editor')
   const [zoomConnections, setZoomConnections] = React.useState<ZoomConnectionSummary[]>([])
   const [zoomLoading, setZoomLoading] = React.useState(false)
   const [zoomError, setZoomError] = React.useState<string | null>(null)
@@ -782,6 +784,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
     stageError,
     stageEnabled: hasStageInfra,
   })
+  const clearAllStagedDisabled = stageChangeCount===0 && !stageDirty
   const handlePublishStageToLive = React.useCallback(async ()=>{
     if(stagePublishBusy) return
     const summaryLines = stageChangeSummaryLines.slice()
@@ -865,12 +868,29 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
 
   // Track whether the working session started from live (so full undo returns to Live)
   const startedFromLiveRef = React.useRef(false)
+  const [dirtyVersion, setDirtyVersion] = React.useState(0)
+  const [liveAutoSaving, setLiveAutoSaving] = React.useState(false)
+  const liveAutoSaveTimerRef = React.useRef<number | null>(null)
+  const liveAutoSaveInFlightRef = React.useRef(false)
+  const isDirtyRef = React.useRef(isDirty)
+  React.useEffect(()=>{ isDirtyRef.current = isDirty }, [isDirty])
+  const isStageModeRef = React.useRef(isStageMode)
+  React.useEffect(()=>{ isStageModeRef.current = isStageMode }, [isStageMode])
   const markDirty = React.useCallback(()=>{
     setIsDirty(true)
+    setDirtyVersion(v=> v+1)
   }, [])
   // Local autosave for unpublished changes (single snapshot per week/tz)
   const UNPUB_KEY = React.useMemo(()=> `schedule2.v2.unpublished.${weekStart}.${tz.id}`,[weekStart,tz.id])
   const LEGACY_DRAFT_KEY = React.useMemo(()=> `schedule2.v2.draft.${weekStart}.${tz.id}`,[weekStart,tz.id])
+  React.useEffect(()=>{
+    return ()=>{
+      if(liveAutoSaveTimerRef.current!=null){
+        window.clearTimeout(liveAutoSaveTimerRef.current)
+        liveAutoSaveTimerRef.current = null
+      }
+    }
+  }, [])
   // Keep working copy synced to live only when not dirty
   React.useEffect(()=>{ if(!isDirty) setWorkingShifts(shifts) },[shifts,isDirty])
   React.useEffect(()=>{ if(!isDirty) setWorkingPto(pto) },[pto,isDirty])
@@ -889,7 +909,9 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
         if(Array.isArray(parsed?.shifts)) setWorkingShifts(parsed.shifts as Shift[])
         if(Array.isArray(parsed?.pto)) setWorkingPto(parsed.pto as PTO[])
         if(Array.isArray(parsed?.overrides)) setWorkingOverrides(parsed.overrides as Override[])
-        if(Array.isArray(parsed?.shifts) || Array.isArray(parsed?.pto) || Array.isArray(parsed?.overrides)){
+        if(Array.isArray(parsed?.calendarSegs)) setCalendarSegs(()=> parsed.calendarSegs as CalendarSegment[])
+        if(Array.isArray(parsed?.tasks)) setTasks(()=> parsed.tasks as Task[])
+        if(Array.isArray(parsed?.shifts) || Array.isArray(parsed?.pto) || Array.isArray(parsed?.overrides) || Array.isArray(parsed?.calendarSegs) || Array.isArray(parsed?.tasks)){
           markDirty()
           startedFromLiveRef.current = false
         }
@@ -912,7 +934,15 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
           setWorkingOverrides(parsed.overrides as Override[])
           payload.overrides = parsed.overrides
         }
-        if(payload.shifts || payload.pto || payload.overrides){
+        if(Array.isArray(parsed?.calendarSegs)){
+          setCalendarSegs(()=> parsed.calendarSegs as CalendarSegment[])
+          payload.calendarSegs = parsed.calendarSegs
+        }
+        if(Array.isArray(parsed?.tasks)){
+          setTasks(()=> parsed.tasks as Task[])
+          payload.tasks = parsed.tasks
+        }
+        if(payload.shifts || payload.pto || payload.overrides || payload.calendarSegs || payload.tasks){
           markDirty()
           startedFromLiveRef.current = false
           try{ localStorage.setItem(UNPUB_KEY, JSON.stringify(payload)) }catch{}
@@ -920,15 +950,27 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
         try{ localStorage.removeItem(LEGACY_DRAFT_KEY) }catch{}
       }
     }catch{}
-  }, [UNPUB_KEY, LEGACY_DRAFT_KEY, markDirty])
+  }, [UNPUB_KEY, LEGACY_DRAFT_KEY, markDirty, setCalendarSegs, setTasks])
   // Autosave unpublished changes (debounced)
   React.useEffect(()=>{
     if(!isDirty) return
     const t = setTimeout(()=>{
-      try{ localStorage.setItem(UNPUB_KEY, JSON.stringify({ schema: 1, weekStart, tzId: tz.id, shifts: workingShifts, pto: workingPto, overrides: workingOverrides, updatedAt: new Date().toISOString() })) }catch{}
+      try{
+        localStorage.setItem(UNPUB_KEY, JSON.stringify({
+          schema: 1,
+          weekStart,
+          tzId: tz.id,
+          shifts: workingShifts,
+          pto: workingPto,
+          overrides: workingOverrides,
+          calendarSegs,
+          tasks,
+          updatedAt: new Date().toISOString()
+        }))
+      }catch{}
     }, 300)
     return ()=> clearTimeout(t)
-  }, [isDirty, workingShifts, workingPto, workingOverrides, UNPUB_KEY, weekStart, tz.id])
+  }, [isDirty, workingShifts, workingPto, workingOverrides, calendarSegs, tasks, UNPUB_KEY, weekStart, tz.id])
   // Track modified shifts to show edge time labels next render
   const [modifiedIds, setModifiedIds] = React.useState<Set<string>>(new Set<string>())
   // Schedule Editor tab: multi-select of shifts by id
@@ -1271,13 +1313,19 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
     ? { light: 'rgba(34,197,94,0.65)', dark: 'rgba(34,197,94,0.8)' }
     : undefined
   , [showScheduleAdjustments])
-  const modeSubtitleText = isStageMode ? stageSubtitleText : (isDirty ? 'Unpublished local edits' : 'Live data preview')
+  const modeSubtitleText = isStageMode
+    ? stageSubtitleText
+    : liveAutoSaving
+      ? 'Saving changes to live…'
+      : (isDirty ? 'Pending auto-save' : 'Live data saved')
   const stagingStatusBadgeClasses = dark ? 'bg-neutral-900 border-violet-500/60 text-violet-300' : 'bg-white border-violet-500/70 text-violet-700'
   const modeSubtitleClassName = [
     'text-[10px]',
     isStageMode && stageError
       ? (dark ? 'text-red-300' : 'text-red-600')
-      : 'opacity-60'
+      : liveAutoSaving
+        ? (dark ? 'text-blue-300' : 'text-blue-600')
+        : 'opacity-60'
   ].join(' ')
   const livePublishDisabled = manualPublishPending || !isDirty
   const stagePublishSummaryLines = stagePublishSummary?.lines ?? []
@@ -1345,6 +1393,57 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
         deleteSelectedShifts()
         return
       }
+      if(!e.ctrlKey && !e.metaKey && !e.altKey){
+        const key = e.key
+        if(key==='l' || key==='L'){
+          e.preventDefault()
+          setShowAllTimeLabels(prev=>{
+            const next = !prev
+            showToast(next ? 'Time labels pinned on.' : 'Time labels auto.')
+            return next
+          })
+          return
+        }
+        if(key==='h' || key==='H'){
+          e.preventDefault()
+          setIncludeHiddenAgents(prev=>{
+            const next = !prev
+            showToast(next ? 'Hidden agents shown.' : 'Hidden agents hidden.')
+            return next
+          })
+          return
+        }
+        if(key==='['){
+          e.preventDefault()
+          setVisibleDays(prev=>{
+            const next = Math.max(1, prev - 1)
+            if(next !== prev) showToast(`Showing ${next} day${next===1?'':'s'}.`)
+            return next
+          })
+          return
+        }
+        if(key===']'){
+          e.preventDefault()
+          setVisibleDays(prev=>{
+            const next = Math.min(7, prev + 1)
+            if(next !== prev) showToast(`Showing ${next} day${next===1?'':'s'}.`)
+            return next
+          })
+          return
+        }
+                if(key==='0'){
+                  e.preventDefault()
+                  setVisibleDays(prev=>{
+                    if(prev===7){
+              showToast('Visible days already at full week.')
+              return prev
+                    }
+            showToast('Showing full 7-day week.')
+            return 7
+          })
+          return
+        }
+      }
       if(hasStageInfra){
         if(e.key === '1'){
           e.preventDefault()
@@ -1364,7 +1463,22 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
     }
     window.addEventListener('keydown', onKey)
     return ()=> window.removeEventListener('keydown', onKey)
-  }, [subtab, undoShifts, redoShifts, undoStageShifts, redoStageShifts, isStageMode, selectedShiftIds, deleteSelectedShifts, hasStageInfra, setScheduleMode])
+  }, [
+    subtab,
+    undoShifts,
+    redoShifts,
+    undoStageShifts,
+    redoStageShifts,
+    isStageMode,
+    selectedShiftIds,
+    deleteSelectedShifts,
+    hasStageInfra,
+    setScheduleMode,
+    setShowAllTimeLabels,
+    setIncludeHiddenAgents,
+    setVisibleDays,
+    showToast
+  ])
 
   const handleStageRefresh = React.useCallback(async ()=>{
     if(!hasStageInfra) return
@@ -1380,6 +1494,27 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
       showToast('Failed to reload staging snapshot.', 'error')
     }
   }, [hasStageInfra, stageDirty, reloadStageDoc, showToast])
+  const handleClearAllStagedChanges = React.useCallback(()=>{
+    if(!hasStageInfra) return
+    if(stageChangeCount===0 && !stageDirty) return
+    const confirmed = window.confirm('Clear all staged changes and reset staging to match the live schedule?')
+    if(!confirmed) return
+    stageDebugLog('page:stage_clear_all', {
+      count: stageChangeCount,
+      dirty: stageDirty
+    })
+    updateStageShifts('clear_all', ()=> Array.isArray(shifts) ? shifts.map(s=> ({ ...s })) : [])
+    setStageWorkingPto(pto)
+    setStageWorkingOverrides(overrides)
+    setStageWorkingCalendarSegs(calendarSegs)
+    setStageShiftUndoStack([])
+    setStageShiftRedoStack([])
+    setSelectedShiftIds(new Set())
+    setStageRemovalAck(false)
+    setShowStageChangesPanel(false)
+    markStageDirty()
+    showToast('All staged changes cleared.', 'success')
+  }, [hasStageInfra, stageChangeCount, stageDirty, updateStageShifts, shifts, pto, overrides, calendarSegs, setStageWorkingPto, setStageWorkingOverrides, setStageWorkingCalendarSegs, setStageShiftUndoStack, setStageShiftRedoStack, setSelectedShiftIds, setStageRemovalAck, setShowStageChangesPanel, markStageDirty, showToast])
 
   const handleStageChangeRevert = React.useCallback((entry: StageChangeEntry)=>{
     if(!hasStageInfra) return
@@ -1521,6 +1656,40 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   const [pt_e_start, setPtEStart] = React.useState('')
   const [pt_e_end, setPtEEnd] = React.useState('')
   const [pt_e_notes, setPtENotes] = React.useState('')
+  const handlePtoParserApply = React.useCallback(
+    (suggestion: {
+      person: string
+      agentId?: string
+      startDate: string
+      endDate: string
+      startTime: string
+      endTime: string
+      calendar: string
+      rawText: string
+      confidence: number
+    }) => {
+      if (!suggestion.person) return
+      setPtAgent(suggestion.person)
+      if (suggestion.startDate) {
+        setPtStart(suggestion.startDate)
+        setPtEnd(suggestion.endDate || suggestion.startDate)
+      }
+      const noteParts: string[] = []
+      if (suggestion.calendar) noteParts.push(suggestion.calendar)
+      if (suggestion.startDate) {
+        const dateLabel =
+          suggestion.endDate && suggestion.endDate !== suggestion.startDate
+            ? `${suggestion.startDate} – ${suggestion.endDate}`
+            : suggestion.startDate
+        noteParts.push(dateLabel)
+      }
+      const timeLabel = [suggestion.startTime, suggestion.endTime].filter(Boolean).join(' – ')
+      if (timeLabel) noteParts.push(timeLabel)
+      if (suggestion.confidence) noteParts.push(`~${suggestion.confidence}% confidence`)
+      setPtNotes(noteParts.join(' • '))
+    },
+    [setPtAgent, setPtEnd, setPtNotes, setPtStart],
+  )
   const startPtoEdit = (r: PTO)=>{ setPtoEditing(r); setPtEPerson(r.person); setPtEStart(r.startDate); setPtEEnd(r.endDate); setPtENotes(r.notes||'') }
   const clearPtoEdit = ()=>{ setPtoEditing(null); setPtEPerson(''); setPtEStart(''); setPtEEnd(''); setPtENotes('') }
   const filteredPto = React.useMemo(()=>{
@@ -1577,6 +1746,90 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
     setOvERecurring(false)
     setOvEUntil('')
   }
+  const handleOverrideParserApply = React.useCallback(
+    (
+      entries: Array<{
+        person: string
+        agentId?: string
+        startDate: string
+        endDate: string
+        startTime?: string
+        endTime?: string
+        kind?: string
+        notes?: string
+        counterpart?: string
+        rawText: string
+        confidence: number
+        role: 'covering' | 'covered' | 'swap' | 'single'
+      }>,
+    ) => {
+      const normalized = entries
+        .map((entry) => ({
+          ...entry,
+          person: entry.person.trim(),
+          startDate: entry.startDate.trim(),
+          endDate: (entry.endDate || entry.startDate).trim(),
+          startTime: entry.startTime?.trim() ?? '',
+          endTime: entry.endTime?.trim() ?? '',
+          kind: entry.kind?.trim() ?? '',
+          notes: entry.notes?.trim() ?? '',
+        }))
+        .filter((entry) => entry.person && entry.startDate && entry.endDate)
+      if (!normalized.length) return
+      setWorkingOverrides((prev) =>
+        prev.concat(
+          normalized.map((entry) => {
+            const fallbackNotes =
+              entry.notes ||
+              (entry.counterpart
+                ? entry.role === 'covered'
+                  ? `Coverage by ${entry.counterpart}`
+                  : entry.role === 'covering'
+                    ? `Covering for ${entry.counterpart}`
+                    : entry.role === 'swap'
+                      ? `Swap with ${entry.counterpart}`
+                      : entry.counterpart
+                : undefined)
+            const finalNotes =
+              fallbackNotes && fallbackNotes.trim() ? fallbackNotes.trim() : undefined
+            return {
+              id: uid(),
+              person: entry.person,
+              agentId: agentIdByName(localAgents as any, entry.person),
+              startDate: entry.startDate,
+              endDate: entry.endDate || entry.startDate,
+              start: entry.startTime || undefined,
+              end: entry.endTime || undefined,
+              kind: entry.kind || undefined,
+              notes: finalNotes,
+            } as Override
+          }),
+        ),
+      )
+      const first = normalized[0]
+      const fallbackNotesRaw =
+        first.notes ||
+        (first.counterpart
+          ? first.role === 'covered'
+            ? `Coverage by ${first.counterpart}`
+            : first.role === 'covering'
+              ? `Covering for ${first.counterpart}`
+              : first.role === 'swap'
+                ? `Swap with ${first.counterpart}`
+                : first.counterpart
+          : '')
+      const fallbackNotes = fallbackNotesRaw.trim()
+      setOvAgent(first.person)
+      setOvStart(first.startDate)
+      setOvEnd(first.endDate || first.startDate)
+      setOvTStart(first.startTime || '')
+      setOvTEnd(first.endTime || '')
+      setOvKind(first.kind || '')
+      setOvNotes(fallbackNotes)
+      markDirty()
+    },
+    [localAgents, markDirty, setOvAgent, setOvEnd, setOvKind, setOvNotes, setOvStart, setOvTEnd, setOvTStart, setWorkingOverrides],
+  )
   const filteredOverrides = React.useMemo(()=>{
     return workingOverrides
       .slice()
@@ -1677,10 +1930,12 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   const publishWorkingToLive = React.useCallback(async ({ silent = false }: { silent?: boolean } = {})=>{
     // Include agents in publish so metadata like supervisor persists
     const agentsPayload = mapAgentsToPayloads(localAgents)
+    const tasksPayload = tasks.map(t=> ({ ...t }))
     try{
-      const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, updatedAt: new Date().toISOString() })
+      const res = await cloudPostDetailed({ shifts: workingShifts, pto: workingPto, overrides: workingOverrides, calendarSegs, agents: agentsPayload as any, tasks: tasksPayload, updatedAt: new Date().toISOString() })
       if(res.ok){
         setIsDirty(false)
+        isDirtyRef.current = false
         if(!silent) showToast('Published to live.', 'success')
         startedFromLiveRef.current = false
         // Clear modified markers so shift ribbons no longer show edited tags
@@ -1717,7 +1972,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
       showToast(message, 'error')
       return false
     }
-  }, [localAgents, workingShifts, workingPto, workingOverrides, calendarSegs, showToast, setShifts, setCalendarSegs, setPto, setOverrides, ensureSiteSession, handleAdminSignOut])
+  }, [localAgents, workingShifts, workingPto, workingOverrides, calendarSegs, tasks, showToast, setShifts, setCalendarSegs, setPto, setOverrides, ensureSiteSession, handleAdminSignOut])
   const handleManualPublish = React.useCallback(async ()=>{
     if(manualPublishPending) return
     setManualPublishPending(true)
@@ -1727,6 +1982,40 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
       setManualPublishPending(false)
     }
   }, [manualPublishPending, publishWorkingToLive])
+  React.useEffect(()=>{
+    if(liveAutoSaveTimerRef.current!=null){
+      window.clearTimeout(liveAutoSaveTimerRef.current)
+      liveAutoSaveTimerRef.current = null
+    }
+    if(isStageMode || !isDirty || manualPublishPending){
+      return
+    }
+    liveAutoSaveTimerRef.current = window.setTimeout(async ()=>{
+      liveAutoSaveTimerRef.current = null
+      if(isStageModeRef.current || !isDirtyRef.current) return
+      if(liveAutoSaveInFlightRef.current) return
+      liveAutoSaveInFlightRef.current = true
+      setLiveAutoSaving(true)
+      const ok = await publishWorkingToLive({ silent: true })
+      liveAutoSaveInFlightRef.current = false
+      setLiveAutoSaving(false)
+      if(!ok){
+        if(liveAutoSaveTimerRef.current!=null){
+          window.clearTimeout(liveAutoSaveTimerRef.current)
+        }
+        liveAutoSaveTimerRef.current = window.setTimeout(()=>{
+          liveAutoSaveTimerRef.current = null
+          setDirtyVersion(v=> v+1)
+        }, 5000)
+      }
+    }, 1500)
+    return ()=>{
+      if(liveAutoSaveTimerRef.current!=null){
+        window.clearTimeout(liveAutoSaveTimerRef.current)
+        liveAutoSaveTimerRef.current = null
+      }
+    }
+  }, [dirtyVersion, isDirty, isStageMode, manualPublishPending, publishWorkingToLive])
   const handleAdd = React.useCallback((a:{ firstName:string; lastName:string; tzId:string })=>{
     onAddAgent?.(a)
     setLocalAgents(prev=> prev.concat([{ firstName: a.firstName, lastName: a.lastName, tzId: a.tzId, hidden: false, meetingCohort: undefined }]))
@@ -1868,29 +2157,88 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                     dark={dark}
                     ariaLabel={stageToggleLabel}
                   />
-                  <button
-                    type="button"
-                    onClick={handleStageRefresh}
-                    disabled={stageLoading}
-                    className={["inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium", stageLoading
-                      ? (dark ? "bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed" : "bg-white border-neutral-200 text-neutral-500 cursor-not-allowed")
-                      : (dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}
-                    title="Reload staging snapshot"
-                  >
-                    {stageLoading ? (
-                      <svg aria-hidden className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
-                    ) : (
-                      <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"/></svg>
-                    )}
-                    <span>Reload staging</span>
-                  </button>
                 </div>
               )}
             </div>
-            {isStageMode ? (
+            {isStageMode && (
               <span className={["inline-flex items-center px-2 py-1 rounded-xl border font-medium", stagingStatusBadgeClasses].join(' ')}>
                 {stageBadgeText}
               </span>
+            )}
+          </div>
+
+          {/* Right: all controls */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {isStageMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleStageRefresh}
+                  disabled={stageLoading}
+                  className={["inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium", stageLoading
+                    ? (dark ? "bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed" : "bg-white border-neutral-200 text-neutral-500 cursor-not-allowed")
+                    : (dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100")].join(' ')}
+                  title="Reload staging snapshot"
+                >
+                  {stageLoading ? (
+                    <svg aria-hidden className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                  ) : (
+                    <svg aria-hidden className={dark?"text-neutral-300":"text-neutral-700"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"/></svg>
+                  )}
+                  <span>Reload staging</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllStagedChanges}
+                  disabled={clearAllStagedDisabled}
+                  className={[
+                    "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
+                    clearAllStagedDisabled
+                      ? (dark ? "bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed opacity-60" : "bg-white border-neutral-200 text-neutral-400 cursor-not-allowed opacity-60")
+                      : (dark ? "bg-red-900/40 border-red-600 text-red-200 hover:bg-red-900/60" : "bg-red-50 border-red-300 text-red-700 hover:bg-red-100")
+                  ].join(' ')}
+                  title="Clear all staged changes"
+                >
+                  <svg aria-hidden className={clearAllStagedDisabled ? (dark?"text-neutral-500":"text-neutral-500") : (dark?"text-red-200":"text-red-600")} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                    <path d="M10 11v6"/>
+                    <path d="M14 11v6"/>
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  </svg>
+                  <span>Clear staged</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={()=> setShowStageChangesPanel(v=>!v)}
+                  className={[
+                    "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
+                    dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100"
+                  ].join(' ')}
+                >
+                  <svg aria-hidden className={dark?"text-violet-300":"text-violet-600"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>{showStageChangesPanel ? 'Hide staged changes' : `View staged changes${stageChangeEntries.length ? ` (${stageChangeEntries.length})` : ''}`}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={()=> setShowStagePublishConfirm(true)}
+                  disabled={!canPushStage}
+                  className={[
+                    "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium",
+                    !canPushStage
+                      ? (dark ? "bg-violet-900/40 border-violet-700/60 text-violet-200 opacity-70 cursor-not-allowed" : "bg-violet-100 border-violet-300 text-violet-600 opacity-70 cursor-not-allowed")
+                      : (dark ? "bg-violet-900/40 border-violet-600 text-violet-200 hover:bg-violet-900/60" : "bg-violet-600 text-white border-violet-600 hover:bg-violet-700")
+                  ].join(' ')}
+                  title={!canPushStage && stagePublishDisabledReason ? stagePublishDisabledReason : undefined}
+                >
+                  {stagePublishBusy ? (
+                    <svg aria-hidden className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                  ) : (
+                    <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M8 15h8"/><path d="M4 19h16"/></svg>
+                  )}
+                  <span>Push staging to live</span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -1912,44 +2260,6 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                 <span>{livePublishLabel}</span>
               </button>
             )}
-            {isStageMode && (
-              <button
-                type="button"
-                onClick={()=> setShowStageChangesPanel(v=>!v)}
-                className={[
-                  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-medium",
-                  dark ? "bg-neutral-900 border-neutral-700 hover:bg-neutral-800" : "bg-white border-neutral-200 hover:bg-neutral-100"
-                ].join(' ')}
-              >
-                <svg aria-hidden className={dark?"text-violet-300":"text-violet-600"} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                <span>{showStageChangesPanel ? 'Hide staged changes' : `View staged changes${stageChangeEntries.length ? ` (${stageChangeEntries.length})` : ''}`}</span>
-              </button>
-            )}
-            {isStageMode && (
-              <button
-                type="button"
-                onClick={()=> setShowStagePublishConfirm(true)}
-                disabled={!canPushStage}
-                className={[
-                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium",
-                  !canPushStage
-                    ? (dark ? "bg-violet-900/40 border-violet-700/60 text-violet-200 opacity-70 cursor-not-allowed" : "bg-violet-100 border-violet-300 text-violet-600 opacity-70 cursor-not-allowed")
-                    : (dark ? "bg-violet-900/40 border-violet-600 text-violet-200 hover:bg-violet-900/60" : "bg-violet-600 text-white border-violet-600 hover:bg-violet-700")
-                ].join(' ')}
-                title={!canPushStage && stagePublishDisabledReason ? stagePublishDisabledReason : undefined}
-              >
-                {stagePublishBusy ? (
-                  <svg aria-hidden className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
-                ) : (
-                  <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M8 15h8"/><path d="M4 19h16"/></svg>
-                )}
-                <span>Push staging to live</span>
-              </button>
-            )}
-          </div>
-
-          {/* Right: all controls */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="relative">
               <button
                 type="button"
@@ -2743,9 +3053,18 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
               <div className="md:col-span-1 space-y-3">
                 <TaskConfigPanel
                   tasks={tasks}
-                  onCreate={(t)=> setTasks(prev=> prev.concat([{ ...t, id: uid() }]))}
-                  onUpdate={(t)=> setTasks(prev=> prev.map(x=> x.id===t.id ? t : x))}
-                  onArchive={(id)=> setTasks(prev=> prev.map(x=> x.id===id ? { ...x, archived:true } : x))}
+                  onCreate={(t)=>{
+                    setTasks(prev=> prev.concat([{ ...t, id: uid() }]))
+                    markDirty()
+                  }}
+                  onUpdate={(t)=>{
+                    setTasks(prev=> prev.map(x=> x.id===t.id ? t : x))
+                    markDirty()
+                  }}
+                  onArchive={(id)=>{
+                    setTasks(prev=> prev.map(x=> x.id===id ? { ...x, archived:true } : x))
+                    markDirty()
+                  }}
                   onDelete={(id)=>{
                     setTasks(prev=> prev.filter(x=> x.id!==id))
                     setCalendarSegs(prev=> prev.filter(cs=> cs.taskId!==id))
@@ -2802,6 +3121,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                         const overlaps = dayShiftsLocal.some(s=>{ const sS=toMin(s.start); const sE = s.end==='24:00'?1440:toMin(s.end); return aS < sE && aE > sS })
                         // If no overlapping shift exists, proceed silently; posture may not display until overlap exists
                         setCalendarSegs(prev=> prev.concat([{ person: assignee, agentId: agentIdByName(localAgents as any, assignee), day: assignDay, endDay: assignEndDay, start: assignStart, end: assignEnd, taskId: assignTaskId } as any]))
+                        markDirty()
                         markDirty()
                         const nextStartDay = assignEndDay
                         const nextStartTime = assignEnd
@@ -2973,7 +3293,12 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
           <div>
             <div className="flex flex-col sm:flex-row gap-3 items-start">
               <div className="space-y-4 flex-1 min-w-0">
-              <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
+                <PtoNotificationParser
+                  dark={dark}
+                  agents={localAgents as any}
+                  onApply={handlePtoParserApply}
+                />
+                <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
                 <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
                   <span className="text-sm font-semibold">PTO entries</span>
                   <span className="text-xs opacity-70">{filteredPto.length} total</span>
@@ -3170,6 +3495,11 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
               )}
             </div>
               <div className="space-y-4 flex-1 min-w-0">
+                <OverrideNotificationParser
+                  dark={dark}
+                  agents={localAgents as any}
+                  onApply={handleOverrideParserApply}
+                />
                 <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
                   <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
                     <span className="text-sm font-semibold">Overrides</span>

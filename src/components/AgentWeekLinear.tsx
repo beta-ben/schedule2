@@ -128,6 +128,7 @@ export default function AgentWeekLinear({
     if(normalizedWeekStartIdx === 0) return DAYS as readonly Day[]
     return [...DAYS.slice(normalizedWeekStartIdx), ...DAYS.slice(0, normalizedWeekStartIdx)] as Day[]
   }, [dayOrder, normalizedWeekStartIdx])
+  const dayDateFormatter = React.useMemo(()=> new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }), [])
 
   const tzShifts = useMemo(()=> convertShiftsToTZ(shifts, tz.offset).filter(s=> s.person===agent), [shifts, tz.offset, agent])
 
@@ -433,17 +434,30 @@ export default function AgentWeekLinear({
   }, [draggable, hoverBand, hoverGroupId, onDragAll, onDragShift])
   
 
+  const LABEL_STACK_STEP = 16
+  const LABEL_STACK_THRESHOLD_PX = 10
+  const startLabelColumns: Array<{ x:number; count:number }> = []
+  const endLabelColumns: Array<{ x:number; count:number }> = []
+
   return (
     <div className="w-full">
       {/* Top labels: days across the band */}
       {showDayLabels && (
-        <div className="relative h-6">
-      {dayOrderDisplay.map((d,i)=>{
+        <div className="relative h-9">
+          {dayOrderDisplay.map((d,i)=>{
             const left = (i/7)*100
             const width = (1/7)*100
+            const date = addDays(weekStartDate, i)
+            const dateLabel = dayDateFormatter.format(date)
+            const primarySize = typeof dayLabelFontPx==='number' ? dayLabelFontPx : 11
             return (
-        <div key={d} className={["absolute text-center", textSub].join(' ')} style={{ left: `${left}%`, width: `${width}%`, fontSize: (typeof dayLabelFontPx==='number'? dayLabelFontPx : 11) }}>
-                {d}
+              <div
+                key={d}
+                className={["absolute text-center flex flex-col items-center justify-center gap-0.5", textSub].join(' ')}
+                style={{ left: `${left}%`, width: `${width}%` }}
+              >
+                <span className="font-medium leading-none" style={{ fontSize: primarySize }}>{d}</span>
+                <span className="text-[10px] leading-none opacity-70">{dateLabel}</span>
               </div>
             )
           })}
@@ -518,6 +532,13 @@ export default function AgentWeekLinear({
             const mod1440 = (v:number)=> ((v % 1440) + 1440) % 1440
             const groupStartMin = mod1440(g.startMin + delta)
             const groupEndMin   = mod1440(g.endMin   + delta)
+            const crossesMidnight = g.segments.length > 1 && g.segments.some(seg=>{
+              const segLen = seg.endAbs - seg.startAbs
+              if(segLen <= 0) return false
+              const startMod = ((seg.startAbs % 1440)+1440)%1440
+              const endMod = ((seg.endAbs % 1440)+1440)%1440
+              return startMod === 0 || endMod === 0
+            })
             return g.segments.flatMap((seg)=>{
               let newStart = seg.startAbs + delta
               let newEnd = seg.endAbs + delta
@@ -536,11 +557,11 @@ export default function AgentWeekLinear({
               const mkPart = (pLeft:number, pRight:number, partKey:string, showStart:boolean, showEnd:boolean, opts?: { forceStartOuter?: boolean; forceEndOuter?: boolean; pieceIndex?: number; pieceCount?: number })=>{
                 const leftPct = (pLeft/totalMins)*100
                 const widthPct = ((pRight - pLeft)/totalMins)*100
-                const pxW = (pRight - pLeft)/totalMins * containerW
-                // Labels use group-level times; preview updates during resize
-                const previewStart = isResizingThis && drag?.mode==='resize-start' ? mod1440(g.startMin + drag.delta) : groupStartMin
-                const previewEnd = isResizingThis && drag?.mode==='resize-end' ? mod1440(g.endMin + drag.delta) : groupEndMin
-                const label = `${fmtRough(previewStart)}-${fmtRough(previewEnd)}`
+              const pxW = (pRight - pLeft)/totalMins * containerW
+              // Labels use group-level times; preview updates during resize
+              const previewStart = isResizingThis && drag?.mode==='resize-start' ? mod1440(g.startMin + drag.delta) : groupStartMin
+              const previewEnd = isResizingThis && drag?.mode==='resize-end' ? mod1440(g.endMin + drag.delta) : groupEndMin
+              const label = `${fmtRough(previewStart)}-${fmtRough(previewEnd)}`
     const isHover = hoverGroupId === g.id
   const isHi = !!highlightIds && (
                   highlightIds instanceof Set
@@ -592,16 +613,20 @@ export default function AgentWeekLinear({
                 // Collision avoidance for outer labels when requested
                 let allowStartTag = showTags && showStart
                 let allowEndTag = showTags && showEnd
-                const timeTagTone = isNight
-                  ? 'bg-red-600 text-white'
-                  : isNoir
-                    ? (dark ? 'bg-black text-white' : 'bg-white text-black border border-black/20')
-                    : (dark ? 'bg-black/70 text-white' : 'bg-black/70 text-white')
-                const pieceIndex = opts?.pieceIndex ?? 0
-                const pieceCount = opts?.pieceCount ?? 1
-                const isFirstPiece = pieceIndex === 0
-                const isLastPiece = pieceIndex === (pieceCount - 1)
-                const isEarliestSeg = seg.startAbs === g.earliest
+              const timeTagTone = isNight
+                ? 'bg-red-600 text-white'
+                : isNoir
+                  ? (dark ? 'bg-black text-white' : 'bg-white text-black border border-black/20')
+                  : (dark ? 'bg-black/70 text-white' : 'bg-black/70 text-white')
+              const segStartMod = ((seg.startAbs % 1440)+1440)%1440
+              const segEndMod = ((seg.endAbs % 1440)+1440)%1440
+              const continuationPiece = seg.startAbs !== g.earliest && segStartMod === 0
+              const midnightBoundaryPiece = seg.endAbs !== g.latest && segEndMod === 0
+              const pieceIndex = opts?.pieceIndex ?? 0
+              const pieceCount = opts?.pieceCount ?? 1
+              const isFirstPiece = pieceIndex === 0
+              const isLastPiece = pieceIndex === (pieceCount - 1)
+              const isEarliestSeg = seg.startAbs === g.earliest
                 const isLatestSeg = seg.endAbs === g.latest
                 if(allowStartTag){
                   if(!isEarliestSeg || !isFirstPiece){
@@ -631,6 +656,36 @@ export default function AgentWeekLinear({
                 if(priorityShowBoth){
                   allowStartTag = true
                   allowEndTag = true
+                }
+                if(crossesMidnight){
+                  if(continuationPiece) allowStartTag = false
+                  if(midnightBoundaryPiece) allowEndTag = false
+                }
+                let startStackRow = 0
+                if(allowStartTag){
+                  const labelX = (pLeft/totalMins) * containerW
+                  if(containerW > 0 && Number.isFinite(labelX)){
+                    const existing = startLabelColumns.find(col=> Math.abs(col.x - labelX) <= LABEL_STACK_THRESHOLD_PX)
+                    if(existing){
+                      startStackRow = existing.count
+                      existing.count += 1
+                    }else{
+                      startLabelColumns.push({ x: labelX, count: 1 })
+                    }
+                  }
+                }
+                let endStackRow = 0
+                if(allowEndTag){
+                  const labelX = (pRight/totalMins) * containerW
+                  if(containerW > 0 && Number.isFinite(labelX)){
+                    const existing = endLabelColumns.find(col=> Math.abs(col.x - labelX) <= LABEL_STACK_THRESHOLD_PX)
+                    if(existing){
+                      endStackRow = existing.count
+                      existing.count += 1
+                    }else{
+                      endLabelColumns.push({ x: labelX, count: 1 })
+                    }
+                  }
                 }
                 // Only suppress tags for overlap when not explicitly forcing all labels.
                 // Apply collision avoidance for highlight-driven labels as well, but do not
@@ -704,6 +759,8 @@ export default function AgentWeekLinear({
                     for(const t of tips){ warnLines.push(String(t)) }
                   }
                 }catch{}
+                const startLabelStyle = startStackRow>0 ? { marginTop: startStackRow * LABEL_STACK_STEP } : undefined
+                const endLabelStyle = endStackRow>0 ? { marginTop: endStackRow * LABEL_STACK_STEP } : undefined
                 return (
                   <div
                     key={partKey}
@@ -822,17 +879,23 @@ export default function AgentWeekLinear({
                       )
                     })}
                     {/* Dense mode: no internal posture text labels; only time tags at edges */}
-          {allowStartTag && (
-                      <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
-            ((opts?.forceStartOuter || forceOuterTimeTags)) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
-                        timeTagTone].join(' ')}>
+                    {allowStartTag && (
+                      <div
+                        className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
+                          ((opts?.forceStartOuter || forceOuterTimeTags)) ? "-left-1 -translate-x-full" : (framed?"left-1":"-left-1 -translate-x-full"),
+                          timeTagTone].join(' ')}
+                        style={startLabelStyle}
+                      >
                         {fmtEndAware(groupStartMin, false)}
                       </div>
                     )}
-          {allowEndTag && (
-                      <div className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
-            ((opts?.forceEndOuter || forceOuterTimeTags)) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
-                        timeTagTone].join(' ')}>
+                    {allowEndTag && (
+                      <div
+                        className={["absolute top-1/2 -translate-y-1/2 px-1 py-0.5 rounded text-[12px] font-medium whitespace-nowrap z-10",
+                          ((opts?.forceEndOuter || forceOuterTimeTags)) ? "-right-1 translate-x-full" : (framed?"right-1":"-right-1 translate-x-full"),
+                          timeTagTone].join(' ')}
+                        style={endLabelStyle}
+                      >
                         {fmtEndAware(groupEndMin, true)}
                       </div>
                     )}

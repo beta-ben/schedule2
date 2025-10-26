@@ -1,4 +1,4 @@
-import type { PTO, Shift, Override } from '../types'
+import type { PTO, Shift, Override, Task } from '../types'
 import type { StageDoc, StageKey, LiveDoc as StageLiveDoc } from '../domain/stage'
 import type { CalendarSegment } from './utils'
 import { mapAgentsToPayloads } from './agents'
@@ -213,7 +213,7 @@ export async function cloudGet(): Promise<{shifts: Shift[]; pto: PTO[]; override
 
 export type CloudPostResult = { ok: boolean; status?: number; error?: string; bodyText?: string }
 
-export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; updatedAt: string}): Promise<CloudPostResult>{
+export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; tasks?: Task[]; updatedAt: string}): Promise<CloudPostResult>{
   if(OFFLINE){
     try{ localStorage.setItem('schedule_offline_last_post', JSON.stringify(data)) }catch{}
     return { ok: true, status: 200 }
@@ -252,7 +252,7 @@ export async function cloudPostDetailed(data: {shifts: Shift[]; pto: PTO[]; over
   }catch{ return { ok: false } }
 }
 
-export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; updatedAt: string}){
+export async function cloudPost(data: {shifts: Shift[]; pto: PTO[]; overrides?: Override[]; calendarSegs?: CalendarSegment[]; agents?: Array<{ id: string; firstName: string; lastName: string; tzId?: string; hidden?: boolean; isSupervisor?: boolean; supervisorId?: string|null; notes?: string; meetingCohort?: string | null }>; tasks?: Task[]; updatedAt: string}){
   const res = await cloudPostDetailed(data)
   return !!res.ok
 }

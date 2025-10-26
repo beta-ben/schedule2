@@ -3,11 +3,13 @@ import ThemeSelector from './ThemeSelector'
 import { addDays, fmtDateRange, parseYMD, tzAbbrev, fmtYMD, startOfWeek } from '../lib/utils'
 import { TZ_OPTS } from '../constants'
 
-export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode }:{ 
+type TopBarView = 'schedule'|'teams'|'manageV2'|'stagingPreview'|'immersive'
+
+export default function TopBar({ dark, setDark, view, setView, weekStart, setWeekStart, tz, setTz, canEdit, editMode, setEditMode, showFlow, showImmersive }:{
   dark: boolean
   setDark: React.Dispatch<React.SetStateAction<boolean>>
-  view: 'schedule'|'teams'|'manageV2'
-  setView: (v:'schedule'|'teams'|'manageV2')=>void
+  view: TopBarView
+  setView: (v: TopBarView)=>void
   weekStart: string
   setWeekStart: (v:string)=>void
   tz: { id:string; label:string; offset:number }
@@ -15,6 +17,8 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
   canEdit: boolean
   editMode: boolean
   setEditMode: React.Dispatch<React.SetStateAction<boolean>>
+  showFlow?: boolean
+  showImmersive?: boolean
 }){
   const isoLike = /^\d{4}-\d{2}-\d{2}$/
   const wsValid = isoLike.test(weekStart) && !Number.isNaN(parseYMD(weekStart).getTime())
@@ -34,6 +38,12 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
     document.addEventListener('keydown', onKey)
     return ()=>{ document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey) }
   }, [menuOpen])
+  const isManageView = view==='manageV2'
+  const applySimpleTheme = React.useCallback((variant:'light'|'dark')=>{
+    setDark(variant==='dark')
+    try{ localStorage.setItem('schedule_theme', `default-${variant}`) }catch{}
+    try{ window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: variant } })) }catch{}
+  }, [setDark])
   return (
     <>
     <header className="mb-1">
@@ -85,6 +95,21 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
           </button>
+          {showFlow && (
+            <button
+              onClick={()=>setView('stagingPreview')}
+              aria-label="Flow preview"
+              title="Flow preview"
+              className={["inline-flex items-center justify-center h-9 sm:h-10 px-2.5 sm:px-3 rounded-lg text-sm font-medium border", view==='stagingPreview' ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200":"border-neutral-300 text-neutral-700 hover:bg-neutral-100")].join(' ')}
+            >
+              {/* Orbit icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M4.5 12a7.5 7.5 0 0 1 15 0"/>
+                <path d="M19.5 12a7.5 7.5 0 0 1-15 0"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Center: page title above date range (or portal header in manage) */}
@@ -134,11 +159,33 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
                     title="Schedule"
                   >Schedule</button>
                   <button
+                    onClick={()=>{ setView('teams'); setMenuOpen(false) }}
+                    className={["h-9 rounded-lg border text-sm font-medium", view==='teams' ? (dark?"bg-neutral-800 border-neutral-600":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700":"border-neutral-300 hover:bg-neutral-100")].join(' ')}
+                    aria-label="Teams"
+                    title="Teams"
+                  >Teams</button>
+                  <button
                     onClick={()=>{ setView('manageV2'); setMenuOpen(false) }}
                     className={["h-9 rounded-lg border text-sm font-medium", view==='manageV2' ? (dark?"bg-neutral-800 border-neutral-600":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700":"border-neutral-300 hover:bg-neutral-100")].join(' ')}
                     aria-label="Manage"
                     title="Manage"
                   >Manage</button>
+          {showImmersive && (
+                    <button
+                      onClick={()=>{ setView('immersive'); setMenuOpen(false) }}
+                      className={["col-span-2 h-9 rounded-lg border text-sm font-medium", view==='immersive' ? (dark?"bg-neutral-800 border-neutral-600":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700":"border-neutral-300 hover:bg-neutral-100")].join(' ')}
+                      aria-label="Immersive"
+                      title="Immersive"
+                    >Immersive</button>
+                  )}
+                  {showFlow && (
+                    <button
+                      onClick={()=>{ setView('stagingPreview'); setMenuOpen(false) }}
+                      className={["col-span-2 h-9 rounded-lg border text-sm font-medium", view==='stagingPreview' ? (dark?"bg-neutral-800 border-neutral-600":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700":"border-neutral-300 hover:bg-neutral-100")].join(' ')}
+                      aria-label="Flow preview"
+                      title="Flow preview"
+                    >Flow preview</button>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-2 text-sm">
@@ -173,38 +220,66 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
                     style={{ colorScheme: dark ? 'dark' : 'light' }}
                   />
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs opacity-70">Theme</span>
-                  <select
-                    className={["border rounded-lg pl-3 pr-2 h-9 text-sm w-full appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
-                    defaultValue={(()=>{
-                      try{
-                        const raw = localStorage.getItem('schedule_theme') || 'system'
-                        if(raw==='unicorn') return 'system'
-                        if(raw==='default-light') return 'light'
-                        if(raw==='default-dark') return 'dark'
-                        if(raw==='noir') return 'noir-dark'
-                        if(raw.startsWith('noir-')) return raw
-                        if(raw.startsWith('night')) return 'night'
-                        if(raw.startsWith('prism')) return 'prism'
-                        return raw
-                      }catch{ return 'system' }
-                    })()}
-                    onChange={(e)=>{
-                      const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir-light'|'noir-dark'|'prism'
-                      try{ localStorage.setItem('schedule_theme', val) }catch{}
-                      window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
-                    }}
-                  >
-                    <option value="system">System</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="night">Night</option>
-                    <option value="noir-light">Noir Light</option>
-                    <option value="noir-dark">Noir Dark</option>
-                    <option value="prism">Prism</option>
-                  </select>
-                </label>
+                {isManageView ? (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs opacity-70">Theme</span>
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        onClick={()=>{ applySimpleTheme('light'); setMenuOpen(false) }}
+                        aria-pressed={!dark}
+                        className={[
+                          "inline-flex items-center justify-center h-9 rounded-lg border text-sm font-medium",
+                          (!dark ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"))
+                        ].join(' ')}
+                      >
+                        Light
+                      </button>
+                      <button
+                        onClick={()=>{ applySimpleTheme('dark'); setMenuOpen(false) }}
+                        aria-pressed={dark}
+                        className={[
+                          "inline-flex items-center justify-center h-9 rounded-lg border text-sm font-medium",
+                          (dark ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"))
+                        ].join(' ')}
+                      >
+                        Dark
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs opacity-70">Theme</span>
+                    <select
+                      className={["border rounded-lg pl-3 pr-2 h-9 text-sm w-full appearance-none", dark?"bg-neutral-900 border-neutral-700 text-neutral-200":"bg-white border-neutral-300 text-neutral-800"].join(' ')}
+                      defaultValue={(()=>{
+                        try{
+                          const raw = localStorage.getItem('schedule_theme') || 'system'
+                          if(raw==='unicorn') return 'system'
+                          if(raw==='default-light') return 'light'
+                          if(raw==='default-dark') return 'dark'
+                          if(raw==='noir') return 'noir-dark'
+                          if(raw.startsWith('noir-')) return raw
+                          if(raw.startsWith('night')) return 'night'
+                          if(raw.startsWith('prism')) return 'prism'
+                          return raw
+                        }catch{ return 'system' }
+                      })()}
+                      onChange={(e)=>{
+                        const val = e.target.value as 'light'|'dark'|'system'|'night'|'noir-light'|'noir-dark'|'prism'
+                        try{ localStorage.setItem('schedule_theme', val) }catch{}
+                        window.dispatchEvent(new CustomEvent('schedule:set-theme', { detail: { value: val } }))
+                      }}
+                    >
+                      <option value="system">System</option>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="night">Night</option>
+                      <option value="noir-light">Noir Light</option>
+                      <option value="noir-dark">Noir Dark</option>
+                      <option value="prism">Prism</option>
+                    </select>
+                  </label>
+                )}
               </div>
             </div>
           )}
@@ -242,9 +317,34 @@ export default function TopBar({ dark, setDark, view, setView, weekStart, setWee
             />
           </div>
           {/* Theme selector (sm+ inline) */}
-          <div className="hidden sm:block [&>button]:h-9 sm:[&>button]:h-10">
-            <ThemeSelector dark={dark} />
-          </div>
+          {isManageView ? (
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                onClick={()=>applySimpleTheme('light')}
+                aria-pressed={!dark}
+                className={[
+                  "inline-flex items-center justify-center h-9 sm:h-10 px-3 rounded-lg text-sm font-medium border",
+                  (!dark ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"))
+                ].join(' ')}
+              >
+                Light
+              </button>
+              <button
+                onClick={()=>applySimpleTheme('dark')}
+                aria-pressed={dark}
+                className={[
+                  "inline-flex items-center justify-center h-9 sm:h-10 px-3 rounded-lg text-sm font-medium border",
+                  (dark ? (dark?"bg-neutral-900 border-neutral-600 text-neutral-200":"bg-white border-blue-600 text-blue-600") : (dark?"border-neutral-700 text-neutral-200 hover:bg-neutral-800":"border-neutral-300 text-neutral-700 hover:bg-neutral-100"))
+                ].join(' ')}
+              >
+                Dark
+              </button>
+            </div>
+          ) : (
+            <div className="hidden sm:block [&>button]:h-9 sm:[&>button]:h-10">
+              <ThemeSelector dark={dark} />
+            </div>
+          )}
           {/* Edit schedule toggle removed for schedule page per request */}
         </div>
       </div>

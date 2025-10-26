@@ -5,6 +5,7 @@ import { DAYS } from '../constants'
 export function uid(){ return Math.random().toString(36).slice(2,9) }
 export function toMin(hhmm: string){ const [h,m]=hhmm.split(':').map(Number); return h*60+(m||0) }
 export function minToHHMM(min: number){ const m=((min%1440)+1440)%1440; const h=Math.floor(m/60); const mm=m%60; return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}` }
+export const clamp = (val: number, min: number, max: number)=> Math.min(max, Math.max(min, val))
 
 export type TimeFormat = '12h' | '24h'
 export function formatMinutes(min: number, format: TimeFormat = '24h'){
