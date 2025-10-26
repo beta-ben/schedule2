@@ -8,11 +8,34 @@ const OFFLINE = (import.meta.env as any).VITE_DISABLE_API === '1'
 const FORCE = ((import.meta.env as any).VITE_FORCE_API_BASE || 'no').toLowerCase() === 'yes'
 const PROD = !!import.meta.env.PROD
 const DEV_BEARER = (!PROD && !OFFLINE ? (import.meta.env.VITE_DEV_BEARER_TOKEN || '') : '') as string
-const API_BASE = (
+const RAW_API_BASE: string = (
   OFFLINE
     ? ''
     : ((PROD || FORCE) ? (import.meta.env.VITE_SCHEDULE_API_BASE || '') : '')
 ).replace(/\/$/, '')
+const FALLBACK_PROD_API = 'https://api.teamschedule.cc'
+const FALLBACK_STAGING_API = 'https://staging-api.teamschedule.cc'
+
+function resolveApiBase(): string {
+  if (typeof window === 'undefined') return RAW_API_BASE
+  const host = window.location.hostname.toLowerCase()
+  const isStagingHost = host.includes('staging') || host.startsWith('staging.')
+  const isTeamschedule = host.endsWith('teamschedule.cc')
+  if (!RAW_API_BASE) {
+    if (isStagingHost) return FALLBACK_STAGING_API
+    if (isTeamschedule) return FALLBACK_PROD_API
+    return RAW_API_BASE
+  }
+  if (isTeamschedule && !isStagingHost && RAW_API_BASE.includes('staging-api.teamschedule.cc')) {
+    return FALLBACK_PROD_API
+  }
+  if (isStagingHost && RAW_API_BASE.includes('api.teamschedule.cc') && !RAW_API_BASE.includes('staging')) {
+    return FALLBACK_STAGING_API
+  }
+  return RAW_API_BASE
+}
+
+const API_BASE = resolveApiBase()
 const API_PREFIX = (import.meta.env.VITE_SCHEDULE_API_PREFIX || '/api').replace(/\/$/, '')
 const USING_DEV_PROXY = !PROD && !FORCE && !OFFLINE && API_BASE === ''
 

@@ -1792,7 +1792,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
         shiftDate = candidateDates[0] ?? ''
       }
       if (!selectedShift || !shiftDate) return undefined
-      const baseDate = parseYMD(shiftDate)
+      const baseDate = parseYMD(`${shiftDate}T12:00:00`)
       if (Number.isNaN(baseDate.getTime())) return undefined
       const startTime = selectedShift.start === '24:00' ? '00:00' : selectedShift.start
       const startMinutes = toMin(startTime)
