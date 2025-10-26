@@ -123,9 +123,17 @@ type PtoNotificationParserProps = {
     rawText: string
     confidence: number
   }) => void
+  collapsible?: boolean
+  defaultCollapsed?: boolean
 }
 
-export default function PtoNotificationParser({ dark, agents, onApply }: PtoNotificationParserProps) {
+export default function PtoNotificationParser({
+  dark,
+  agents,
+  onApply,
+  collapsible = false,
+  defaultCollapsed = false,
+}: PtoNotificationParserProps) {
   const [rawText, setRawText] = React.useState('')
   const [fields, setFields] = React.useState<ParserFields>({
     person: '',
@@ -138,6 +146,7 @@ export default function PtoNotificationParser({ dark, agents, onApply }: PtoNoti
   const [confidence, setConfidence] = React.useState(0)
   const [status, setStatus] = React.useState<ParserStatus>({ state: 'idle' })
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
 
   const agentOptions = React.useMemo(() => {
     const seen = new Set<string>()
@@ -326,11 +335,20 @@ export default function PtoNotificationParser({ dark, agents, onApply }: PtoNoti
         }`}
       >
         <span className="text-sm font-semibold">PTO notification parser</span>
-        {confidence ? (
-          <span className="text-xs opacity-70">Confidence {confidence}%</span>
-        ) : null}
+        <div className="flex items-center gap-3">
+          {confidence ? <span className="text-xs opacity-70">Confidence {confidence}%</span> : null}
+          {collapsible ? (
+            <button
+              type="button"
+              className="text-xs font-medium text-blue-500 hover:underline"
+              onClick={() => setCollapsed((prev) => !prev)}
+            >
+              {collapsed ? 'Expand' : 'Collapse'}
+            </button>
+          ) : null}
+        </div>
       </div>
-      <div className="space-y-4 px-3 py-3 text-sm">
+      <div className={`space-y-4 px-3 py-3 text-sm ${collapsed ? 'hidden' : ''}`}>
         <div
           className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-4 py-6 text-center transition-colors ${dropZoneClasses}`}
           onDragOver={(event) => event.preventDefault()}

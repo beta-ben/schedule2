@@ -1746,6 +1746,87 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
     setOvERecurring(false)
     setOvEUntil('')
   }
+  const [showPtoHistory, setShowPtoHistory] = React.useState(false)
+  const [showOverrideHistory, setShowOverrideHistory] = React.useState(false)
+  const resolveCoverageShift = React.useCallback(
+    ({
+      coveredPerson,
+      eventStartDate,
+      eventEndDate,
+    }: {
+      coveredPerson: string
+      eventStartDate: string
+      eventEndDate: string
+    }) => {
+      const normalized = coveredPerson.trim().toLowerCase()
+      if (!normalized) return undefined
+      const candidateDates = [eventEndDate, eventStartDate].filter(Boolean)
+      const lookupShiftForDate = (iso: string) => {
+        if (!iso) return undefined
+        const dateObj = parseYMD(iso)
+        if (Number.isNaN(dateObj.getTime())) return undefined
+        const day = DAYS[dateObj.getDay()]
+        return {
+          shift: workingShifts.find(
+            (s) => s.person?.trim().toLowerCase() === normalized && s.day === day,
+          ),
+          iso,
+        }
+      }
+      let selectedShift: Shift | undefined
+      let shiftDate = ''
+      for (const iso of candidateDates) {
+        const result = lookupShiftForDate(iso)
+        if (result?.shift) {
+          selectedShift = result.shift
+          shiftDate = result.iso
+          break
+        }
+      }
+      if (!selectedShift) {
+        const fallback = workingShifts.find(
+          (s) => s.person?.trim().toLowerCase() === normalized,
+        )
+        if (!fallback) return undefined
+        selectedShift = fallback
+        shiftDate = candidateDates[0] ?? ''
+      }
+      if (!selectedShift || !shiftDate) return undefined
+      const baseDate = parseYMD(shiftDate)
+      if (Number.isNaN(baseDate.getTime())) return undefined
+      const startTime = selectedShift.start === '24:00' ? '00:00' : selectedShift.start
+      const startMinutes = toMin(startTime)
+      const endTimeRaw = selectedShift.end === '24:00' ? '00:00' : selectedShift.end
+      let endDateIso = shiftDate
+      const explicitEndDay = typeof selectedShift.endDay === 'string' ? selectedShift.endDay : null
+      if (explicitEndDay) {
+        const startIdx = DAYS.indexOf(selectedShift.day)
+        const endIdx = DAYS.indexOf(explicitEndDay)
+        if (startIdx >= 0 && endIdx >= 0) {
+          const delta = (endIdx - startIdx + 7) % 7
+          if (delta > 0) {
+            endDateIso = fmtYMD(addDays(baseDate, delta))
+          }
+        }
+      } else {
+        const endMinutes = endTimeRaw === '00:00' && selectedShift.end === '24:00'
+          ? 1440
+          : toMin(endTimeRaw)
+        if (endMinutes === 0 && selectedShift.end === '24:00') {
+          endDateIso = fmtYMD(addDays(baseDate, 1))
+        } else if (endMinutes <= startMinutes) {
+          endDateIso = fmtYMD(addDays(baseDate, 1))
+        }
+      }
+      return {
+        startDate: shiftDate,
+        endDate: endDateIso,
+        startTime,
+        endTime: endTimeRaw,
+      }
+    },
+    [workingShifts],
+  )
   const handleOverrideParserApply = React.useCallback(
     (
       entries: Array<{
@@ -3297,11 +3378,21 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                   dark={dark}
                   agents={localAgents as any}
                   onApply={handlePtoParserApply}
+                  collapsible
                 />
                 <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
-                <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
-                  <span className="text-sm font-semibold">PTO entries</span>
-                  <span className="text-xs opacity-70">{filteredPto.length} total</span>
+                <div className={["flex flex-wrap items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">PTO entries</span>
+                    <span className="text-xs opacity-70">{filteredPto.length} total</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-blue-500 hover:underline"
+                    onClick={()=> setShowPtoHistory((prev)=> !prev)}
+                  >
+                    {showPtoHistory ? 'Hide history' : 'Show history'}
+                  </button>
                 </div>
                 <div className="px-3 py-3 space-y-4">
                   <form
@@ -3365,6 +3456,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                       </div>
                     </div>
                   </form>
+                  {showPtoHistory ? (
                   <div className="overflow-x-auto">
                     {filteredPto.length===0 ? (
                       <div className="text-sm opacity-70 px-1 py-4">No PTO entries.</div>
@@ -3412,6 +3504,11 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                       </table>
                     )}
                   </div>
+                  ) : (
+                    <div className={["rounded-md border px-3 py-2 text-xs", dark ? "border-neutral-800 bg-neutral-900 text-neutral-200" : "border-neutral-200 bg-neutral-50 text-neutral-600"].join(' ')}>
+                      PTO history hidden. Select “Show history” to review existing entries.
+                    </div>
+                  )}
                 </div>
               </section>
               {ptoEditing && (
@@ -3499,11 +3596,22 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                   dark={dark}
                   agents={localAgents as any}
                   onApply={handleOverrideParserApply}
+                  collapsible
+                  resolveCoverageShift={resolveCoverageShift}
                 />
                 <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
-                  <div className={["flex items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
-                    <span className="text-sm font-semibold">Overrides</span>
-                    <span className="text-xs opacity-70">{filteredOverrides.length} total</span>
+                  <div className={["flex flex-wrap items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">Overrides</span>
+                      <span className="text-xs opacity-70">{filteredOverrides.length} total</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-blue-500 hover:underline"
+                      onClick={()=> setShowOverrideHistory((prev)=> !prev)}
+                    >
+                      {showOverrideHistory ? 'Hide history' : 'Show history'}
+                    </button>
                   </div>
                 <div className="px-3 py-3 space-y-4">
                   <form
@@ -3631,6 +3739,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                       >Add Override</button>
                     </div>
                   </form>
+                  {showOverrideHistory ? (
                   <div className="overflow-x-auto">
                     {filteredOverrides.length===0 ? (
                       <div className="text-sm opacity-70 px-1 py-4">No overrides.</div>
@@ -3695,6 +3804,11 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                       </table>
                     )}
                   </div>
+                  ) : (
+                    <div className={["rounded-md border px-3 py-2 text-xs", dark ? "border-neutral-800 bg-neutral-900 text-neutral-200" : "border-neutral-200 bg-neutral-50 text-neutral-600"].join(' ')}>
+                      Override history hidden. Select “Show history” to review existing overrides.
+                    </div>
+                  )}
                 </div>
               </section>
               {overrideEditing && (

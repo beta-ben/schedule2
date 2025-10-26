@@ -49,6 +49,21 @@ type OverrideNotificationParserProps = {
   dark: boolean
   agents: Array<{ id?: string; firstName?: string; lastName?: string }>
   onApply?: (suggestions: OverrideApplyPayload[]) => void
+  collapsible?: boolean
+  defaultCollapsed?: boolean
+  resolveCoverageShift?: (input: {
+    coveringPerson: string
+    coveredPerson: string
+    eventStartDate: string
+    eventEndDate: string
+  }) =>
+    | {
+        startDate: string
+        endDate: string
+        startTime: string
+        endTime: string
+      }
+    | undefined
 }
 
 function recognizeImage(
@@ -87,9 +102,12 @@ function createSuggestion(partial: Omit<OverrideSuggestion, 'id' | 'include'>): 
   }
 }
 
+type CoverageShiftResolver = NonNullable<OverrideNotificationParserProps['resolveCoverageShift']>
+
 function parseOverrideSuggestions(
   text: string,
   findBestAgentName: (rawName: string) => string,
+  options?: { resolveCoverageShift?: CoverageShiftResolver },
 ): OverrideSuggestion[] {
   const normalized = normalizeDash(text)
   const singleLine = cleanWhitespace(normalized)
@@ -125,6 +143,11 @@ function parseOverrideSuggestions(
     },
     {
       regex:
+        /([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+)*)\s+(?:is\s+)?work(?:ing)?(?:\s+\w+){0,4}?\s+for\s+([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+)*)/gi,
+      relation: 'coverage',
+    },
+    {
+      regex:
         /([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+)*)\s+(?:is\s+)?(?:swap(?:ping)?|switch(?:ing)?|trade(?:ing)?|trading)\s+with\s+([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+)*)/gi,
       relation: 'swap',
     },
@@ -145,6 +168,7 @@ function parseOverrideSuggestions(
     covered: string
     relation: PairRelation
     index: number
+    statement: string
   }> = []
   const pairSeen = new Set<string>()
 
@@ -161,6 +185,7 @@ function parseOverrideSuggestions(
         covered: coveredRaw,
         relation,
         index: match.index ?? normalized.indexOf(coveringRaw),
+        statement: match[0]?.trim() ?? '',
       })
     }
   }
@@ -175,22 +200,36 @@ function parseOverrideSuggestions(
     if (!covering && !covered) continue
 
     if (pair.relation === 'coverage') {
-      const coverageKind = defaultKind === 'Swap' ? 'Coverage' : defaultKind
+      const coverageSummary = pair.statement
+        .replace(/\s+was\s+created.*$/i, '')
+        .trim()
+      const coverageDetails = options?.resolveCoverageShift?.({
+        coveringPerson: covering,
+        coveredPerson: covered,
+        eventStartDate: startDate,
+        eventEndDate: endDate || startDate,
+      })
+      const coveringStartDate = coverageDetails?.startDate || startDate
+      const coveringEndDate = coverageDetails?.endDate || endDate || startDate
+      const coveringStartTime = coverageDetails?.startTime || startTime
+      const coveringEndTime = coverageDetails?.endTime || endTime
+      const coverageKind = 'Override'
+      const coveredKind = 'Override'
       addSuggestion({
         person: covering,
         counterpart: covered,
-        startDate,
-        endDate: endDate || startDate,
-        startTime,
-        endTime,
+        startDate: coveringStartDate,
+        endDate: coveringEndDate,
+        startTime: coveringStartTime,
+        endTime: coveringEndTime,
         kind: coverageKind,
-        notes: covered ? `Covering for ${covered}` : '',
+        notes: coverageSummary || (covered ? `Covering for ${covered}` : ''),
         confidence: computeConfidence([
           Boolean(covering),
-          Boolean(startDate),
-          Boolean(endDate || startDate),
+          Boolean(coveringStartDate),
+          Boolean(coveringEndDate),
           Boolean(covered),
-          Boolean(startTime || endTime),
+          Boolean(coveringStartTime || coveringEndTime),
         ]),
         role: 'covering',
       })
@@ -199,16 +238,15 @@ function parseOverrideSuggestions(
         counterpart: covering,
         startDate,
         endDate: endDate || startDate,
-        startTime,
-        endTime,
-        kind: coverageKind,
-        notes: covering ? `Coverage by ${covering}` : '',
+        startTime: '',
+        endTime: '',
+        kind: coveredKind,
+        notes: '',
         confidence: computeConfidence([
           Boolean(covered),
           Boolean(startDate),
           Boolean(endDate || startDate),
           Boolean(covering),
-          Boolean(startTime || endTime),
         ]),
         role: 'covered',
       })
@@ -291,11 +329,15 @@ export default function OverrideNotificationParser({
   dark,
   agents,
   onApply,
+  collapsible = false,
+  defaultCollapsed = false,
+  resolveCoverageShift,
 }: OverrideNotificationParserProps) {
   const [rawText, setRawText] = React.useState('')
   const [suggestions, setSuggestions] = React.useState<OverrideSuggestion[]>([])
   const [status, setStatus] = React.useState<ParserStatus>({ state: 'idle' })
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
 
   const agentOptions = React.useMemo(() => {
     const seen = new Set<string>()
@@ -354,11 +396,11 @@ export default function OverrideNotificationParser({
         setStatus({ state: 'idle' })
         return
       }
-      const parsed = parseOverrideSuggestions(normalized, findBestAgentName)
+      const parsed = parseOverrideSuggestions(normalized, findBestAgentName, { resolveCoverageShift })
       setSuggestions(parsed)
       setStatus({ state: 'idle' })
     },
-    [findBestAgentName],
+    [findBestAgentName, resolveCoverageShift],
   )
 
   const handleText = React.useCallback(
@@ -507,11 +549,22 @@ export default function OverrideNotificationParser({
         }`}
       >
         <span className="text-sm font-semibold">Override notification parser</span>
-        {selectedReady.length ? (
-          <span className="text-xs opacity-70">{selectedReady.length} selected</span>
-        ) : null}
+        <div className="flex items-center gap-3">
+          {selectedReady.length ? (
+            <span className="text-xs opacity-70">{selectedReady.length} selected</span>
+          ) : null}
+          {collapsible ? (
+            <button
+              type="button"
+              className="text-xs font-medium text-blue-500 hover:underline"
+              onClick={() => setCollapsed((prev) => !prev)}
+            >
+              {collapsed ? 'Expand' : 'Collapse'}
+            </button>
+          ) : null}
+        </div>
       </div>
-      <div className="space-y-4 px-3 py-3 text-sm">
+      <div className={`space-y-4 px-3 py-3 text-sm ${collapsed ? 'hidden' : ''}`}>
         <div
           className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-4 py-6 text-center transition-colors ${dropZoneClasses}`}
           onDragOver={(event) => event.preventDefault()}
