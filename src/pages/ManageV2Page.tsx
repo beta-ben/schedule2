@@ -1692,15 +1692,19 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
   )
   const startPtoEdit = (r: PTO)=>{ setPtoEditing(r); setPtEPerson(r.person); setPtEStart(r.startDate); setPtEEnd(r.endDate); setPtENotes(r.notes||'') }
   const clearPtoEdit = ()=>{ setPtoEditing(null); setPtEPerson(''); setPtEStart(''); setPtEEnd(''); setPtENotes('') }
-  const filteredPto = React.useMemo(()=>{
+  const todayIso = React.useMemo(() => fmtYMD(new Date()), [])
+  const sortedPto = React.useMemo(()=>{
     return workingPto
       .slice()
       .sort((a,b)=>{
-        const personCmp = a.person.localeCompare(b.person)
-        if(personCmp!==0) return personCmp
-        return a.startDate.localeCompare(b.startDate)
+        const startCmp = a.startDate.localeCompare(b.startDate)
+        if(startCmp!==0) return startCmp
+        const endCmp = a.endDate.localeCompare(b.endDate)
+        if(endCmp!==0) return endCmp
+        return a.person.localeCompare(b.person)
       })
   }, [workingPto])
+  const upcomingPto = React.useMemo(() => sortedPto.filter((item) => item.endDate >= todayIso), [sortedPto, todayIso])
 
   // Overrides state (PTO tab)
   const [ov_agent, setOvAgent] = React.useState('')
@@ -1911,19 +1915,28 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
     },
     [localAgents, markDirty, setOvAgent, setOvEnd, setOvKind, setOvNotes, setOvStart, setOvTEnd, setOvTStart, setWorkingOverrides],
   )
-  const filteredOverrides = React.useMemo(()=>{
+  const sortedOverrides = React.useMemo(()=>{
     return workingOverrides
       .slice()
       .sort((a,b)=>{
-        const personCmp = a.person.localeCompare(b.person)
-        if(personCmp!==0) return personCmp
         const startCmp = a.startDate.localeCompare(b.startDate)
         if(startCmp!==0) return startCmp
+        const endCmp = a.endDate.localeCompare(b.endDate)
+        if(endCmp!==0) return endCmp
         const timeA = a.start || ''
         const timeB = b.start || ''
-        return timeA.localeCompare(timeB)
+        if(timeA !== timeB) return timeA.localeCompare(timeB)
+        return a.person.localeCompare(b.person)
       })
   }, [workingOverrides])
+  const upcomingOverrides = React.useMemo(
+    () => sortedOverrides.filter((item) => item.endDate >= todayIso),
+    [sortedOverrides, todayIso],
+  )
+  const displayedPto = showPtoHistory ? sortedPto : upcomingPto
+  const hiddenPtoCount = Math.max(sortedPto.length - displayedPto.length, 0)
+  const displayedOverrides = showOverrideHistory ? sortedOverrides : upcomingOverrides
+  const hiddenOverrideCount = Math.max(sortedOverrides.length - displayedOverrides.length, 0)
   const calendarWeeks = React.useMemo(()=>{
     const base = parseYMD(weekStart)
     return [
@@ -3382,10 +3395,10 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                 />
                 <section className={["rounded-lg border overflow-hidden", dark ? "border-neutral-800 bg-neutral-950" : "border-neutral-200 bg-white"].join(' ')}>
                 <div className={["flex flex-wrap items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">PTO entries</span>
-                    <span className="text-xs opacity-70">{filteredPto.length} total</span>
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">PTO entries</span>
+                      <span className="text-xs opacity-70">{sortedPto.length} total</span>
+                    </div>
                   <button
                     type="button"
                     className="text-xs font-medium text-blue-500 hover:underline"
@@ -3456,11 +3469,12 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                       </div>
                     </div>
                   </form>
-                  {showPtoHistory ? (
-                  <div className="overflow-x-auto">
-                    {filteredPto.length===0 ? (
-                      <div className="text-sm opacity-70 px-1 py-4">No PTO entries.</div>
-                    ) : (
+                  {displayedPto.length===0 ? (
+                    <div className="text-sm opacity-70 px-1 py-4">
+                      {showPtoHistory ? 'No PTO entries.' : 'No upcoming PTO entries.'}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
                         <thead className={dark?"bg-neutral-900":"bg-neutral-50"}>
                           <tr>
@@ -3471,7 +3485,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                           </tr>
                         </thead>
                         <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
-                          {filteredPto.map(r=>{
+                          {displayedPto.map(r=>{
                             const display = agentDisplayName(localAgents as any, r.agentId, r.person)
                             return (
                               <tr key={r.id} className={dark?"hover:bg-neutral-900":"hover:bg-neutral-50"}>
@@ -3502,13 +3516,13 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                           })}
                         </tbody>
                       </table>
-                    )}
-                  </div>
-                  ) : (
-                    <div className={["rounded-md border px-3 py-2 text-xs", dark ? "border-neutral-800 bg-neutral-900 text-neutral-200" : "border-neutral-200 bg-neutral-50 text-neutral-600"].join(' ')}>
-                      PTO history hidden. Select “Show history” to review existing entries.
                     </div>
                   )}
+                  {!showPtoHistory && hiddenPtoCount>0 ? (
+                    <div className={["rounded-md border px-3 py-2 text-xs", dark ? "border-neutral-800 bg-neutral-900 text-neutral-200" : "border-neutral-200 bg-neutral-50 text-neutral-600"].join(' ')}>
+                      {hiddenPtoCount} past PTO {hiddenPtoCount===1?'entry':'entries'} hidden. Select “Show history” to review.
+                    </div>
+                  ) : null}
                 </div>
               </section>
               {ptoEditing && (
@@ -3603,7 +3617,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                   <div className={["flex flex-wrap items-center justify-between px-3 py-2 border-b", dark ? "border-neutral-800 bg-neutral-900 text-neutral-100" : "border-neutral-200 bg-neutral-50 text-neutral-800"].join(' ')}>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold">Overrides</span>
-                      <span className="text-xs opacity-70">{filteredOverrides.length} total</span>
+                      <span className="text-xs opacity-70">{sortedOverrides.length} total</span>
                     </div>
                     <button
                       type="button"
@@ -3739,11 +3753,12 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                       >Add Override</button>
                     </div>
                   </form>
-                  {showOverrideHistory ? (
-                  <div className="overflow-x-auto">
-                    {filteredOverrides.length===0 ? (
-                      <div className="text-sm opacity-70 px-1 py-4">No overrides.</div>
-                    ) : (
+                  {displayedOverrides.length===0 ? (
+                    <div className="text-sm opacity-70 px-1 py-4">
+                      {showOverrideHistory ? 'No overrides.' : 'No upcoming overrides.'}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
                         <thead className={dark?"bg-neutral-900":"bg-neutral-50"}>
                           <tr>
@@ -3755,7 +3770,7 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                           </tr>
                         </thead>
                         <tbody className={dark?"divide-y divide-neutral-800":"divide-y divide-neutral-200"}>
-                          {filteredOverrides.map(o=>{
+                          {displayedOverrides.map(o=>{
                             const display = agentDisplayName(localAgents as any, o.agentId, o.person)
                             const recurrenceText = o.recurrence?.rule==='weekly'
                               ? `Weekly${o.recurrence.until ? ` until ${o.recurrence.until}` : ''}`
@@ -3802,13 +3817,13 @@ const [showAllTimeLabels, setShowAllTimeLabels] = React.useState(false)
                           })}
                         </tbody>
                       </table>
-                    )}
-                  </div>
-                  ) : (
-                    <div className={["rounded-md border px-3 py-2 text-xs", dark ? "border-neutral-800 bg-neutral-900 text-neutral-200" : "border-neutral-200 bg-neutral-50 text-neutral-600"].join(' ')}>
-                      Override history hidden. Select “Show history” to review existing overrides.
                     </div>
                   )}
+                  {!showOverrideHistory && hiddenOverrideCount>0 ? (
+                    <div className={["rounded-md border px-3 py-2 text-xs", dark ? "border-neutral-800 bg-neutral-900 text-neutral-200" : "border-neutral-200 bg-neutral-50 text-neutral-600"].join(' ')}>
+                      {hiddenOverrideCount} past override {hiddenOverrideCount===1?'entry':'entries'} hidden. Select “Show history” to review.
+                    </div>
+                  ) : null}
                 </div>
               </section>
               {overrideEditing && (
